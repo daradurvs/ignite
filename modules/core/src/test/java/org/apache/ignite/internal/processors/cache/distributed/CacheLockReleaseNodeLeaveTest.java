@@ -212,6 +212,40 @@ public class CacheLockReleaseNodeLeaveTest extends GridCommonAbstractTest {
     /**
      * @throws Exception If failed.
      */
+    public void testLockRelease3() throws Exception {
+        startGrid(0);
+
+        Ignite ignite1 = startGrid(1);
+
+        awaitPartitionMapExchange();
+
+        Lock lock = ignite1.cache(null).lock("key");
+        lock.lock();
+
+        IgniteInternalFuture<?> fut = GridTestUtils.runAsync(new Callable<Void>() {
+            @Override public Void call() throws Exception {
+                startGrid(2);
+
+                return null;
+            }
+        });
+
+        assertFalse(fut.isDone());
+
+        ignite1.close();
+
+        fut.get(10_000);
+
+        Ignite ignite2 = ignite(2);
+
+        lock = ignite2.cache(null).lock("key");
+        lock.lock();
+        lock.unlock();
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
     public void testTxLockRelease2() throws Exception {
         final Ignite ignite0 = startGrid(0);
 
