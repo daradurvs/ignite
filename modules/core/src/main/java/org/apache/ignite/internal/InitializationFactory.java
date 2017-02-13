@@ -17,10 +17,8 @@
 
 package org.apache.ignite.internal;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Interface that allows to implement custom objects initialization logic.
@@ -31,7 +29,6 @@ public interface InitializationFactory {
      * Controls initialization of object.
      *
      * @param clazz - class of the initialized object.
-     * @param constructor - constructor of the initialized object.
      * @return - an initialized object.
      * @throws IllegalAccessException - if {@param constructor} is enforcing Java language access control and the
      * underlying constructor is inaccessible.
@@ -41,7 +38,6 @@ public interface InitializationFactory {
      * abstract class.
      */
     public Object newInstance(
-        @NotNull Class<?> clazz,
-        @Nullable Constructor<?> constructor)
+        @NotNull Class<?> clazz)
         throws IllegalAccessException, InvocationTargetException, InstantiationException;
 }
