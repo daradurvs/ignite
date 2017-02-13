@@ -74,6 +74,7 @@ import org.apache.ignite.binary.BinaryWriter;
 import org.apache.ignite.binary.Binarylizable;
 import org.apache.ignite.configuration.BinaryConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.internal.InstanceFactory;
 import org.apache.ignite.internal.binary.builder.BinaryObjectBuilderImpl;
 import org.apache.ignite.internal.processors.cache.CacheObjectContext;
 import org.apache.ignite.internal.util.GridUnsafe;
@@ -546,6 +547,55 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
 
         assertEquals(2, e0.getKey().intValue());
         assertEquals("str2", e0.getValue());
+    }
+
+    /** */
+    private final static SimpleObject SIMPLE_OBJECT = new SimpleObject();
+    
+    /** */
+    private final static DynamicObject DYNAMIC_OBJECT = new DynamicObject();
+    
+    /**
+     * @throws Exception If failed.
+     */
+    public void testInstanceFactory() throws Exception {
+        BinaryMarshaller marshaller = binaryMarshaller();
+
+        IgniteConfiguration igniteConfig = new IgniteConfiguration();
+        BinaryConfiguration binaryConfig = new BinaryConfiguration();
+
+        binaryConfig.getInitializationFactory().put(
+            SimpleObject.class, new InstanceFactory() {
+                @NotNull @Override public Object newInstance() {
+                    return SIMPLE_OBJECT;
+                }
+            }
+        );
+
+        binaryConfig.getInitializationFactory().put(
+            DynamicObject.class, new InstanceFactory() {
+                @NotNull @Override public Object newInstance() {
+                    return DYNAMIC_OBJECT;
+                }
+            }
+        );
+
+        binaryConfig.setCompactFooter(compactFooter());
+        igniteConfig.setBinaryConfiguration(binaryConfig);
+        BinaryContext ctx = new BinaryContext(BinaryCachingMetadataHandler.create(), igniteConfig, new NullLogger());
+        marshaller.setContext(new MarshallerContextTestImpl(null, null));
+
+        IgniteUtils.invoke(BinaryMarshaller.class, marshaller, "setBinaryContext", ctx, igniteConfig);
+
+        SimpleObject  unmSimpleObject = marshalUnmarshal(SIMPLE_OBJECT, marshaller);
+        assertTrue(SIMPLE_OBJECT == unmSimpleObject);
+        assertEquals(SIMPLE_OBJECT, unmSimpleObject);
+
+        assertTrue(SIMPLE_OBJECT == marshalUnmarshal(new SimpleObject(), marshaller));
+
+        DynamicObject unmDynamicObject = marshalUnmarshal(DYNAMIC_OBJECT, marshaller);
+        assertTrue(DYNAMIC_OBJECT == unmDynamicObject);
+        assertEquals(DYNAMIC_OBJECT, unmDynamicObject);
     }
 
     /**

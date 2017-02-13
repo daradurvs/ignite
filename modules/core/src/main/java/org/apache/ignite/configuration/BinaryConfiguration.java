@@ -47,7 +47,7 @@ public class BinaryConfiguration {
     /** Serializer. */
     private BinarySerializer serializer;
 
-    /** Instance initialization factory. */
+    /** Instances initialization factory. */
     private ConcurrentMap<Class<?>, InstanceFactory> initializationFactory = new ConcurrentHashMap8<>();
 
     /** Types. */
@@ -169,7 +169,7 @@ public class BinaryConfiguration {
     }
 
     /**
-     * Gets initialization factory.
+     * Gets instances initialization factory.
      *
      * @return - initialization factory.
      */
@@ -178,14 +178,14 @@ public class BinaryConfiguration {
     }
 
     /**
-     * Reset initialization factory.
+     * Reset instances initialization factory.
      */
     public void resetInitializationFactory() {
         this.initializationFactory = new ConcurrentHashMap8<>();
     }
 
     /**
-     * Sets initialization factory.
+     * Sets instances initialization factory.
      *
      * @param initializationFactory - initialization factory
      */
