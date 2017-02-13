@@ -23,6 +23,8 @@ import org.apache.ignite.binary.BinaryIdMapper;
 import org.apache.ignite.binary.BinaryNameMapper;
 import org.apache.ignite.binary.BinarySerializer;
 import org.apache.ignite.binary.BinaryTypeConfiguration;
+import org.apache.ignite.internal.IgniteInitializationFactory;
+import org.apache.ignite.internal.InitializationFactory;
 import org.apache.ignite.internal.util.typedef.internal.S;
 
 /**
@@ -41,6 +43,9 @@ public class BinaryConfiguration {
 
     /** Serializer. */
     private BinarySerializer serializer;
+
+    /** Instance initialization factory. */
+    private InitializationFactory initializationFactory = new IgniteInitializationFactory();
 
     /** Types. */
     private Collection<BinaryTypeConfiguration> typeCfgs;
@@ -158,6 +163,31 @@ public class BinaryConfiguration {
      */
     public void setCompactFooter(boolean compactFooter) {
         this.compactFooter = compactFooter;
+    }
+
+    /**
+     * Gets initialization factory.
+     *
+     * @return - initialization faactory.
+     */
+    public InitializationFactory getInitializationFactory() {
+        return initializationFactory;
+    }
+
+    /**
+     * Reset to default InitializationFactory implementation {@link IgniteInitializationFactory}
+     */
+    public void resetInitializationFactory() {
+        initializationFactory = new IgniteInitializationFactory();
+    }
+
+    /**
+     * Sets initialization factory.
+     *
+     * @param initializationFactory - initialization factory
+     */
+    public void setInitializationFactory(InitializationFactory initializationFactory) {
+        this.initializationFactory = initializationFactory;
     }
 
     /** {@inheritDoc} */
