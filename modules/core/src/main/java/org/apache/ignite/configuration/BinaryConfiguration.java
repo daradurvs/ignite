@@ -19,16 +19,19 @@ package org.apache.ignite.configuration;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.ignite.binary.BinaryIdMapper;
 import org.apache.ignite.binary.BinaryNameMapper;
 import org.apache.ignite.binary.BinarySerializer;
 import org.apache.ignite.binary.BinaryTypeConfiguration;
-import org.apache.ignite.internal.IgniteInitializationFactory;
-import org.apache.ignite.internal.InitializationFactory;
+import org.apache.ignite.internal.InstanceFactory;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.jetbrains.annotations.NotNull;
+import org.jsr166.ConcurrentHashMap8;
 
 /**
  * Configuration object for Ignite Binary Objects.
+ *
  * @see org.apache.ignite.IgniteBinary
  */
 public class BinaryConfiguration {
@@ -45,7 +48,7 @@ public class BinaryConfiguration {
     private BinarySerializer serializer;
 
     /** Instance initialization factory. */
-    private InitializationFactory initializationFactory = new IgniteInitializationFactory();
+    private ConcurrentMap<Class<?>, InstanceFactory> initializationFactory = new ConcurrentHashMap8<>();
 
     /** Types. */
     private Collection<BinaryTypeConfiguration> typeCfgs;
@@ -168,17 +171,17 @@ public class BinaryConfiguration {
     /**
      * Gets initialization factory.
      *
-     * @return - initialization faactory.
+     * @return - initialization factory.
      */
-    public InitializationFactory getInitializationFactory() {
+    @NotNull public ConcurrentMap<Class<?>, InstanceFactory> getInitializationFactory() {
         return initializationFactory;
     }
 
     /**
-     * Reset to default InitializationFactory implementation {@link IgniteInitializationFactory}
+     * Reset initialization factory.
      */
     public void resetInitializationFactory() {
-        initializationFactory = new IgniteInitializationFactory();
+        this.initializationFactory = new ConcurrentHashMap8<>();
     }
 
     /**
@@ -186,7 +189,7 @@ public class BinaryConfiguration {
      *
      * @param initializationFactory - initialization factory
      */
-    public void setInitializationFactory(InitializationFactory initializationFactory) {
+    public void setInitializationFactory(@NotNull ConcurrentMap<Class<?>, InstanceFactory> initializationFactory) {
         this.initializationFactory = initializationFactory;
     }
 

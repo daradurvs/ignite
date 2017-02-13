@@ -17,23 +17,15 @@
 
 package org.apache.ignite.internal;
 
-import java.lang.reflect.InvocationTargetException;
-import org.apache.ignite.internal.util.GridUnsafe;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Provides control method initialization of objects.
- * Default implementation of {@link InitializationFactory}.
+ * Interface that allows to implement custom object instantiation logic.
  */
-public class IgniteInitializationFactory implements InitializationFactory {
+public interface InstanceFactory {
 
     /**
-     * {@inheritDoc}
+     * Controls instantiation of object.
      */
-    @Override public Object newInstance(
-        @NotNull Class<?> clazz)
-        throws IllegalAccessException, InvocationTargetException, InstantiationException {
-
-        return GridUnsafe.allocateInstance(clazz);
-    }
+    @NotNull public Object newInstance();
 }

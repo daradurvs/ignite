@@ -34,15 +34,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryReflectiveSerializer;
 import org.apache.ignite.binary.BinarySerializer;
 import org.apache.ignite.binary.Binarylizable;
 import org.apache.ignite.configuration.BinaryConfiguration;
-import org.apache.ignite.internal.InitializationFactory;
+import org.apache.ignite.internal.InstanceFactory;
 import org.apache.ignite.internal.processors.cache.CacheObjectImpl;
 import org.apache.ignite.internal.processors.query.GridQueryProcessor;
+import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -123,7 +125,7 @@ public class BinaryClassDescriptor {
     private final Class<?>[] intfs;
 
     /** Instance initialization factory. */
-    private final InitializationFactory initializationFactory;
+    private final ConcurrentMap<Class<?>, InstanceFactory> initializationFactory;
 
     /** Whether stable schema was published. */
     private volatile boolean stableSchemaPublished;
@@ -920,7 +922,12 @@ public class BinaryClassDescriptor {
      */
     private Object newInstance() throws BinaryObjectException {
         try {
-            return initializationFactory.newInstance(cls);
+            InstanceFactory factory = initializationFactory.get(cls);
+
+            if (factory != null)
+                return factory.newInstance();
+
+            return ctor != null ? ctor.newInstance() : GridUnsafe.allocateInstance(cls);
         }
         catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
             throw new BinaryObjectException("Failed to instantiate instance: " + cls, e);
