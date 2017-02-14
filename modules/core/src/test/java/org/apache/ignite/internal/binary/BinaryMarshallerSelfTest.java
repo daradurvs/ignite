@@ -551,10 +551,10 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
 
     /** */
     private final static SimpleObject SIMPLE_OBJECT = new SimpleObject();
-    
+
     /** */
     private final static DynamicObject DYNAMIC_OBJECT = new DynamicObject();
-    
+
     /**
      * @throws Exception If failed.
      */
@@ -587,14 +587,14 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
 
         IgniteUtils.invoke(BinaryMarshaller.class, marshaller, "setBinaryContext", ctx, igniteConfig);
 
-        SimpleObject  unmSimpleObject = marshalUnmarshal(SIMPLE_OBJECT, marshaller);
-        assertTrue(SIMPLE_OBJECT == unmSimpleObject);
+        SimpleObject unmSimpleObject = marshalUnmarshal(SIMPLE_OBJECT, marshaller);
+        assertTrue(SIMPLE_OBJECT == unmSimpleObject); // check references to equality according to test logic
         assertEquals(SIMPLE_OBJECT, unmSimpleObject);
 
-        assertTrue(SIMPLE_OBJECT == marshalUnmarshal(new SimpleObject(), marshaller));
+        assertTrue(SIMPLE_OBJECT == marshalUnmarshal(new SimpleObject(), marshaller)); // check references to equality according to test logic
 
         DynamicObject unmDynamicObject = marshalUnmarshal(DYNAMIC_OBJECT, marshaller);
-        assertTrue(DYNAMIC_OBJECT == unmDynamicObject);
+        assertTrue(DYNAMIC_OBJECT == unmDynamicObject); // check references to equality according to test logic
         assertEquals(DYNAMIC_OBJECT, unmDynamicObject);
     }
 
@@ -3159,7 +3159,6 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
         assertNotEquals(binObj02, binObj11);
     }
 
-
     /**
      * The test must be refactored after {@link IgniteSystemProperties#IGNITE_BINARY_SORT_OBJECT_FIELDS}
      * is removed.
@@ -3209,7 +3208,6 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
             builder.setField(fieldName, 0);
 
         BinaryObject binObj = builder.build();
-
 
         Collection<String> fieldsBin =  binObj.type().fieldNames();
 

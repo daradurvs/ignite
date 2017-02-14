@@ -31,7 +31,7 @@ public class BinaryConfigurationTest extends GridCommonAbstractTest {
     public void testGetInstanceFactory() throws Exception {
         BinaryConfiguration binaryConfiguration = binaryConfiguration();
 
-        assertTrue(binaryConfiguration.getInstanceFactory(SimpleObject.class) != null);
+        assertNotNull(binaryConfiguration.getInstanceFactory(SimpleObject.class));
     }
 
     /**
@@ -40,11 +40,11 @@ public class BinaryConfigurationTest extends GridCommonAbstractTest {
     public void testRemoveInstanceFactory() throws Exception {
         BinaryConfiguration binaryConfiguration = binaryConfiguration();
 
-        assertTrue(binaryConfiguration.getInstanceFactory(SimpleObject.class) != null);
+        assertNotNull(binaryConfiguration.getInstanceFactory(SimpleObject.class));
 
         binaryConfiguration.removeInstanceFactory(SimpleObject.class);
 
-        assertTrue(binaryConfiguration.getInstanceFactory(SimpleObject.class) == null);
+        assertNull(binaryConfiguration.getInstanceFactory(SimpleObject.class));
     }
 
     /**
@@ -78,11 +78,11 @@ public class BinaryConfigurationTest extends GridCommonAbstractTest {
     public void testResetInitializationFactory() throws Exception {
         BinaryConfiguration binaryConfiguration = binaryConfiguration();
 
-        assertTrue(binaryConfiguration.getInstanceFactory(SimpleObject.class) != null);
+        assertNotNull(binaryConfiguration.getInstanceFactory(SimpleObject.class));
 
         binaryConfiguration.resetInitializationFactory();
 
-        assertTrue(binaryConfiguration.getInstanceFactory(SimpleObject.class) == null);
+        assertNull(binaryConfiguration.getInstanceFactory(SimpleObject.class));
     }
 
     /**
