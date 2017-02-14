@@ -124,7 +124,7 @@ public class BinaryClassDescriptor {
     private final Class<?>[] intfs;
 
     /** */
-    private final BinaryConfiguration binaryConfiguration;
+    @Nullable private final InstanceFactory instanceFactory;
 
     /** Whether stable schema was published. */
     private volatile boolean stableSchemaPublished;
@@ -176,7 +176,10 @@ public class BinaryClassDescriptor {
         this.serializer = serializer;
         this.mapper = mapper;
         this.registered = registered;
-        this.binaryConfiguration  = ctx.configuration().getBinaryConfiguration();
+
+        BinaryConfiguration binaryConfiguration = ctx.configuration().getBinaryConfiguration();
+
+        this.instanceFactory = binaryConfiguration.getInstanceFactory(cls);
 
         overridesHashCode = IgniteUtils.overridesEqualsAndHashCode(cls);
 
@@ -918,10 +921,8 @@ public class BinaryClassDescriptor {
      */
     private Object newInstance() throws BinaryObjectException {
         try {
-            InstanceFactory factory = binaryConfiguration.getInstanceFactory(cls);
-
-            if (factory != null)
-                return factory.newInstance();
+            if (instanceFactory != null)
+                return instanceFactory.newInstance();
 
             return ctor != null ? ctor.newInstance() : GridUnsafe.allocateInstance(cls);
         }
