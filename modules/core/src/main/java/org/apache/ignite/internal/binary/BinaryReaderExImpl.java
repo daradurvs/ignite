@@ -50,6 +50,7 @@ import static org.apache.ignite.internal.binary.GridBinaryMarshaller.CHAR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.CHAR_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.CLASS;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.COL;
+import static org.apache.ignite.internal.binary.GridBinaryMarshaller.COMPRESSED;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DATE;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DATE_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DECIMAL;
@@ -377,6 +378,17 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
                 return null;
 
             return BinaryUtils.doReadClass(in, ctx, ldr);
+        }
+
+        return null;
+    }
+
+    @Nullable Object readCompressed(int fieldId) throws BinaryObjectException {
+        if (findFieldById(fieldId)) {
+            if (checkFlag(COMPRESSED) == Flag.NULL)
+                return null;
+
+            return BinaryUtils.doReadCompressed(in, ctx, ldr);
         }
 
         return null;
