@@ -209,7 +209,7 @@ public class BinaryConfiguration {
     }
 
     /**
-     * Reset instances initialization factory.
+     * Reset the instances Initialization Factory.
      */
     public void resetInitializationFactory() {
         this.initializationFactory = new ConcurrentHashMap8<>();
