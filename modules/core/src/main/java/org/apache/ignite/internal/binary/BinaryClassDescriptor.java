@@ -34,7 +34,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentMap;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryReflectiveSerializer;
@@ -124,8 +123,8 @@ public class BinaryClassDescriptor {
     /** */
     private final Class<?>[] intfs;
 
-    /** Instance initialization factory. */
-    private final ConcurrentMap<Class<?>, InstanceFactory> initializationFactory;
+    /** */
+    private final BinaryConfiguration binaryConfiguration;
 
     /** Whether stable schema was published. */
     private volatile boolean stableSchemaPublished;
@@ -177,10 +176,7 @@ public class BinaryClassDescriptor {
         this.serializer = serializer;
         this.mapper = mapper;
         this.registered = registered;
-
-        BinaryConfiguration binaryConfiguration = ctx.configuration().getBinaryConfiguration();
-
-        initializationFactory = binaryConfiguration.getInitializationFactory();
+        this.binaryConfiguration  = ctx.configuration().getBinaryConfiguration();
 
         overridesHashCode = IgniteUtils.overridesEqualsAndHashCode(cls);
 
@@ -922,7 +918,7 @@ public class BinaryClassDescriptor {
      */
     private Object newInstance() throws BinaryObjectException {
         try {
-            InstanceFactory factory = initializationFactory.get(cls);
+            InstanceFactory factory = binaryConfiguration.getInstanceFactory(cls);
 
             if (factory != null)
                 return factory.newInstance();

@@ -564,7 +564,7 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
         IgniteConfiguration igniteConfig = new IgniteConfiguration();
         BinaryConfiguration binaryConfig = new BinaryConfiguration();
 
-        binaryConfig.getInitializationFactory().put(
+        binaryConfig.putInstanceFactory(
             SimpleObject.class, new InstanceFactory() {
                 @NotNull @Override public Object newInstance() {
                     return SIMPLE_OBJECT;
@@ -572,7 +572,7 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
             }
         );
 
-        binaryConfig.getInitializationFactory().put(
+        binaryConfig.putInstanceFactory(
             DynamicObject.class, new InstanceFactory() {
                 @NotNull @Override public Object newInstance() {
                     return DYNAMIC_OBJECT;
