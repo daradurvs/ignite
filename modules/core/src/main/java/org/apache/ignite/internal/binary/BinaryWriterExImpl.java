@@ -35,7 +35,7 @@ import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawWriter;
 import org.apache.ignite.binary.BinaryWriter;
 import org.apache.ignite.internal.binary.compression.CompressionType;
-import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapOutputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -521,25 +521,28 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
     }
 
     /**
-     * Write object.
-     *
-     * @param obj obj to compress.
-     * @throws org.apache.ignite.binary.BinaryObjectException In case of error.
+     * TODO: description
+     * @param obj
+     * @param compressionMode
+     * @throws BinaryObjectException
      */
-    public void doWriteCompressed(@Nullable Object obj) throws BinaryObjectException {
+    public void doWriteCompressed(@Nullable Object obj, BinaryWriteMode compressionMode) throws BinaryObjectException {
+
         if (obj == null)
             out.writeByte(GridBinaryMarshaller.NULL);
         else {
-            BinaryWriteMode mode = BinaryUtils.mode(obj.getClass());
+            BinaryWriteMode wrappedObjectMode = BinaryUtils.mode(obj.getClass());
+            CompressionType compressionType = CompressionType.ofTypeId(compressionMode.typeId());
 
-            assert mode == BinaryWriteMode.STRING : "Type not supported: " + mode;
+            assert wrappedObjectMode == BinaryWriteMode.STRING : "Type not supported: " + wrappedObjectMode;
 
             out.unsafeEnsure(1 + 1 + 4);
-            out.unsafeWriteByte(GridBinaryMarshaller.COMPRESSED);
-            out.unsafeWriteByte((byte)mode.typeId());
+            out.unsafeWriteByte((byte)compressionMode.typeId());
+            out.unsafeWriteByte((byte)wrappedObjectMode.typeId());
 
             // TODO: use compressor instance from BinaryContext
-            GZipCompressor compressor = new GZipCompressor();
+            Compressor compressor = ctx.configuration().getCompressorsSelector().get(compressionType);
+
             byte[] bytes;
             try {
                 bytes = compressor.compress(((String)obj).getBytes());

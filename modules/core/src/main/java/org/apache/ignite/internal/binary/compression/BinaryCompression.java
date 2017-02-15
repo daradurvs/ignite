@@ -33,5 +33,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface BinaryCompression {
     /** */
-    CompressionType type() default CompressionType.NO;
+    CompressionType type() default CompressionType.GZIP;
 }
