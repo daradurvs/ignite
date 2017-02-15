@@ -73,6 +73,8 @@ import java.nio.channels.FileLock;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.AccessController;
 import java.security.KeyManagementException;
 import java.security.MessageDigest;
@@ -368,6 +370,9 @@ public abstract class IgniteUtils {
     /** Indicates whether current OS is Mac OS. */
     private static boolean mac;
 
+    /** Indicates whether current OS is of RedHat family. */
+    private static boolean redHat;
+
     /** Indicates whether current OS architecture is Sun Sparc. */
     private static boolean sparc;
 
@@ -526,6 +531,8 @@ public abstract class IgniteUtils {
         finally {
             assertionsEnabled = assertionsEnabled0;
         }
+
+        redHat = Files.exists(Paths.get("/etc/redhat-release")); // RedHat family OS (Fedora, CentOS, RedHat)
 
         String osName = System.getProperty("os.name");
 
@@ -6284,6 +6291,13 @@ public abstract class IgniteUtils {
     }
 
     /**
+     * @return {@code True} if current OS is RedHat.
+     */
+    public static boolean isRedHat() {
+        return redHat;
+    }
+
+    /**
      * Indicates whether current OS is Netware.
      *
      * @return {@code true} if current OS is Netware - {@code false} otherwise.
@@ -9476,7 +9490,7 @@ public abstract class IgniteUtils {
 
                 return fld;
             }
-            catch (NoSuchFieldException e) {
+            catch (NoSuchFieldException ignored) {
                 // No-op.
             }
 
