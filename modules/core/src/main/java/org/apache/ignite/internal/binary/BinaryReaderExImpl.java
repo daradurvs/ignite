@@ -33,6 +33,8 @@ import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.binary.BinaryReader;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.typedef.internal.SB;
@@ -48,7 +50,6 @@ import static org.apache.ignite.internal.binary.GridBinaryMarshaller.CHAR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.CHAR_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.CLASS;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.COL;
-import static org.apache.ignite.internal.binary.GridBinaryMarshaller.COMPRESSED;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DATE;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DATE_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DECIMAL;
@@ -146,6 +147,9 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
     /** Whether stream is in raw mode. */
     private boolean raw;
 
+    /** */
+    private Map<CompressionType, Compressor> compressorsSelector;
+
     /**
      * Constructor.
      *
@@ -205,6 +209,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         this.in = in;
         this.ldr = ldr;
         this.hnds = hnds;
+        this.compressorsSelector = ctx.configuration().getCompressorsSelector();
 
         start = in.position();
 
@@ -374,12 +379,13 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         return null;
     }
 
-    @Nullable Object readCompressed(int fieldId) throws BinaryObjectException {
+    @Nullable Object readCompressed(int fieldId, BinaryWriteMode mode) throws BinaryObjectException {
         if (findFieldById(fieldId)) {
-            if (checkFlag(COMPRESSED) == Flag.NULL)
+
+            if (checkFlag((byte)mode.typeId()) == Flag.NULL)
                 return null;
 
-            return BinaryUtils.doReadCompressed(in, ctx, ldr);
+            return BinaryUtils.doReadCompressed(in, ctx, mode.typeId());
         }
 
         return null;

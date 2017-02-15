@@ -69,14 +69,18 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
     /** Test class*/
     private static class SubjectUnderTest {
         @BinaryCompression
-        private String data;
+        private String data_default;
+
+        @BinaryCompression(type = CompressionType.GZIP)
+        private String data_gzip;
+
+        @BinaryCompression(type = CompressionType.DEFLATE)
+        private String data_deflate;
 
         public SubjectUnderTest(String data) {
-            this.data = data;
-        }
-
-        public String getData() {
-            return data;
+            this.data_default = data;
+            this.data_gzip = data;
+            this.data_deflate = data;
         }
 
         @Override public boolean equals(Object o) {
@@ -87,7 +91,19 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
 
             SubjectUnderTest test = (SubjectUnderTest)o;
 
-            return data != null ? data.equals(test.getData()) : test.getData() == null;
+            if (data_default != null ? !data_default.equals(test.data_default) : test.data_default != null)
+                return false;
+            if (data_gzip != null ? !data_gzip.equals(test.data_gzip) : test.data_gzip != null)
+                return false;
+            return data_deflate != null ? data_deflate.equals(test.data_deflate) : test.data_deflate == null;
+
+        }
+
+        @Override public int hashCode() {
+            int result = data_default != null ? data_default.hashCode() : 0;
+            result = 31 * result + (data_gzip != null ? data_gzip.hashCode() : 0);
+            result = 31 * result + (data_deflate != null ? data_deflate.hashCode() : 0);
+            return result;
         }
     }
 }

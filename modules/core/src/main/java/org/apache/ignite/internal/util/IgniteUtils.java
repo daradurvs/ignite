@@ -176,6 +176,8 @@ import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.binary.BinaryObjectEx;
 import org.apache.ignite.internal.binary.BinaryUtils;
+import org.apache.ignite.internal.binary.BinaryWriteMode;
+import org.apache.ignite.internal.binary.GridBinaryMarshaller;
 import org.apache.ignite.internal.cluster.ClusterGroupEmptyCheckedException;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.compute.ComputeTaskCancelledCheckedException;
@@ -235,7 +237,6 @@ import org.jetbrains.annotations.Nullable;
 import org.jsr166.ConcurrentHashMap8;
 import sun.misc.SharedSecrets;
 import sun.misc.URLClassPath;
-import sun.misc.Unsafe;
 
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_DISABLE_HOSTNAME_VERIFIER;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_HOME;
@@ -10033,5 +10034,15 @@ public abstract class IgniteUtils {
         catch (Exception e) {
             throw new IgniteCheckedException(e);
         }
+    }
+
+    /** TODO: description */
+    public static boolean isCompressionType(BinaryWriteMode mode) {
+        return isCompressionType(mode.typeId());
+    }
+
+    /** TODO: min-max values? */
+    public static boolean isCompressionType(int typeId) {
+        return typeId >= GridBinaryMarshaller.GZIPPED && typeId <= GridBinaryMarshaller.COMPRESSED_USER_1;
     }
 }

@@ -17,19 +17,37 @@
 
 package org.apache.ignite.internal.binary.compression;
 
+import org.apache.ignite.internal.binary.BinaryWriteMode;
+
 /**
  * Compression types
  */
 public enum CompressionType {
     /** */
-    NO,
+    GZIP(BinaryWriteMode.GZIPPED),
 
     /** */
-    GZIP,
+    DEFLATE(BinaryWriteMode.DEFLATED),
 
     /** */
-    DEFLATE,
+    CUSTOM(BinaryWriteMode.COMPRESSED_USER_1);
 
-    /** */
-    CUSTOM
+    private BinaryWriteMode mode;
+
+    CompressionType(BinaryWriteMode mode) {
+        this.mode = mode;
+    }
+
+    public BinaryWriteMode getMode() {
+        return mode;
+    }
+
+    public static CompressionType ofTypeId(int typeId) {
+        for (CompressionType type : values()) {
+            if (type.getMode().typeId() == typeId)
+                return type;
+        }
+
+        throw new IllegalArgumentException("Compression type for type id=" + typeId + " not defined.");
+    }
 }
