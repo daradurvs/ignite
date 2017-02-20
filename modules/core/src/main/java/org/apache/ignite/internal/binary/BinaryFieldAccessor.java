@@ -26,6 +26,7 @@ import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.binary.BinaryObjectException;
+import org.apache.ignite.internal.binary.compression.BinaryCompression;
 import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -53,6 +54,9 @@ public abstract class BinaryFieldAccessor {
      */
     public static BinaryFieldAccessor create(Field field, int id) {
         BinaryWriteMode mode = BinaryUtils.mode(field.getType());
+
+        if (field.isAnnotationPresent(BinaryCompression.class))
+            mode = BinaryWriteMode.COMPRESSED;
 
         switch (mode) {
             case P_BYTE:
@@ -664,6 +668,11 @@ public abstract class BinaryFieldAccessor {
 
                     break;
 
+                case COMPRESSED:
+                    writer.doWriteCompressed(val);
+
+                    break;
+
                 default:
                     assert false : "Invalid mode: " + mode;
             }
@@ -871,6 +880,11 @@ public abstract class BinaryFieldAccessor {
 
                 case CLASS:
                     val = reader.readClass(id);
+
+                    break;
+
+                case COMPRESSED:
+                    val = reader.readCompressed(id);
 
                     break;
 

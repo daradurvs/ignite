@@ -34,6 +34,8 @@ import org.apache.ignite.binary.BinaryIdentityResolver;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawWriter;
 import org.apache.ignite.binary.BinaryWriter;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapOutputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -82,6 +84,9 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
 
     /** */
     private BinaryInternalMapper mapper;
+
+    /** Defines necessary type of compression */
+    private CompressionType compressionType;
 
     /**
      * @param ctx Context.
@@ -512,6 +517,38 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
             BinaryWriterExImpl writer = new BinaryWriterExImpl(ctx, out, schema, handles());
 
             writer.marshal(obj);
+        }
+    }
+
+    /**
+     * Write object.
+     *
+     * @param obj obj to compress.
+     * @throws org.apache.ignite.binary.BinaryObjectException In case of error.
+     */
+    public void doWriteCompressed(@Nullable Object obj) throws BinaryObjectException {
+        if (obj == null)
+            out.writeByte(GridBinaryMarshaller.NULL);
+        else {
+            BinaryWriteMode mode = BinaryUtils.mode(obj.getClass());
+
+            assert mode == BinaryWriteMode.STRING : "Type not supported: " + mode;
+
+            out.unsafeEnsure(1 + 1 + 4);
+            out.unsafeWriteByte(GridBinaryMarshaller.COMPRESSED);
+            out.unsafeWriteByte((byte)mode.typeId());
+
+            // TODO: use compressor instance from BinaryContext
+            GZipCompressor compressor = new GZipCompressor();
+            byte[] bytes;
+            try {
+                bytes = compressor.compress(((String)obj).getBytes());
+            }
+            catch (IOException e) {
+                throw new BinaryObjectException("Failed to compress object:" + obj.getClass(), e);
+            }
+            out.unsafeWriteInt(bytes.length);
+            out.writeByteArray(bytes);
         }
     }
 
