@@ -17,12 +17,12 @@
 
 package org.apache.ignite.internal.binary.compression.compressors;
 
-import junit.framework.TestCase;
+import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
 /**
  * TODO: more tests
  */
-public class GZipCompressorTest extends TestCase {
+public class GZipCompressorTest extends GridCommonAbstractTest {
 
     /**
      * @throws Exception If failed.

@@ -19,9 +19,8 @@ package org.apache.ignite.internal.binary.compression.compressors;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.zip.DataFormatException;
-import java.util.zip.DeflaterOutputStream;
+import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 import org.jetbrains.annotations.NotNull;
 
@@ -29,27 +28,57 @@ import org.jetbrains.annotations.NotNull;
  * TODO: description
  */
 public class DeflaterCompressor implements Compressor {
+
+    /** Compression processor */
+    private Deflater compressor;
+
+    /** Decompression processor */
+    private Inflater decompressor;
+
+    /** Default constructor */
+    public DeflaterCompressor() {
+        this.compressor = new Deflater();
+        this.decompressor = new Inflater();
+    }
+
+    /**
+     * @param level - Compression level
+     */
+    public DeflaterCompressor(int level) {
+        if (level < Deflater.DEFAULT_COMPRESSION || level > Deflater.BEST_COMPRESSION)
+            throw new IllegalArgumentException("Invalid compression level: " + level);
+
+        this.compressor = new Deflater(level);
+        this.decompressor = new Inflater();
+    }
+
     /** {@inheritDoc} */
     @Override public byte[] compress(@NotNull byte[] bytes) throws IOException {
+        compressor.setInput(bytes);
+        compressor.finish();
+
         try (
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            OutputStream out = new DeflaterOutputStream(baos)
+            ByteArrayOutputStream baos = new ByteArrayOutputStream()
         ) {
-            out.write(bytes);
-            out.flush();
+            byte[] buffer = new byte[100];
+
+            while (!compressor.finished()) {
+                int length = compressor.deflate(buffer);
+                baos.write(buffer, 0, length);
+            }
             return baos.toByteArray();
         }
     }
 
     /** {@inheritDoc} */
     @Override public byte[] decompress(@NotNull byte[] bytes) throws IOException {
-        Inflater decompressor = new Inflater();
         decompressor.setInput(bytes);
 
         try (
             ByteArrayOutputStream baos = new ByteArrayOutputStream()
         ) {
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[100];
+
             while (!decompressor.finished()) {
                 int length = decompressor.inflate(buffer);
                 baos.write(buffer, 0, length);
