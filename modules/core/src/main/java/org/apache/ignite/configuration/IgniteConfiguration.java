@@ -19,6 +19,7 @@ package org.apache.ignite.configuration;
 
 import java.io.Serializable;
 import java.lang.management.ManagementFactory;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import javax.cache.configuration.Factory;
@@ -41,6 +42,10 @@ import org.apache.ignite.compute.ComputeJob;
 import org.apache.ignite.compute.ComputeTask;
 import org.apache.ignite.events.Event;
 import org.apache.ignite.events.EventType;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
+import org.apache.ignite.internal.binary.compression.compressors.DeflaterCompressor;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteAsyncCallback;
@@ -474,11 +479,15 @@ public class IgniteConfiguration {
     /** */
     private boolean lateAffAssignment = DFLT_LATE_AFF_ASSIGNMENT;
 
+    private Map<CompressionType, Compressor> compressorsSelector;
+
     /**
      * Creates valid grid configuration with all default values.
      */
     public IgniteConfiguration() {
-        // No-op.
+        compressorsSelector = new HashMap<>();
+        compressorsSelector.put(CompressionType.GZIP, new GZipCompressor());
+        compressorsSelector.put(CompressionType.DEFLATE, new DeflaterCompressor());
     }
 
     /**
@@ -576,6 +585,7 @@ public class IgniteConfiguration {
         utilityCachePoolSize = cfg.getUtilityCacheThreadPoolSize();
         waitForSegOnStart = cfg.isWaitForSegmentOnStart();
         warmupClos = cfg.getWarmupClosure();
+        compressorsSelector = cfg.getCompressorsSelector();
     }
 
     /**
@@ -2656,6 +2666,15 @@ public class IgniteConfiguration {
         this.lateAffAssignment = lateAffAssignment;
 
         return this;
+    }
+
+    /**
+     * TODO: description
+     *
+     * @return
+     */
+    public Map<CompressionType, Compressor> getCompressorsSelector() {
+        return compressorsSelector;
     }
 
     /** {@inheritDoc} */

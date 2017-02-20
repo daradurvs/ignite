@@ -223,7 +223,13 @@ public class GridBinaryMarshaller {
     public static final byte DFLT_HDR_LEN = 24;
 
     /** */
-    public static final byte COMPRESSED = 64;
+    public static final byte GZIPPED = 90;
+
+    /** */
+    public static final byte DEFLATED = 91;
+
+    /** */
+    public static final byte COMPRESSED_USER_1 = 92;
 
     /** */
     private final BinaryContext ctx;

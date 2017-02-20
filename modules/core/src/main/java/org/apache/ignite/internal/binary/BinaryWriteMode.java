@@ -168,7 +168,14 @@ public enum BinaryWriteMode {
     /** */
     EXCLUSION(GridBinaryMarshaller.OBJ),
 
-    COMPRESSED(GridBinaryMarshaller.COMPRESSED);
+    /** */
+    GZIPPED(GridBinaryMarshaller.GZIPPED),
+
+    /** */
+    DEFLATED(GridBinaryMarshaller.DEFLATED),
+
+    /** */
+    COMPRESSED_USER_1(GridBinaryMarshaller.COMPRESSED_USER_1);
 
     /** Type ID. */
     private final int typeId;
