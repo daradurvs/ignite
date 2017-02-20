@@ -403,15 +403,9 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
 
             out.unsafeWriteByte(GridBinaryMarshaller.DECIMAL);
 
+            out.unsafeWriteInt(val.scale());
+
             BigInteger intVal = val.unscaledValue();
-
-            if (intVal.signum() == -1) {
-                intVal = intVal.negate();
-
-                out.unsafeWriteInt(val.scale() | 0x80000000);
-            }
-            else
-                out.unsafeWriteInt(val.scale());
 
             byte[] vals = intVal.toByteArray();
 
