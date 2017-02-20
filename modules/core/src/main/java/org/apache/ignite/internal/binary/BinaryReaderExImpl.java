@@ -34,6 +34,8 @@ import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.binary.BinaryReader;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -149,6 +151,9 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
     /** Whether stream is in raw mode. */
     private boolean raw;
 
+    /** */
+    private Map<CompressionType, Compressor> compressorsSelector;
+
     /**
      * Constructor.
      *
@@ -208,6 +213,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         this.in = in;
         this.ldr = ldr;
         this.hnds = hnds;
+        this.compressorsSelector = ctx.configuration().getCompressorsSelector();
 
         start = in.position();
 
@@ -377,6 +383,18 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
                 return null;
 
             return BinaryUtils.doReadClass(in, ctx, ldr);
+        }
+
+        return null;
+    }
+
+    @Nullable Object readCompressed(int fieldId, BinaryWriteMode mode) throws BinaryObjectException {
+        if (findFieldById(fieldId)) {
+
+            if (checkFlag((byte)mode.typeId()) == Flag.NULL)
+                return null;
+
+            return BinaryUtils.doReadCompressed(in, ctx, mode.typeId());
         }
 
         return null;
