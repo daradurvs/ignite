@@ -1735,6 +1735,9 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
         byte flag = in.readByte();
 
+        if (IgniteUtils.isCompressionType(flag))
+            return BinaryUtils.doReadCompressed(in, ctx, flag);
+
         switch (flag) {
             case NULL:
                 obj = null;

@@ -17,19 +17,66 @@
 
 package org.apache.ignite.internal.binary.compression;
 
+import org.apache.ignite.Ignite;
+import org.apache.ignite.IgniteCache;
+import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.internal.binary.BinaryCachingMetadataHandler;
+import org.apache.ignite.internal.binary.BinaryContext;
 import org.apache.ignite.internal.binary.BinaryMarshaller;
 import org.apache.ignite.internal.binary.BinaryMarshallerSelfTest;
+import org.apache.ignite.internal.util.IgniteUtils;
+import org.apache.ignite.logger.NullLogger;
 
 /**
  * Compression tests
  */
 public class DataCompressionTest extends BinaryMarshallerSelfTest {
+    /** Test string line. */
+    String line = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testCacheCompression() throws Exception {
+        String gridName = getTestGridName();
+        IgniteConfiguration cfg = getConfiguration(gridName, getTestResources());
+        cfg.setDefaultCompression(true);
+        cfg.setMarshaller(binaryMarshaller());
+        cfg.setDefaultCompressionType(CompressionType.GZIP);
+
+        try (Ignite ignite = startGrid(gridName, cfg)) {
+
+            IgniteCache<Integer, String> cache = ignite.getOrCreateCache("test");
+
+            cache.put(1, "abc");
+
+            assertEquals(cache.get(1), "abc");
+
+        }
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testDefaultCompression() throws Exception {
+        IgniteConfiguration igniteConfiguration = getConfiguration(getTestGridName());
+        igniteConfiguration.setDefaultCompression(true);
+
+        BinaryContext ctx = new BinaryContext(BinaryCachingMetadataHandler.create(), igniteConfiguration, new NullLogger());
+        BinaryMarshaller marshaller = binaryMarshaller();
+        IgniteUtils.invoke(BinaryMarshaller.class, marshaller, "setBinaryContext", ctx, igniteConfiguration);
+
+        assertEquals(line, marshalUnmarshal(line, marshaller));
+
+        byte[] compressed = marshaller.marshal(line);
+        assertEquals(line, marshaller.unmarshal(compressed, Thread.currentThread().getContextClassLoader()));
+    }
 
     /**
      * @throws Exception If failed.
      */
     public void testObjectCompression() throws Exception {
-        SubjectUnderTest sut = new SubjectUnderTest("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        SubjectUnderTest sut = new SubjectUnderTest(line);
 
         BinaryMarshaller marshaller = binaryMarshaller();
 
@@ -66,7 +113,7 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
         return marshaller.unmarshal(bytes, null);
     }
 
-    /** Test class*/
+    /** Test class. */
     private static class SubjectUnderTest {
         @BinaryCompression
         private String data_default;
@@ -77,7 +124,7 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
         @BinaryCompression(type = CompressionType.DEFLATE)
         private String data_deflate;
 
-        public SubjectUnderTest(String data) {
+        private SubjectUnderTest(String data) {
             this.data_default = data;
             this.data_gzip = data;
             this.data_deflate = data;

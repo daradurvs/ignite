@@ -479,7 +479,14 @@ public class IgniteConfiguration {
     /** */
     private boolean lateAffAssignment = DFLT_LATE_AFF_ASSIGNMENT;
 
+    /** Consists mapping a compression type and an implementation of {@link Compressor}*/
     private Map<CompressionType, Compressor> compressorsSelector;
+
+    /** Indicates whether default compression is switched on. */
+    private boolean defaultCompression;
+
+    /** Defines the type of used default compression. */
+    private CompressionType defaultCompressionType;
 
     /**
      * Creates valid grid configuration with all default values.
@@ -586,6 +593,8 @@ public class IgniteConfiguration {
         waitForSegOnStart = cfg.isWaitForSegmentOnStart();
         warmupClos = cfg.getWarmupClosure();
         compressorsSelector = cfg.getCompressorsSelector();
+        defaultCompression = cfg.isDefaultCompression();
+        defaultCompressionType = cfg.getDefaultCompressionType();
     }
 
     /**
@@ -2669,12 +2678,48 @@ public class IgniteConfiguration {
     }
 
     /**
-     * TODO: description
+     * Gets the map, which consists mapping of {@link CompressionType} and used {@link Compressor}
      *
-     * @return
+     * @return - the map which consists mapping of a type of compression and used {@link Compressor}
      */
     public Map<CompressionType, Compressor> getCompressorsSelector() {
         return compressorsSelector;
+    }
+
+    /**
+     * Indicates whether default compression is switched on.
+     *
+     * @return - 'true' if default compression is enabled, otherwise 'false'.
+     */
+    public boolean isDefaultCompression() {
+        return defaultCompression;
+    }
+
+    /**
+     * Switches a mode of default compression {@link CompressionType}.
+     *
+     * @param defaultCompression - flag, 'true' - switch on default compression, otherwise - switch off.
+     */
+    public void setDefaultCompression(boolean defaultCompression) {
+        this.defaultCompression = defaultCompression;
+    }
+
+    /**
+     * Gets a type of default compression {@link CompressionType}.
+     *
+     * @return - type of default compression.
+     */
+    public CompressionType getDefaultCompressionType() {
+        return defaultCompressionType;
+    }
+
+    /**
+     * Sets a type of default compression {@link CompressionType}.
+     *
+     * @param defaultCompressionType - type of default compression.
+     */
+    public void setDefaultCompressionType(CompressionType defaultCompressionType) {
+        this.defaultCompressionType = defaultCompressionType;
     }
 
     /** {@inheritDoc} */

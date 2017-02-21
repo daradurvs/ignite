@@ -85,8 +85,11 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
     /** */
     private BinaryInternalMapper mapper;
 
-    /** Defines necessary type of compression */
-    private CompressionType compressionType;
+    /** Indicates whether default compression is switched on. */
+    private boolean defaultCompression;
+
+    /** Defines the type of used default compression. */
+    private CompressionType defaultCompressionType;
 
     /**
      * @param ctx Context.
@@ -114,6 +117,13 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         this.out = out;
         this.schema = schema;
         this.handles = handles;
+        this.defaultCompression = ctx.configuration().isDefaultCompression();
+        this.defaultCompressionType = ctx.configuration().getDefaultCompressionType();
+
+        // TODO: if default compression type not set
+        if (this.defaultCompressionType == null) {
+            this.defaultCompressionType = CompressionType.GZIP;
+        }
 
         start = out.position();
     }
@@ -435,6 +445,12 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         if (val == null)
             out.writeByte(GridBinaryMarshaller.NULL);
         else {
+
+            if (defaultCompression) {
+                doWriteCompressed(val, defaultCompressionType.getMode());
+                return;
+            }
+
             byte[] strArr;
 
             if (BinaryUtils.USE_STR_SERIALIZATION_VER_2)
