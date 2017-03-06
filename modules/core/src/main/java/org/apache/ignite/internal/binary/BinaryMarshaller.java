@@ -60,9 +60,6 @@ public class BinaryMarshaller extends AbstractNodeNameAwareMarshaller {
         catch (Exception ignored) {
             return false;
         }
-        catch (NoClassDefFoundError ignored) {
-            return false;
-        }
     }
 
     /**
