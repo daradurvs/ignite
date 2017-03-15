@@ -17,12 +17,14 @@
 
 package org.apache.ignite.internal.binary;
 
+import java.util.Arrays;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryType;
 import org.apache.ignite.internal.GridDirectTransient;
 import org.apache.ignite.internal.IgniteCodeGeneratingFail;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.processors.cache.CacheObject;
 import org.apache.ignite.internal.processors.cache.CacheObjectContext;
@@ -92,6 +94,17 @@ public final class BinaryObjectImpl extends BinaryObjectExImpl implements Extern
     public BinaryObjectImpl(BinaryContext ctx, byte[] arr, int start) {
         assert ctx != null;
         assert arr != null;
+
+        if (arr[0] == 111) {
+
+            try {
+                arr = new GZipCompressor().decompress(Arrays.copyOfRange(arr, 1, arr.length));
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+
+        }
 
         this.ctx = ctx;
         this.arr = arr;

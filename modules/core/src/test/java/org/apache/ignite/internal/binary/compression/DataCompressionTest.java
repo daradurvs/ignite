@@ -19,6 +19,7 @@ package org.apache.ignite.internal.binary.compression;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.binary.BinaryCachingMetadataHandler;
 import org.apache.ignite.internal.binary.BinaryContext;
@@ -39,19 +40,36 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
      */
     public void testCacheCompression() throws Exception {
         String gridName = getTestGridName();
-        IgniteConfiguration cfg = getConfiguration(gridName, getTestResources());
-        cfg.setDefaultCompression(true);
+        IgniteConfiguration cfg = getConfiguration(gridName);
+//        cfg.setDefaultCompression(true);
         cfg.setMarshaller(binaryMarshaller());
-        cfg.setDefaultCompressionType(CompressionType.GZIP);
+//        cfg.setDefaultCompressionType(CompressionType.GZIP);
 
         try (Ignite ignite = startGrid(gridName, cfg)) {
 
-            IgniteCache<Integer, String> cache = ignite.getOrCreateCache("test");
+//            IgniteCache<Integer, String> cache = ignite.getOrCreateCache("test");
+            IgniteCache<Integer, SimpleObject> cache = ignite.getOrCreateCache("test");
 
-            cache.put(1, "abc");
+//            cache.put(1, "abc");
 
-            assertEquals(cache.get(1), "abc");
+            cache.put(1, new SimpleObject("simpleObjectConstructor"));
 
+            IgniteCache<BinaryObject, BinaryObject> binaryCache = cache.withKeepBinary();
+
+//            assertEquals(cache.get(1), "abc");
+
+        }
+    }
+
+    public class SimpleObject {
+        private String simpleField;
+
+        public SimpleObject(String simpleField) {
+            this.simpleField = simpleField;
+        }
+
+        public String getSimpleField() {
+            return simpleField;
         }
     }
 

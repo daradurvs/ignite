@@ -17,7 +17,9 @@
 
 package org.apache.ignite.internal.binary.streams;
 
+import java.io.IOException;
 import java.util.Arrays;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.util.GridUnsafe;
 
 import static org.apache.ignite.internal.util.GridUnsafe.BIG_ENDIAN;

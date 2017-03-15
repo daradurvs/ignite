@@ -17,10 +17,13 @@
 
 package org.apache.ignite.internal.binary;
 
+import java.io.IOException;
+import java.util.Arrays;
 import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.IgnitionEx;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
@@ -248,12 +251,29 @@ public class GridBinaryMarshaller {
      */
     public byte[] marshal(@Nullable Object obj) throws BinaryObjectException {
         if (obj == null)
-            return new byte[] { NULL };
+            return new byte[] {NULL};
 
         try (BinaryWriterExImpl writer = new BinaryWriterExImpl(ctx)) {
             writer.marshal(obj);
 
-            return writer.array();
+            byte[] bytes = writer.array();
+
+            byte[] compressedBytes = null;
+
+            try {
+                compressedBytes = new GZipCompressor().compress(bytes);
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            byte[] a = new byte[compressedBytes.length + 1];
+
+            a[0] = 111;
+
+            System.arraycopy(compressedBytes, 0, a, 1, compressedBytes.length);
+
+            return a;
         }
     }
 
@@ -269,7 +289,7 @@ public class GridBinaryMarshaller {
         BinaryContext oldCtx = pushContext(ctx);
 
         try {
-            return (T) BinaryUtils.unmarshal(BinaryHeapInputStream.create(bytes, 0), ctx, clsLdr);
+            return (T)BinaryUtils.unmarshal(BinaryHeapInputStream.create(bytes, 0), ctx, clsLdr);
         }
         finally {
             popContext(oldCtx);
@@ -308,6 +328,18 @@ public class GridBinaryMarshaller {
             return null;
 
         BinaryContext oldCtx = pushContext(ctx);
+
+
+        if (arr[0] == 111) {
+
+            try {
+                arr = new GZipCompressor().decompress(Arrays.copyOfRange(arr, 1, arr.length));
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+
+        }
 
         try {
             return (T)new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(arr, 0), ldr, true).deserialize();
