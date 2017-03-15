@@ -19,6 +19,7 @@ package org.apache.ignite.internal.binary;
 
 import java.io.ByteArrayInputStream;
 import java.io.Externalizable;
+import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Array;
@@ -57,6 +58,8 @@ import org.apache.ignite.binary.BinaryRawWriter;
 import org.apache.ignite.binary.BinaryType;
 import org.apache.ignite.binary.Binarylizable;
 import org.apache.ignite.internal.binary.builder.BinaryLazyValue;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -65,8 +68,8 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.jetbrains.annotations.Nullable;
 import org.jsr166.ConcurrentHashMap8;
 
-import static org.apache.ignite.IgniteSystemProperties.IGNITE_BINARY_MARSHALLER_USE_STRING_SERIALIZATION_VER_2;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.ignite.IgniteSystemProperties.IGNITE_BINARY_MARSHALLER_USE_STRING_SERIALIZATION_VER_2;
 
 /**
  * Binary utils.
@@ -190,7 +193,8 @@ public class BinaryUtils {
             GridBinaryMarshaller.CHAR, GridBinaryMarshaller.BOOLEAN, GridBinaryMarshaller.DECIMAL, GridBinaryMarshaller.STRING, GridBinaryMarshaller.UUID, GridBinaryMarshaller.DATE, GridBinaryMarshaller.TIMESTAMP,
             GridBinaryMarshaller.BYTE_ARR, GridBinaryMarshaller.SHORT_ARR, GridBinaryMarshaller.INT_ARR, GridBinaryMarshaller.LONG_ARR, GridBinaryMarshaller.FLOAT_ARR, GridBinaryMarshaller.DOUBLE_ARR,
             GridBinaryMarshaller.CHAR_ARR, GridBinaryMarshaller.BOOLEAN_ARR, GridBinaryMarshaller.DECIMAL_ARR, GridBinaryMarshaller.STRING_ARR, GridBinaryMarshaller.UUID_ARR, GridBinaryMarshaller.DATE_ARR, GridBinaryMarshaller.TIMESTAMP_ARR,
-            GridBinaryMarshaller.ENUM, GridBinaryMarshaller.ENUM_ARR, GridBinaryMarshaller.NULL}) {
+            GridBinaryMarshaller.ENUM, GridBinaryMarshaller.ENUM_ARR, GridBinaryMarshaller.NULL,
+            GridBinaryMarshaller.GZIPPED, GridBinaryMarshaller.DEFLATED, GridBinaryMarshaller.COMPRESSED_USER_1}) {
 
             PLAIN_TYPE_FLAG[b] = true;
         }
@@ -243,6 +247,9 @@ public class BinaryUtils {
         FIELD_TYPE_NAMES[GridBinaryMarshaller.COL] = "Collection";
         FIELD_TYPE_NAMES[GridBinaryMarshaller.MAP] = "Map";
         FIELD_TYPE_NAMES[GridBinaryMarshaller.CLASS] = "Class";
+        FIELD_TYPE_NAMES[GridBinaryMarshaller.GZIPPED] = "Compressed_gzip";
+        FIELD_TYPE_NAMES[GridBinaryMarshaller.DEFLATED] = "Compressed_deflate";
+        FIELD_TYPE_NAMES[GridBinaryMarshaller.COMPRESSED_USER_1] = "Compressed_user_1";
         FIELD_TYPE_NAMES[GridBinaryMarshaller.BYTE_ARR] = "byte[]";
         FIELD_TYPE_NAMES[GridBinaryMarshaller.SHORT_ARR] = "short[]";
         FIELD_TYPE_NAMES[GridBinaryMarshaller.INT_ARR] = "int[]";
@@ -1632,6 +1639,32 @@ public class BinaryUtils {
     }
 
     /**
+     * Read object serialized as compressed.
+     *
+     * @return Value.
+     */
+    public static Object doReadCompressed(BinaryInputStream in, BinaryContext ctx, int typeId) {
+        CompressionType compressionType = CompressionType.ofTypeId(typeId);
+        Compressor compressor = ctx.configuration().getCompressorsSelector().get(compressionType);
+
+        // TODO
+        byte flag = in.readByte();
+
+        assert flag == GridBinaryMarshaller.STRING : "Type not supported: " + flag;
+
+        byte[] data = doReadByteArray(in);
+
+        try {
+            // TODO: use compressor instance from BinaryContext
+            byte[] decompressed = compressor.decompress(data);
+            return new String(decompressed);
+        }
+        catch (IOException e) {
+            throw new BinaryObjectException("Failed to unmarshal compressed object, type id = " + typeId, e);
+        }
+    }
+
+    /**
      * @return Object.
      * @throws BinaryObjectException In case of error.
      */
@@ -1667,6 +1700,9 @@ public class BinaryUtils {
         int start = in.position();
 
         byte flag = in.readByte();
+
+        if (U.isCompressionType(flag))
+            return doReadCompressed(in, ctx, flag);
 
         switch (flag) {
             case GridBinaryMarshaller.NULL:

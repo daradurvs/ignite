@@ -18,12 +18,12 @@
 package org.apache.ignite.internal.binary;
 
 import org.apache.ignite.IgniteIllegalStateException;
+import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.IgnitionEx;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
-import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.cacheobject.IgniteCacheObjectProcessor;
 import org.jetbrains.annotations.Nullable;
@@ -215,6 +215,15 @@ public class GridBinaryMarshaller {
 
     /** */
     public static final byte DFLT_HDR_LEN = 24;
+
+    /** */
+    public static final byte GZIPPED = 90;
+
+    /** */
+    public static final byte DEFLATED = 91;
+
+    /** */
+    public static final byte COMPRESSED_USER_1 = 92;
 
     /** */
     private final BinaryContext ctx;
