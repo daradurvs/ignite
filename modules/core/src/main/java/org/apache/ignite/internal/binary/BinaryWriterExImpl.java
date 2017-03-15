@@ -34,6 +34,8 @@ import org.apache.ignite.binary.BinaryIdentityResolver;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawWriter;
 import org.apache.ignite.binary.BinaryWriter;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapOutputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -83,6 +85,12 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
     /** */
     private BinaryInternalMapper mapper;
 
+    /** Indicates whether default compression is switched on. */
+    private boolean defaultCompression;
+
+    /** Defines the type of used default compression. */
+    private CompressionType defaultCompressionType;
+
     /**
      * @param ctx Context.
      */
@@ -109,6 +117,13 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         this.out = out;
         this.schema = schema;
         this.handles = handles;
+        this.defaultCompression = ctx.configuration().isDefaultCompression();
+        this.defaultCompressionType = ctx.configuration().getDefaultCompressionType();
+
+        // TODO: if default compression type not set
+        if (this.defaultCompressionType == null) {
+            this.defaultCompressionType = CompressionType.GZIP;
+        }
 
         start = out.position();
     }
@@ -430,6 +445,12 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         if (val == null)
             out.writeByte(GridBinaryMarshaller.NULL);
         else {
+
+            if (defaultCompression) {
+                doWriteCompressed(val, defaultCompressionType.getMode());
+                return;
+            }
+
             byte[] strArr;
 
             if (BinaryUtils.USE_STR_SERIALIZATION_VER_2)
@@ -512,6 +533,41 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
             BinaryWriterExImpl writer = new BinaryWriterExImpl(ctx, out, schema, handles());
 
             writer.marshal(obj);
+        }
+    }
+
+    /**
+     * TODO: description
+     * @param obj
+     * @param compressionMode
+     * @throws BinaryObjectException
+     */
+    public void doWriteCompressed(@Nullable Object obj, BinaryWriteMode compressionMode) throws BinaryObjectException {
+
+        if (obj == null)
+            out.writeByte(GridBinaryMarshaller.NULL);
+        else {
+            BinaryWriteMode wrappedObjectMode = BinaryUtils.mode(obj.getClass());
+            CompressionType compressionType = CompressionType.ofTypeId(compressionMode.typeId());
+
+            assert wrappedObjectMode == BinaryWriteMode.STRING : "Type not supported: " + wrappedObjectMode;
+
+            out.unsafeEnsure(1 + 1 + 4);
+            out.unsafeWriteByte((byte)compressionMode.typeId());
+            out.unsafeWriteByte((byte)wrappedObjectMode.typeId());
+
+            // TODO: use compressor instance from BinaryContext
+            Compressor compressor = ctx.configuration().getCompressorsSelector().get(compressionType);
+
+            byte[] bytes;
+            try {
+                bytes = compressor.compress(((String)obj).getBytes());
+            }
+            catch (IOException e) {
+                throw new BinaryObjectException("Failed to compress object:" + obj.getClass(), e);
+            }
+            out.unsafeWriteInt(bytes.length);
+            out.writeByteArray(bytes);
         }
     }
 
