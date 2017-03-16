@@ -17,15 +17,23 @@
 
 package org.apache.ignite.internal.binary;
 
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Map;
 import org.apache.ignite.IgniteIllegalStateException;
+import org.apache.ignite.binary.BinaryObjectException;
+import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.IgnitionEx;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
-import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.cacheobject.IgniteCacheObjectProcessor;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -223,13 +231,35 @@ public class GridBinaryMarshaller {
     public static final byte DFLT_HDR_LEN = 24;
 
     /** */
+    public static final byte GZIPPED = 90;
+
+    /** */
+    public static final byte DEFLATED = 91;
+
+    /** */
+    public static final byte COMPRESSED_USER_1 = 92;
+
+    /** */
     private final BinaryContext ctx;
+
+    /** */
+    private final Map<CompressionType, Compressor> compressorsSelector;
+
+    /** */
+    private final boolean compressionMode;
+
+    /** */
+    private final CompressionType defaultCompressionType;
 
     /**
      * @param ctx Context.
      */
     public GridBinaryMarshaller(BinaryContext ctx) {
         this.ctx = ctx;
+        IgniteConfiguration conf = ctx.configuration();
+        this.compressorsSelector = conf.getCompressorsSelector();
+        this.compressionMode = conf.isDefaultCompression();
+        this.defaultCompressionType = conf.getDefaultCompressionType();
     }
 
     /**
@@ -239,12 +269,33 @@ public class GridBinaryMarshaller {
      */
     public byte[] marshal(@Nullable Object obj) throws BinaryObjectException {
         if (obj == null)
-            return new byte[] { NULL };
+            return new byte[] {NULL};
 
         try (BinaryWriterExImpl writer = new BinaryWriterExImpl(ctx)) {
             writer.marshal(obj);
 
-            return writer.array();
+            byte[] bytes = writer.array();
+
+            if (compressionMode) {
+                byte[] buffer;
+
+                try {
+                    buffer = new GZipCompressor().compress(bytes);
+                }
+                catch (IOException e) {
+                    throw new BinaryObjectException("Failed to decompress bytes", e);
+                }
+
+                byte[] compressed = new byte[buffer.length + 1];
+
+                compressed[0] = (byte)defaultCompressionType.getMode().typeId();
+
+                System.arraycopy(buffer, 0, compressed, 1, buffer.length);
+
+                return compressed;
+            }
+
+            return bytes;
         }
     }
 
@@ -260,7 +311,7 @@ public class GridBinaryMarshaller {
         BinaryContext oldCtx = pushContext(ctx);
 
         try {
-            return (T) BinaryUtils.unmarshal(BinaryHeapInputStream.create(bytes, 0), ctx, clsLdr);
+            return (T)BinaryUtils.unmarshal(BinaryHeapInputStream.create(bytes, 0), ctx, clsLdr);
         }
         finally {
             popContext(oldCtx);
@@ -299,6 +350,20 @@ public class GridBinaryMarshaller {
             return null;
 
         BinaryContext oldCtx = pushContext(ctx);
+
+        byte mode = arr[0];
+
+        if (U.isCompressionType(mode)) {
+
+            try {
+                Compressor compressor = compressorsSelector.get(mode);
+
+                arr = compressor.decompress(Arrays.copyOfRange(arr, 1, arr.length));
+            }
+            catch (IOException e) {
+                throw new BinaryObjectException("Failed to decompress bytes, mode = " + mode, e);
+            }
+        }
 
         try {
             return (T)new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(arr, 0), ldr, true).deserialize();
