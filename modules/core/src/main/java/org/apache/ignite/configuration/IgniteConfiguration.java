@@ -495,6 +495,7 @@ public class IgniteConfiguration {
         compressorsSelector = new HashMap<>();
         compressorsSelector.put(CompressionType.GZIP, new GZipCompressor());
         compressorsSelector.put(CompressionType.DEFLATE, new DeflaterCompressor());
+        defaultCompressionType = CompressionType.GZIP;
     }
 
     /**

@@ -32,6 +32,7 @@ import java.math.BigInteger;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -61,6 +62,7 @@ import org.apache.ignite.binary.Binarylizable;
 import org.apache.ignite.internal.binary.builder.BinaryLazyValue;
 import org.apache.ignite.internal.binary.compression.CompressionType;
 import org.apache.ignite.internal.binary.compression.compressors.Compressor;
+import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -364,7 +366,7 @@ public class BinaryUtils {
      * @return Field type name or {@code null} if unknown.
      */
     public static String fieldTypeName(int typeId) {
-        if(typeId < 0 || typeId >= FIELD_TYPE_NAMES.length)
+        if (typeId < 0 || typeId >= FIELD_TYPE_NAMES.length)
             return null;
 
         return FIELD_TYPE_NAMES[typeId];
@@ -713,7 +715,7 @@ public class BinaryUtils {
         if (arr == null)
             return false;
 
-        Class<?> cls =  arr.getClass();
+        Class<?> cls = arr.getClass();
 
         return cls == byte[].class || cls == short[].class || cls == int[].class || cls == long[].class ||
             cls == float[].class || cls == double[].class || cls == char[].class || cls == boolean[].class ||
@@ -1041,7 +1043,7 @@ public class BinaryUtils {
         else if (cls == double.class)
             return BinaryWriteMode.P_DOUBLE;
 
-        // Boxed primitives.
+            // Boxed primitives.
         else if (cls == Byte.class)
             return BinaryWriteMode.BYTE;
         else if (cls == Boolean.class)
@@ -1059,7 +1061,7 @@ public class BinaryUtils {
         else if (cls == Double.class)
             return BinaryWriteMode.DOUBLE;
 
-        // The rest types.
+            // The rest types.
         else if (cls == BigDecimal.class)
             return BinaryWriteMode.DECIMAL;
         else if (cls == String.class)
@@ -1745,6 +1747,29 @@ public class BinaryUtils {
     }
 
     /**
+     * @param in BinaryInputStream for decompressing.
+     * @param ctx BinaryContext.
+     * @param mode Compression mode.
+     * @return decompressed BinaryInputStream.
+     */
+    private static BinaryInputStream decompress(BinaryInputStream in, BinaryContext ctx, byte mode) {
+        try {
+            Map<CompressionType, Compressor> compressorsSelector = ctx.configuration().getCompressorsSelector();
+
+            Compressor compressor = compressorsSelector.get(CompressionType.ofTypeId(mode));
+
+            byte[] bytes = in.array();
+
+            byte[] decompressed = compressor.decompress(Arrays.copyOfRange(bytes, 1, bytes.length));
+
+            return new BinaryHeapInputStream(decompressed);
+        }
+        catch (IOException e) {
+            throw new BinaryObjectException("Failed to decompress input stream, mode = " + mode, e);
+        }
+    }
+
+    /**
      * @return Unmarshalled value.
      * @throws BinaryObjectException In case of error.
      */
@@ -1753,6 +1778,11 @@ public class BinaryUtils {
         int start = in.position();
 
         byte flag = in.readByte();
+
+        if (U.isCompressionType(flag)) {
+            in = decompress(in, ctx, flag);
+            flag = in.readByte();
+        }
 
         switch (flag) {
             case GridBinaryMarshaller.NULL:
@@ -2306,7 +2336,7 @@ public class BinaryUtils {
             }
             else {
                 arr[position++] = (byte)(0xC0 | ((c >> 6) & 0x1F));
-                arr[position++] = (byte)(0x80 | (c  & 0x3F));
+                arr[position++] = (byte)(0x80 | (c & 0x3F));
             }
         }
 

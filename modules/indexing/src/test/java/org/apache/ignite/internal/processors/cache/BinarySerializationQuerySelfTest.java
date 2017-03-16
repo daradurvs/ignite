@@ -61,7 +61,7 @@ import java.util.List;
  */
 public class BinarySerializationQuerySelfTest extends GridCommonAbstractTest {
     /** Ignite instance. */
-    private Ignite ignite;
+    protected Ignite ignite;
 
     /** Cache. */
     private IgniteCache<Integer, Object> cache;
@@ -127,7 +127,7 @@ public class BinarySerializationQuerySelfTest extends GridCommonAbstractTest {
         cfg.setCacheConfiguration(cacheCfg);
 
         ignite = Ignition.start(cfg);
-
+        ignite.configuration().setDefaultCompression(true);
         cache = ignite.cache(null);
     }
 

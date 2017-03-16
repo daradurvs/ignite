@@ -34,6 +34,7 @@ import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.cacheobject.IgniteCacheObjectProcessor;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -279,8 +280,10 @@ public class GridBinaryMarshaller {
             if (compressionMode) {
                 byte[] buffer;
 
+                Compressor compressor = compressorsSelector.get(defaultCompressionType);
+
                 try {
-                    buffer = new GZipCompressor().compress(bytes);
+                    buffer = compressor.compress(bytes);
                 }
                 catch (IOException e) {
                     throw new BinaryObjectException("Failed to decompress bytes", e);
@@ -309,6 +312,10 @@ public class GridBinaryMarshaller {
         assert bytes != null;
 
         BinaryContext oldCtx = pushContext(ctx);
+
+        if (U.isCompressionType(bytes[0])) {
+            bytes = decompress(bytes);
+        }
 
         try {
             return (T)BinaryUtils.unmarshal(BinaryHeapInputStream.create(bytes, 0), ctx, clsLdr);
@@ -351,18 +358,8 @@ public class GridBinaryMarshaller {
 
         BinaryContext oldCtx = pushContext(ctx);
 
-        byte mode = arr[0];
-
-        if (U.isCompressionType(mode)) {
-
-            try {
-                Compressor compressor = compressorsSelector.get(mode);
-
-                arr = compressor.decompress(Arrays.copyOfRange(arr, 1, arr.length));
-            }
-            catch (IOException e) {
-                throw new BinaryObjectException("Failed to decompress bytes, mode = " + mode, e);
-            }
+        if (U.isCompressionType(arr[0])) {
+            arr = decompress(arr);
         }
 
         try {
@@ -463,5 +460,22 @@ public class GridBinaryMarshaller {
         }
 
         return ctx;
+    }
+
+    /**
+     * @param bytes Compressed bytes.
+     * @return Decompressed bytes.
+     */
+    private byte[] decompress(@NotNull byte[] bytes) {
+        assert U.isCompressionType(bytes[0]);
+
+        try {
+            Compressor compressor = compressorsSelector.get(CompressionType.ofTypeId(bytes[0]));
+
+            return compressor.decompress(Arrays.copyOfRange(bytes, 1, bytes.length));
+        }
+        catch (IOException e) {
+            throw new BinaryObjectException("Failed to decompress bytes, mode = " + bytes[0], e);
+        }
     }
 }
