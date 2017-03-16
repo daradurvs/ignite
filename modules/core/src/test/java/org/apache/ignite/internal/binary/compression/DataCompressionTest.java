@@ -39,13 +39,13 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
      * @throws Exception If failed.
      */
     public void testCacheCompression() throws Exception {
-        String gridName = getTestIgniteInstanceName();
-        IgniteConfiguration cfg = getConfiguration(gridName);
-        cfg.setDefaultCompression(true);
+        String instanceName = getTestIgniteInstanceName();
+        IgniteConfiguration cfg = getConfiguration(instanceName);
+//        cfg.setDefaultCompression(true);
         cfg.setMarshaller(binaryMarshaller());
-        cfg.setDefaultCompressionType(CompressionType.GZIP);
+//        cfg.setDefaultCompressionType(CompressionType.GZIP);
 
-        try (Ignite ignite = startGrid(gridName, cfg)) {
+        try (Ignite ignite = startGrid(instanceName, cfg)) {
 
 //            IgniteCache<Integer, String> cache = ignite.getOrCreateCache("test");
             IgniteCache<Integer, SimpleObject> cache = ignite.getOrCreateCache("test");

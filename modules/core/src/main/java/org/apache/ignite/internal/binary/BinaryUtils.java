@@ -1720,6 +1720,32 @@ public class BinaryUtils {
     }
 
     /**
+     * Read object serialized as compressed.
+     *
+     * @return Value.
+     */
+    public static Object doReadCompressed(BinaryInputStream in, BinaryContext ctx, int typeId) {
+        CompressionType compressionType = CompressionType.ofTypeId(typeId);
+        Compressor compressor = ctx.configuration().getCompressorsSelector().get(compressionType);
+
+        // TODO
+        byte flag = in.readByte();
+
+        assert flag == GridBinaryMarshaller.STRING : "Type not supported: " + flag;
+
+        byte[] data = doReadByteArray(in);
+
+        try {
+            // TODO: use compressor instance from BinaryContext
+            byte[] decompressed = compressor.decompress(data);
+            return new String(decompressed);
+        }
+        catch (IOException e) {
+            throw new BinaryObjectException("Failed to unmarshal compressed object, type id = " + typeId, e);
+        }
+    }
+
+    /**
      * @return Object.
      * @throws BinaryObjectException In case of error.
      */
@@ -1778,6 +1804,9 @@ public class BinaryUtils {
         int start = in.position();
 
         byte flag = in.readByte();
+
+        if (U.isCompressionType(flag))
+            return doReadCompressed(in, ctx, flag);
 
         if (U.isCompressionType(flag)) {
             in = decompress(in, ctx, flag);
