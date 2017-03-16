@@ -34,6 +34,8 @@ import org.apache.ignite.binary.BinaryIdentityResolver;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawWriter;
 import org.apache.ignite.binary.BinaryWriter;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapOutputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -83,6 +85,12 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
     /** */
     private BinaryInternalMapper mapper;
 
+    /** Indicates whether default compression is switched on. */
+    private boolean defaultCompression;
+
+    /** Defines the type of used default compression. */
+    private CompressionType defaultCompressionType;
+
     /**
      * @param ctx Context.
      */
@@ -109,6 +117,13 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         this.out = out;
         this.schema = schema;
         this.handles = handles;
+        this.defaultCompression = ctx.configuration().isDefaultCompression();
+        this.defaultCompressionType = ctx.configuration().getDefaultCompressionType();
+
+        // TODO: if default compression type not set
+        if (this.defaultCompressionType == null) {
+            this.defaultCompressionType = CompressionType.GZIP;
+        }
 
         start = out.position();
     }

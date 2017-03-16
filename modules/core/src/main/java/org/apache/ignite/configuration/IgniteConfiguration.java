@@ -19,6 +19,7 @@ package org.apache.ignite.configuration;
 
 import java.io.Serializable;
 import java.lang.management.ManagementFactory;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import javax.cache.configuration.Factory;
@@ -41,6 +42,10 @@ import org.apache.ignite.compute.ComputeJob;
 import org.apache.ignite.compute.ComputeTask;
 import org.apache.ignite.events.Event;
 import org.apache.ignite.events.EventType;
+import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.Compressor;
+import org.apache.ignite.internal.binary.compression.compressors.DeflaterCompressor;
+import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteAsyncCallback;
@@ -474,11 +479,23 @@ public class IgniteConfiguration {
     /** */
     private boolean lateAffAssignment = DFLT_LATE_AFF_ASSIGNMENT;
 
+    /** Consists mapping a compression type and an implementation of {@link Compressor}*/
+    private Map<CompressionType, Compressor> compressorsSelector;
+
+    /** Indicates whether default compression is switched on. */
+    private boolean defaultCompression;
+
+    /** Defines the type of used default compression. */
+    private CompressionType defaultCompressionType;
+
     /**
      * Creates valid grid configuration with all default values.
      */
     public IgniteConfiguration() {
-        // No-op.
+        compressorsSelector = new HashMap<>();
+        compressorsSelector.put(CompressionType.GZIP, new GZipCompressor());
+        compressorsSelector.put(CompressionType.DEFLATE, new DeflaterCompressor());
+        defaultCompressionType = CompressionType.GZIP;
     }
 
     /**
@@ -576,6 +593,9 @@ public class IgniteConfiguration {
         utilityCachePoolSize = cfg.getUtilityCacheThreadPoolSize();
         waitForSegOnStart = cfg.isWaitForSegmentOnStart();
         warmupClos = cfg.getWarmupClosure();
+        compressorsSelector = cfg.getCompressorsSelector();
+        defaultCompression = cfg.isDefaultCompression();
+        defaultCompressionType = cfg.getDefaultCompressionType();
     }
 
     /**
@@ -2684,6 +2704,51 @@ public class IgniteConfiguration {
         this.lateAffAssignment = lateAffAssignment;
 
         return this;
+    }
+
+    /**
+     * Gets the map, which consists mapping of {@link CompressionType} and used {@link Compressor}
+     *
+     * @return - the map which consists mapping of a type of compression and used {@link Compressor}
+     */
+    public Map<CompressionType, Compressor> getCompressorsSelector() {
+        return compressorsSelector;
+    }
+
+    /**
+     * Indicates whether default compression is switched on.
+     *
+     * @return - 'true' if default compression is enabled, otherwise 'false'.
+     */
+    public boolean isDefaultCompression() {
+        return defaultCompression;
+    }
+
+    /**
+     * Switches a mode of default compression {@link CompressionType}.
+     *
+     * @param defaultCompression - flag, 'true' - switch on default compression, otherwise - switch off.
+     */
+    public void setDefaultCompression(boolean defaultCompression) {
+        this.defaultCompression = defaultCompression;
+    }
+
+    /**
+     * Gets a type of default compression {@link CompressionType}.
+     *
+     * @return - type of default compression.
+     */
+    public CompressionType getDefaultCompressionType() {
+        return defaultCompressionType;
+    }
+
+    /**
+     * Sets a type of default compression {@link CompressionType}.
+     *
+     * @param defaultCompressionType - type of default compression.
+     */
+    public void setDefaultCompressionType(CompressionType defaultCompressionType) {
+        this.defaultCompressionType = defaultCompressionType;
     }
 
     /** {@inheritDoc} */
