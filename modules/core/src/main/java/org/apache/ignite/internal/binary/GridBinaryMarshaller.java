@@ -277,7 +277,7 @@ public class GridBinaryMarshaller {
 
             byte[] bytes = writer.array();
 
-            if (compressionMode) {
+            if (compressionMode && !U.isCompressionType(bytes[0])) {
                 byte[] buffer;
 
                 Compressor compressor = compressorsSelector.get(defaultCompressionType);

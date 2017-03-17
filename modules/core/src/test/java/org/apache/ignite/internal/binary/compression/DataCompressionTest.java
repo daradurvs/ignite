@@ -107,18 +107,14 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
     /**
      * @throws Exception If failed.
      */
-    public void testPrimitiveMarshalling() throws Exception {
-        int sut = 12345;
-        int unmSut = marshalUnmarshal(sut);
-        assertEquals(sut, unmSut);
-    }
+    public void testObjectCompression2() throws Exception {
+        OneStringField sut = new OneStringField();
 
-    /**
-     * @throws Exception If failed.
-     */
-    public void testStringMarshalling() throws Exception {
-        String sut = "12345";
-        String unmSut = marshalUnmarshal(sut);
+        BinaryMarshaller marshaller = binaryMarshaller();
+
+        byte[] sutBytes = marshaller.marshal(sut);
+        OneStringField unmSut = marshaller.unmarshal(sutBytes, null);
+
         assertEquals(sut, unmSut);
     }
 
@@ -171,4 +167,25 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
             return result;
         }
     }
+    /** Test class. */
+    private static class OneStringField {
+        @BinaryCompression
+        private String data_default = "abc";
+
+        @Override public boolean equals(Object o) {
+            if (this == o)
+                return true;
+            if (o == null || getClass() != o.getClass())
+                return false;
+
+            OneStringField field = (OneStringField)o;
+
+            return data_default != null ? data_default.equals(field.data_default) : field.data_default == null;
+        }
+
+        @Override public int hashCode() {
+            return data_default != null ? data_default.hashCode() : 0;
+        }
+    }
+
 }

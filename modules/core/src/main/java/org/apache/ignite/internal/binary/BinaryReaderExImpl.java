@@ -23,6 +23,7 @@ import java.io.ObjectInput;
 import java.math.BigDecimal;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Map;
@@ -36,6 +37,7 @@ import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.binary.BinaryReader;
 import org.apache.ignite.internal.binary.compression.CompressionType;
 import org.apache.ignite.internal.binary.compression.compressors.Compressor;
+import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -1065,6 +1067,8 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
      */
     @Nullable String readString(int fieldId) throws BinaryObjectException {
         return findFieldById(fieldId) ? this.readString() : null;
+        // FIXME
+//        return BinaryUtils.doReadString(in);
     }
 
     /** {@inheritDoc} */
@@ -1735,8 +1739,23 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
         byte flag = in.readByte();
 
-        if (IgniteUtils.isCompressionType(flag))
-            return BinaryUtils.doReadCompressed(in, ctx, flag);
+        if (IgniteUtils.isCompressionType(flag)) {
+
+            byte[] bytes = in.array();
+
+            Compressor compressor = compressorsSelector.get(CompressionType.ofTypeId(bytes[0]));
+
+            byte[] decompressed;
+
+            try {
+                decompressed = compressor.decompress(Arrays.copyOfRange(bytes, 0, bytes.length));
+            }
+            catch (IOException e) {
+                throw new BinaryObjectException("Failed to decompress bytes, mode = " + bytes[0], e);
+            }
+
+            return new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(decompressed, 0), ldr, true).deserialize();
+        }
 
         switch (flag) {
             case NULL:
@@ -2144,8 +2163,8 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         assert !raw; // Assert, not exception, because this is called only from internals for Serializable types.
         assert dataStart != start;
 
-        if (footerLen == 0)
-            return false;
+//        if (footerLen == 0)
+//            return false;
 
         if (userType) {
             int order;

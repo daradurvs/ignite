@@ -445,12 +445,6 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         if (val == null)
             out.writeByte(GridBinaryMarshaller.NULL);
         else {
-
-            if (defaultCompression) {
-                doWriteCompressed(val, defaultCompressionType.getMode());
-                return;
-            }
-
             byte[] strArr;
 
             if (BinaryUtils.USE_STR_SERIALIZATION_VER_2)
