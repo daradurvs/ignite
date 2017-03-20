@@ -692,7 +692,6 @@ public abstract class BinaryFieldAccessor {
             }
 
             if (needCompression) {
-                // TODO fix byte array writing
                 byte[] compressedBytes = CompressionUtils.compress(writer.context(), compressionType, writer.array());
 
                 mainWriter.writeByteArrayField(compressedBytes);
@@ -701,7 +700,23 @@ public abstract class BinaryFieldAccessor {
 
         /** {@inheritDoc} */
         @Override public void read0(Object obj, BinaryReaderExImpl reader) throws BinaryObjectException {
-            Object val = dynamic ? reader.readField(id) : readFixedType(reader);
+            // TODO fix compressed deserialization
+            Object val;
+
+            if (compressionType != null) {
+                byte[] compressedBytes = reader.readByteArray(id);
+
+                assert compressedBytes != null;
+
+                BinaryContext context = reader.context();
+
+                byte[] decompressedBytes = CompressionUtils.decompress(context, compressionType, compressedBytes);
+
+                val = new BinaryReaderExImpl(context, BinaryHeapInputStream.create(decompressedBytes, 0), null, true).deserialize();
+            }
+            else {
+                val = dynamic ? reader.readField(id) : readFixedType(reader);
+            }
 
             try {
                 if (val != null || !field.getType().isPrimitive())
