@@ -724,10 +724,7 @@ public abstract class BinaryFieldAccessor {
 
             boolean needDecompression = (compressionType != null);
 
-            BinaryReaderExImpl tempReader = reader;
-
             if (needDecompression) {
-                // TODO fix byte array reading
                 byte[] compressedBytes = reader.readByteArray(id);
 
                 assert compressedBytes != null;
@@ -736,7 +733,7 @@ public abstract class BinaryFieldAccessor {
 
                 byte[] decompressedBytes = CompressionUtils.decompress(context, compressionType, compressedBytes);
 
-                reader = new BinaryReaderExImpl(context, BinaryHeapInputStream.create(decompressedBytes, 1), null, true);
+                return new BinaryReaderExImpl(context, BinaryHeapInputStream.create(decompressedBytes, 0), null, true).deserialize();
             }
 
             switch (mode) {

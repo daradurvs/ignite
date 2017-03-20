@@ -1754,7 +1754,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
                 throw new BinaryObjectException("Failed to decompress bytes, mode = " + bytes[0], e);
             }
 
-            return new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(decompressed, 0), ldr, true).deserialize();
+            return new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(decompressed, 0), ldr, hnds, true).deserialize();
         }
 
         switch (flag) {
@@ -2163,8 +2163,8 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         assert !raw; // Assert, not exception, because this is called only from internals for Serializable types.
         assert dataStart != start;
 
-//        if (footerLen == 0)
-//            return false;
+        if (footerLen == 0)
+            return false;
 
         if (userType) {
             int order;
