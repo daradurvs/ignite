@@ -37,6 +37,7 @@ import org.apache.ignite.binary.BinaryType;
 import org.apache.ignite.internal.GridDirectTransient;
 import org.apache.ignite.internal.IgniteCodeGeneratingFail;
 import org.apache.ignite.internal.binary.compression.CompressionType;
+import org.apache.ignite.internal.binary.compression.compressors.CompressionUtils;
 import org.apache.ignite.internal.binary.compression.compressors.Compressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.processors.cache.CacheObject;
@@ -95,19 +96,8 @@ public final class BinaryObjectImpl extends BinaryObjectExImpl implements Extern
         assert ctx != null;
         assert arr != null;
 
-        if (U.isCompressionType(arr[0])) {
-
-            try {
-                Map<CompressionType, Compressor> compressorsSelector = ctx.configuration().getCompressorsSelector();
-
-                Compressor compressor = compressorsSelector.get(CompressionType.GZIP);
-
-                arr = compressor.decompress(Arrays.copyOfRange(arr, 1, arr.length));
-            }
-            catch (IOException e) {
-                throw new BinaryObjectException("Failed to decompress bytes", e);
-            }
-        }
+        if (U.isCompressionType(arr[0]))
+            arr = CompressionUtils.decompress(ctx, CompressionType.ofTypeId(arr[0]), Arrays.copyOfRange(arr, 1, arr.length));
 
         this.ctx = ctx;
         this.arr = arr;

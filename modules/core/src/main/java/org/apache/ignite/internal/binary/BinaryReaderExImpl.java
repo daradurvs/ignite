@@ -23,7 +23,6 @@ import java.io.ObjectInput;
 import java.math.BigDecimal;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Map;
@@ -35,9 +34,6 @@ import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.binary.BinaryReader;
-import org.apache.ignite.internal.binary.compression.CompressionType;
-import org.apache.ignite.internal.binary.compression.compressors.Compressor;
-import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -153,9 +149,6 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
     /** Whether stream is in raw mode. */
     private boolean raw;
 
-    /** */
-    private Map<CompressionType, Compressor> compressorsSelector;
-
     /**
      * Constructor.
      *
@@ -215,7 +208,6 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         this.in = in;
         this.ldr = ldr;
         this.hnds = hnds;
-        this.compressorsSelector = ctx.configuration().getCompressorsSelector();
 
         start = in.position();
 
@@ -1067,8 +1059,6 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
      */
     @Nullable String readString(int fieldId) throws BinaryObjectException {
         return findFieldById(fieldId) ? this.readString() : null;
-        // FIXME
-//        return BinaryUtils.doReadString(in);
     }
 
     /** {@inheritDoc} */
@@ -1739,24 +1729,6 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
         byte flag = in.readByte();
 
-        if (IgniteUtils.isCompressionType(flag)) {
-
-            byte[] bytes = in.array();
-
-            Compressor compressor = compressorsSelector.get(CompressionType.ofTypeId(bytes[0]));
-
-            byte[] decompressed;
-
-            try {
-                decompressed = compressor.decompress(Arrays.copyOfRange(bytes, 0, bytes.length));
-            }
-            catch (IOException e) {
-                throw new BinaryObjectException("Failed to decompress bytes, mode = " + bytes[0], e);
-            }
-
-            return new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(decompressed, 0), ldr, hnds, true).deserialize();
-        }
-
         switch (flag) {
             case NULL:
                 obj = null;
@@ -2357,7 +2329,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
     /** {@inheritDoc} */
     @Override public long skip(long n) throws IOException {
-        return skipBytes((int) n);
+        return skipBytes((int)n);
     }
 
     /** {@inheritDoc} */

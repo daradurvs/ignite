@@ -700,23 +700,12 @@ public abstract class BinaryFieldAccessor {
 
         /** {@inheritDoc} */
         @Override public void read0(Object obj, BinaryReaderExImpl reader) throws BinaryObjectException {
-            // TODO fix compressed deserialization
             Object val;
 
-            if (compressionType != null) {
-                byte[] compressedBytes = reader.readByteArray(id);
-
-                assert compressedBytes != null;
-
-                BinaryContext context = reader.context();
-
-                byte[] decompressedBytes = CompressionUtils.decompress(context, compressionType, compressedBytes);
-
-                val = new BinaryReaderExImpl(context, BinaryHeapInputStream.create(decompressedBytes, 0), null, true).deserialize();
-            }
-            else {
+            if (compressionType != null)
+                val = readCompressedType(reader);
+            else
                 val = dynamic ? reader.readField(id) : readFixedType(reader);
-            }
 
             try {
                 if (val != null || !field.getType().isPrimitive())
@@ -735,21 +724,11 @@ public abstract class BinaryFieldAccessor {
          * @throws BinaryObjectException If failed to read value from the stream.
          */
         protected Object readFixedType(BinaryReaderExImpl reader) throws BinaryObjectException {
+            // need decompression
+            if (compressionType != null)
+                return readCompressedType(reader);
+
             Object val = null;
-
-            boolean needDecompression = (compressionType != null);
-
-            if (needDecompression) {
-                byte[] compressedBytes = reader.readByteArray(id);
-
-                assert compressedBytes != null;
-
-                BinaryContext context = reader.context();
-
-                byte[] decompressedBytes = CompressionUtils.decompress(context, compressionType, compressedBytes);
-
-                return new BinaryReaderExImpl(context, BinaryHeapInputStream.create(decompressedBytes, 0), null, true).deserialize();
-            }
 
             switch (mode) {
                 case BYTE:
@@ -938,6 +917,25 @@ public abstract class BinaryFieldAccessor {
             }
 
             return val;
+        }
+
+        /**
+         * Reads compressed type from the given reader.
+         *
+         * @param reader Reader to read from.
+         * @return Decompressed read value.
+         * @throws BinaryObjectException If failed to read value from the stream.
+         */
+        protected Object readCompressedType(BinaryReaderExImpl reader) throws BinaryObjectException {
+            byte[] compressedBytes = reader.readByteArray(id);
+
+            assert compressedBytes != null;
+
+            BinaryContext context = reader.context();
+
+            byte[] decompressedBytes = CompressionUtils.decompress(context, compressionType, compressedBytes);
+
+            return new BinaryReaderExImpl(context, BinaryHeapInputStream.create(decompressedBytes, 0), null, true).deserialize();
         }
 
         /**
