@@ -117,8 +117,8 @@ public class BinaryWriterExImpl implements BinaryWriter, BinaryRawWriterEx, Obje
         this.out = out;
         this.schema = schema;
         this.handles = handles;
-        this.defaultCompression = ctx.configuration().isDefaultCompression();
-        this.defaultCompressionType = ctx.configuration().getDefaultCompressionType();
+        this.defaultCompression = ctx.configuration().isFullCompressionMode();
+        this.defaultCompressionType = ctx.configuration().getFullCompressionType();
 
         // TODO: if default compression type not set
         if (this.defaultCompressionType == null) {

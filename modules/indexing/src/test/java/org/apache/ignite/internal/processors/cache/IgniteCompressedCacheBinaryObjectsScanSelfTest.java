@@ -24,7 +24,7 @@ public class IgniteCompressedCacheBinaryObjectsScanSelfTest extends IgniteCacheB
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
         IgniteConfiguration config = super.getConfiguration(igniteInstanceName);
-        config.setDefaultCompression(true);
+        config.setFullCompressionMode(true);
 
         return config;
     }

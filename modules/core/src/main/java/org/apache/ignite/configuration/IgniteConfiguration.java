@@ -482,11 +482,14 @@ public class IgniteConfiguration {
     /** Consists mapping a compression type and an implementation of {@link Compressor}*/
     private Map<CompressionType, Compressor> compressorsSelector;
 
-    /** Indicates whether default compression is switched on. */
-    private boolean defaultCompression;
+    /**
+     * Indicates whether full compression mode is switched on.
+     * Full compression means all data (metadata+value) will be compress when serializing.
+     */
+    private boolean fullCompressionMode;
 
-    /** Defines the type of used default compression. */
-    private CompressionType defaultCompressionType;
+    /** Defines a compression type when <code>fullCompressionMode</code> switched on. */
+    private CompressionType fullCompressionType;
 
     /**
      * Creates valid grid configuration with all default values.
@@ -495,7 +498,7 @@ public class IgniteConfiguration {
         compressorsSelector = new HashMap<>();
         compressorsSelector.put(CompressionType.GZIP, new GZipCompressor());
         compressorsSelector.put(CompressionType.DEFLATE, new DeflaterCompressor());
-        defaultCompressionType = CompressionType.GZIP;
+        fullCompressionType = CompressionType.GZIP;
     }
 
     /**
@@ -594,8 +597,8 @@ public class IgniteConfiguration {
         waitForSegOnStart = cfg.isWaitForSegmentOnStart();
         warmupClos = cfg.getWarmupClosure();
         compressorsSelector = cfg.getCompressorsSelector();
-        defaultCompression = cfg.isDefaultCompression();
-        defaultCompressionType = cfg.getDefaultCompressionType();
+        fullCompressionMode = cfg.isFullCompressionMode();
+        fullCompressionType = cfg.getFullCompressionType();
     }
 
     /**
@@ -2716,39 +2719,39 @@ public class IgniteConfiguration {
     }
 
     /**
-     * Indicates whether default compression is switched on.
+     * Indicates whether full compression mode is switched on.
      *
-     * @return - 'true' if default compression is enabled, otherwise 'false'.
+     * @return - 'true' if full compression mode is enabled, otherwise 'false'.
      */
-    public boolean isDefaultCompression() {
-        return defaultCompression;
+    public boolean isFullCompressionMode() {
+        return fullCompressionMode;
     }
 
     /**
-     * Switches a mode of default compression {@link CompressionType}.
+     * Switches a mode of full compression mode {@link CompressionType}.
      *
-     * @param defaultCompression - flag, 'true' - switch on default compression, otherwise - switch off.
+     * @param fullCompressionMode - flag, 'true' - switch on full compression mode, otherwise - switch off.
      */
-    public void setDefaultCompression(boolean defaultCompression) {
-        this.defaultCompression = defaultCompression;
+    public void setFullCompressionMode(boolean fullCompressionMode) {
+        this.fullCompressionMode = fullCompressionMode;
     }
 
     /**
-     * Gets a type of default compression {@link CompressionType}.
+     * Gets a type of full compression mode {@link CompressionType}.
      *
-     * @return - type of default compression.
+     * @return - type of full compression mode.
      */
-    public CompressionType getDefaultCompressionType() {
-        return defaultCompressionType;
+    public CompressionType getFullCompressionType() {
+        return fullCompressionType;
     }
 
     /**
-     * Sets a type of default compression {@link CompressionType}.
+     * Sets a type of full compression mode {@link CompressionType}.
      *
-     * @param defaultCompressionType - type of default compression.
+     * @param fullCompressionType - type of full compression mode.
      */
-    public void setDefaultCompressionType(CompressionType defaultCompressionType) {
-        this.defaultCompressionType = defaultCompressionType;
+    public void setFullCompressionType(CompressionType fullCompressionType) {
+        this.fullCompressionType = fullCompressionType;
     }
 
     /** {@inheritDoc} */

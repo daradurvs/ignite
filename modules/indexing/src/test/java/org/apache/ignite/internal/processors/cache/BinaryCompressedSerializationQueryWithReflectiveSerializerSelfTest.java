@@ -23,6 +23,6 @@ public class BinaryCompressedSerializationQueryWithReflectiveSerializerSelfTest 
     @Override protected void beforeTest() throws Exception {
         super.beforeTest();
 
-        ignite.configuration().setDefaultCompression(true);
+        ignite.configuration().setFullCompressionMode(true);
     }
 }

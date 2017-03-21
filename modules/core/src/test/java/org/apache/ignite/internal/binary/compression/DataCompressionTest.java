@@ -49,9 +49,9 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
 //    public void testCacheCompression() throws Exception {
 //        String instanceName = getTestIgniteInstanceName();
 //        IgniteConfiguration cfg = getConfiguration(instanceName);
-////        cfg.setDefaultCompression(true);
+////        cfg.setFullCompressionMode(true);
 //        cfg.setMarshaller(binaryMarshaller());
-////        cfg.setDefaultCompressionType(CompressionType.GZIP);
+////        cfg.setFullCompressionType(CompressionType.GZIP);
 //
 //        try (Ignite ignite = startGrid(instanceName, cfg)) {
 //
@@ -86,7 +86,7 @@ public class DataCompressionTest extends BinaryMarshallerSelfTest {
      */
     public void testDefaultCompression() throws Exception {
         IgniteConfiguration igniteConfiguration = getConfiguration(getTestIgniteInstanceName());
-        igniteConfiguration.setDefaultCompression(true);
+        igniteConfiguration.setFullCompressionMode(true);
 
         BinaryContext ctx = new BinaryContext(BinaryCachingMetadataHandler.create(), igniteConfiguration, new NullLogger());
         BinaryMarshaller marshaller = binaryMarshaller();

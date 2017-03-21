@@ -67,7 +67,7 @@ public class BinaryCompressedMarshallerSelfTest extends BinaryMarshallerSelfTest
         });
 
         // Default compression switched on
-        iCfg.setDefaultCompression(true);
+        iCfg.setFullCompressionMode(true);
 
         BinaryContext ctx = new BinaryContext(BinaryCachingMetadataHandler.create(), iCfg, new NullLogger());
 

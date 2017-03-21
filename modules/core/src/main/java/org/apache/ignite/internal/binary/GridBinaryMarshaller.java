@@ -27,7 +27,6 @@ import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.IgnitionEx;
 import org.apache.ignite.internal.binary.compression.CompressionType;
 import org.apache.ignite.internal.binary.compression.compressors.Compressor;
-import org.apache.ignite.internal.binary.compression.compressors.GZipCompressor;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
@@ -259,8 +258,8 @@ public class GridBinaryMarshaller {
         this.ctx = ctx;
         IgniteConfiguration conf = ctx.configuration();
         this.compressorsSelector = conf.getCompressorsSelector();
-        this.compressionMode = conf.isDefaultCompression();
-        this.defaultCompressionType = conf.getDefaultCompressionType();
+        this.compressionMode = conf.isFullCompressionMode();
+        this.defaultCompressionType = conf.getFullCompressionType();
     }
 
     /**
