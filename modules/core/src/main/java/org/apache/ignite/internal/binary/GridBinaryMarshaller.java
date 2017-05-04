@@ -46,6 +46,9 @@ public class GridBinaryMarshaller {
     public static final byte OPTM_MARSH = -2;
 
     /** */
+    public static final byte EXTERNALIZABLE_OBJ = -3;
+
+    /** */
     public static final byte BYTE = 1;
 
     /** */

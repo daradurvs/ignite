@@ -659,6 +659,7 @@ public abstract class BinaryFieldAccessor {
 
                 case BINARY:
                 case OBJECT:
+                case EXTERNALIZABLE:
                 case PROXY:
                     writer.writeObjectField(val);
 
