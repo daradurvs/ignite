@@ -186,10 +186,8 @@ public class BinaryClassDescriptor {
             if (cls == BinaryEnumObjectImpl.class)
                 mode = BinaryWriteMode.BINARY_ENUM;
             else
-                mode = serializer != null ? BinaryWriteMode.BINARY : BinaryUtils.mode(cls);
+                mode = ((serializer != null) && (!Externalizable.class.isAssignableFrom(cls))) ? BinaryWriteMode.BINARY : BinaryUtils.mode(cls);
         }
-
-        System.out.println("MY mode="+mode);
 
         if (useOptMarshaller && userType && !U.isIgnite(cls) && !U.isJdk(cls) && !QueryUtils.isGeometryClass(cls)) {
             U.warn(ctx.log(), "Class \"" + cls.getName() + "\" cannot be serialized using " +

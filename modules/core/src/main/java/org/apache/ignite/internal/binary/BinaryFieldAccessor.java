@@ -111,6 +111,7 @@ public abstract class BinaryFieldAccessor {
             case OBJECT_ARR:
             case BINARY_OBJ:
             case BINARY:
+            case EXTERNALIZABLE:
                 return new DefaultFinalClassAccessor(field, id, mode, false);
 
             default:
@@ -865,6 +866,7 @@ public abstract class BinaryFieldAccessor {
                     break;
 
                 case BINARY:
+                case EXTERNALIZABLE:
                 case OBJECT:
                     val = reader.readObject(id);
 
