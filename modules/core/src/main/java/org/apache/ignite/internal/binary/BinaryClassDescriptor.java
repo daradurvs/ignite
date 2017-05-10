@@ -795,6 +795,7 @@ public class BinaryClassDescriptor {
                 }
 
                 break;
+
             case OBJECT:
                 if (userType && !stableSchemaPublished) {
                     // Update meta before write object with new schema
