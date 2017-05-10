@@ -245,7 +245,6 @@ public class BinaryClassDescriptor {
             case ENUM_ARR:
             case CLASS:
             case OPTIMIZED:
-            case EXTERNALIZABLE:
             case EXCLUSION:
                 ctor = null;
                 fields = null;
@@ -265,6 +264,7 @@ public class BinaryClassDescriptor {
                 break;
 
             case BINARY:
+            case EXTERNALIZABLE:
                 ctor = constructor(cls);
                 fields = null;
                 stableFieldsMeta = null;
