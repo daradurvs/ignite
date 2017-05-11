@@ -855,6 +855,7 @@ public class BinaryClassDescriptor {
                         ((Binarylizable)res).readBinary(reader);
 
                     break;
+
                 case EXTERNALIZABLE:
                     res = newInstance();
 
