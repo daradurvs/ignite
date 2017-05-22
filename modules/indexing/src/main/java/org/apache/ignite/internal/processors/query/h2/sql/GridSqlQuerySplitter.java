@@ -36,6 +36,7 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.internal.processors.cache.query.GridCacheSqlQuery;
 import org.apache.ignite.internal.processors.cache.query.GridCacheTwoStepQuery;
+import org.apache.ignite.internal.processors.cache.query.QueryTable;
 import org.apache.ignite.internal.processors.query.h2.IgniteH2Indexing;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.F;
@@ -93,11 +94,8 @@ public class GridSqlQuerySplitter {
     /** */
     private int splitId = -1; // The first one will be 0.
 
-    /** */
-    private Set<String> schemas = new HashSet<>();
-
-    /** */
-    private Set<String> tbls = new HashSet<>();
+    /** Query tables. */
+    private Set<QueryTable> tbls = new HashSet<>();
 
     /** */
     private boolean rdcQrySimple;
@@ -224,7 +222,7 @@ public class GridSqlQuerySplitter {
         }
 
         // Setup resulting two step query and return it.
-        GridCacheTwoStepQuery twoStepQry = new GridCacheTwoStepQuery(originalSql, splitter.schemas, splitter.tbls);
+        GridCacheTwoStepQuery twoStepQry = new GridCacheTwoStepQuery(originalSql, splitter.tbls);
 
         twoStepQry.reduceQuery(splitter.rdcSqlQry);
 
@@ -1500,15 +1498,10 @@ public class GridSqlQuerySplitter {
         if (from instanceof GridSqlTable) {
             GridSqlTable tbl = (GridSqlTable)from;
 
-            String schema = tbl.schema();
+            String schemaName = tbl.dataTable().identifier().schema();
+            String tblName = tbl.dataTable().identifier().table();
 
-            boolean addSchema = tbls == null;
-
-            if (tbls != null)
-                addSchema = tbls.add(tbl.dataTable().identifier());
-
-            if (addSchema && schema != null && schemas != null)
-                schemas.add(schema);
+            tbls.add(new QueryTable(schemaName, tblName));
 
             // In case of alias parent we need to replace the alias itself.
             if (!prntAlias)
@@ -1734,12 +1727,17 @@ public class GridSqlQuerySplitter {
     }
 
     /**
-     * @param el Expression.
+     * @param el Expression part in SELECT clause.
      * @return {@code true} If expression contains aggregates.
      */
     private static boolean hasAggregates(GridSqlAst el) {
         if (el instanceof GridSqlAggregateFunction)
             return true;
+
+        // If in SELECT clause we have a subquery expression with aggregate,
+        // we should not split it. Run the whole subquery on MAP stage.
+        if (el instanceof GridSqlSubquery)
+            return false;
 
         for (int i = 0; i < el.size(); i++) {
             if (hasAggregates(el.child(i)))
