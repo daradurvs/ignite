@@ -19,6 +19,7 @@ package org.apache.ignite.cache.spring;
 
 import java.io.Serializable;
 import java.util.concurrent.Callable;
+import javax.cache.processor.EntryProcessorException;
 import org.apache.ignite.IgniteCache;
 import org.springframework.cache.Cache;
 import org.springframework.cache.support.SimpleValueWrapper;
@@ -75,16 +76,27 @@ class SpringCache implements Cache {
     }
 
     /** {@inheritDoc} */
+    @SuppressWarnings("unchecked")
+    @Override public <T> T get(Object key, Callable<T> valLdr) {
+        Object val = cache.get(key);
+
+        if (val != null && !NULL.equals(val))
+            return (T)val;
+
+        try {
+            return cache.invoke(key, new ValueLoaderEntryProcessor<T>(), valLdr);
+        }
+        catch (EntryProcessorException e) {
+            throw new ValueRetrievalException(key, valLdr, e);
+        }
+    }
+
+    /** {@inheritDoc} */
     @Override public void put(Object key, Object val) {
         if (val == null)
             cache.withSkipStore().put(key, NULL);
         else
             cache.put(key, val);
-    }
-
-    /** {@inheritDoc} */
-    @Override public <T> T get(Object key, Callable<T> valLdr) {
-        throw new UnsupportedOperationException();
     }
 
     /** {@inheritDoc} */
@@ -119,8 +131,7 @@ class SpringCache implements Cache {
         return new SimpleValueWrapper(NULL.equals(val) ? null : val);
     }
 
-    /**
-     */
+    /** */
     private static class NullValue implements Serializable {
         /** {@inheritDoc} */
         @Override public boolean equals(Object o) {

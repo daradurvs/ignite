@@ -17,6 +17,8 @@
 
 package org.apache.ignite.cache.spring;
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -25,6 +27,7 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.TcpDiscoveryIpFinder;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
@@ -41,6 +44,9 @@ public class GridSpringCacheManagerSelfTest extends GridCommonAbstractTest {
 
     /** */
     private static final String DYNAMIC_CACHE_NAME = "dynamicCache";
+
+    /** */
+    private static final String SYNC_CACHE_NAME = "syncCache";
 
     /** */
     private static final Object NULL;
@@ -61,6 +67,9 @@ public class GridSpringCacheManagerSelfTest extends GridCommonAbstractTest {
 
     /** */
     private GridSpringDynamicCacheTestService dynamicSvc;
+
+    /** */
+    private GridSpringSyncCacheTestService syncSvc;
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
@@ -102,9 +111,11 @@ public class GridSpringCacheManagerSelfTest extends GridCommonAbstractTest {
 
         svc = (GridSpringCacheTestService)factory.getBean("testService");
         dynamicSvc = (GridSpringDynamicCacheTestService)factory.getBean("dynamicTestService");
+        syncSvc = (GridSpringSyncCacheTestService)factory.getBean("syncTestService");
 
         svc.reset();
         dynamicSvc.reset();
+        syncSvc.reset();
     }
 
     /** {@inheritDoc} */
@@ -112,6 +123,8 @@ public class GridSpringCacheManagerSelfTest extends GridCommonAbstractTest {
         grid().cache(CACHE_NAME).removeAll();
 
         grid().destroyCache(DYNAMIC_CACHE_NAME);
+
+        grid().destroyCache(SYNC_CACHE_NAME);
     }
 
     /**
@@ -434,5 +447,47 @@ public class GridSpringCacheManagerSelfTest extends GridCommonAbstractTest {
         assertEquals(2, dynamicSvc.called());
 
         assertEquals(0, c.size());
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testSyncCache() throws Exception {
+        for (int i = 0; i < 2; i++)
+            startGrid(getTestIgniteInstanceName() + i);
+
+        final int threads = 10;
+        final int entries = 1000;
+
+        final CyclicBarrier barrier = new CyclicBarrier(threads);
+
+        CacheConfiguration<Integer, String> cacheCfg = new CacheConfiguration<>();
+
+        cacheCfg.setName(SYNC_CACHE_NAME);
+
+        IgniteCache<Integer, String> cache = grid().createCache(cacheCfg);
+
+        GridTestUtils.runMultiThreaded(
+            new Callable() {
+                @Override public Object call() throws Exception {
+                    for (int i = 0; i < entries; i++) {
+                        barrier.await();
+
+                        assertEquals("value" + i, syncSvc.cacheable(i));
+                        assertEquals("value" + i, syncSvc.cacheable(i));
+                    }
+
+                    return null;
+                }
+            },
+            threads,
+            "testSyncCache");
+
+        assertEquals(entries, cache.size());
+
+        assertEquals(entries, syncSvc.called());
+
+        for (int i = 0; i < entries; i++)
+            assertEquals("value" + i, cache.get(i));
     }
 }
