@@ -289,6 +289,16 @@ public class BinaryObjectBuilderImpl implements BinaryObjectBuilder {
 
                     reader.position(postPos);
                 }
+            } else {
+                if (reader != null) {
+                    int len =  reader.readInt(12);
+
+                    reader.skip(24);
+
+                    writer.out().write(reader.array(), reader.position(), len);
+
+                    reader.position(reader.position()+len);
+                }
             }
 
             if (assignedVals != null && (remainsFlds == null || !remainsFlds.isEmpty())) {
