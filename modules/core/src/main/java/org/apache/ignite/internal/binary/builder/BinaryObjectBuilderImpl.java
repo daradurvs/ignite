@@ -291,13 +291,13 @@ public class BinaryObjectBuilderImpl implements BinaryObjectBuilder {
                 }
             } else {
                 if (reader != null) {
-                    int len =  reader.readInt(12);
+                    int len = reader.readInt(12);
 
                     reader.skip(24);
 
                     writer.out().write(reader.array(), reader.position(), len);
 
-                    reader.position(reader.position()+len);
+                    reader.position(reader.position() + len);
                 }
             }
 
