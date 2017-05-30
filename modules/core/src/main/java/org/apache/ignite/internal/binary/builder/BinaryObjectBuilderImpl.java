@@ -360,7 +360,7 @@ public class BinaryObjectBuilderImpl implements BinaryObjectBuilder {
                 BinarySchema curSchema = writer.currentSchema();
 
                 ctx.updateMetadata(typeId, new BinaryMetadata(typeId, typeName, fieldsMeta,
-                    ctx.affinityKeyFieldName(typeId), Collections.singleton(curSchema), false));
+                    ctx.affinityKeyFieldName(typeId), Collections.singleton(curSchema), false, null));
 
                 schemaReg.addSchema(curSchema.schemaId(), curSchema);
             }
