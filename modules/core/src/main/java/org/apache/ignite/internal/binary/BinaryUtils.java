@@ -1827,7 +1827,6 @@ public class BinaryUtils {
 
                 handles.setHandle(po, start);
 
-                /*Must be another way to resolve it*/
                 if (BinaryUtils.mode(ctx.descriptorForTypeId(true, po.typeId(), ldr, false).describedClass()) == BinaryWriteMode.EXTERNALIZABLE)
                     return po.deserialize();
 
