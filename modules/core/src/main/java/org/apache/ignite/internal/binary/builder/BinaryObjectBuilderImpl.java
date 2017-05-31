@@ -291,9 +291,9 @@ public class BinaryObjectBuilderImpl implements BinaryObjectBuilder {
                 }
             } else {
                 if (reader != null) {
-                    int len = reader.readInt(12);
+                    int len = BinaryUtils.length(reader, reader.position());
 
-                    reader.skip(24);
+                    reader.skip(GridBinaryMarshaller.DFLT_HDR_LEN);
 
                     writer.out().write(reader.array(), reader.position(), len);
 
