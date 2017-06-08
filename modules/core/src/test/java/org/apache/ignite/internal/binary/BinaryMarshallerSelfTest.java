@@ -618,9 +618,8 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
      * @throws Exception If failed.
      */
     public void testBinaryObjectInsideExternalizable() throws Exception {
-        /*BinaryMarshaller marsh = binaryMarshaller(Arrays.asList(new BinaryTypeConfiguration(SimpleObject.class.getName())
-            , new BinaryTypeConfiguration(ObjectInsideExternalizable.class.getName())));*/
-        BinaryMarshaller marsh = binaryMarshaller();
+        BinaryMarshaller marsh = binaryMarshaller(Arrays.asList(new BinaryTypeConfiguration(SimpleObject.class.getName())
+            , new BinaryTypeConfiguration(ObjectInsideExternalizable.class.getName())));
 
         SimpleObject obj = simpleObject();
 
