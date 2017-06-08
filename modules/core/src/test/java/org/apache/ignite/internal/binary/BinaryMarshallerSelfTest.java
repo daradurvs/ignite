@@ -593,6 +593,61 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
     /**
      * @throws Exception If failed.
      */
+    public void testSimpleExternalizable() throws Exception {
+        SimpleExternalizable exp = new SimpleExternalizable("field");
+
+        SimpleExternalizable obj = marshalUnmarshal(exp);
+
+        assertEquals(obj.field, exp.field);
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testBinaryInsideExternalizable() throws Exception {
+        TestBinary bo = binaryObject();
+
+        ObjectInsideExternalizable exp = new ObjectInsideExternalizable(bo);
+
+        ObjectInsideExternalizable obj = marshalUnmarshal(exp);
+
+        assertEquals(obj.field, exp.field);
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testBinaryObjectInsideExternalizable() throws Exception {
+        /*BinaryMarshaller marsh = binaryMarshaller(Arrays.asList(new BinaryTypeConfiguration(SimpleObject.class.getName())
+            , new BinaryTypeConfiguration(ObjectInsideExternalizable.class.getName())));*/
+        BinaryMarshaller marsh = binaryMarshaller();
+
+        SimpleObject obj = simpleObject();
+
+        BinaryObject po = marshal(obj, marsh);
+
+        ObjectInsideExternalizable ext = marshalUnmarshal(new ObjectInsideExternalizable(po), marsh);
+
+        BinaryObject po0 = (BinaryObject)ext.field;
+
+        assertTrue(po.hasField("b"));
+        assertTrue(po.hasField("s"));
+        assertTrue(po.hasField("i"));
+        assertTrue(po.hasField("l"));
+        assertTrue(po.hasField("f"));
+        assertTrue(po.hasField("d"));
+        assertTrue(po.hasField("c"));
+        assertTrue(po.hasField("bool"));
+
+        assertFalse(po.hasField("no_such_field"));
+
+        assertEquals(obj, po.deserialize());
+        assertEquals(obj, po0.deserialize());
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
     public void testMapEntry() throws Exception {
         Map.Entry<Integer, String> e = new GridMapEntry<>(1, "str1");
 
@@ -5117,6 +5172,56 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
                 return false;
 
             SimpleExternalizable that = (SimpleExternalizable)o;
+
+            return field.equals(that.field);
+        }
+
+        /** {@inheritDoc} */
+        @Override public int hashCode() {
+            return field.hashCode();
+        }
+    }
+
+    /**
+     *
+     */
+    public static class ObjectInsideExternalizable implements Externalizable {
+        /** */
+        private Object field;
+
+        /**
+         * {@link Externalizable} support.
+         */
+        public ObjectInsideExternalizable() {
+            // No-op.
+        }
+
+        /**
+         * @param field Field.
+         */
+        public ObjectInsideExternalizable(Object field) {
+            this.field = field;
+        }
+
+        /** {@inheritDoc} */
+        @Override public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeObject(field);
+        }
+
+        /** {@inheritDoc} */
+        @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            field = in.readObject();
+        }
+
+        /** {@inheritDoc} */
+        @Override public boolean equals(Object o) {
+            if (this == o)
+                return true;
+
+            if (o == null || getClass() != o.getClass())
+                return false;
+
+            ObjectInsideExternalizable that = (ObjectInsideExternalizable)o;
 
             return field.equals(that.field);
         }
