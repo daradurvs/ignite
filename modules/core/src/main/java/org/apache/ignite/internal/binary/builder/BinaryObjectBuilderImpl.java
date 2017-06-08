@@ -292,16 +292,16 @@ public class BinaryObjectBuilderImpl implements BinaryObjectBuilder {
 
                     reader.position(postPos);
                 }
-            } else {
-                if (reader != null) {
-                    int len = BinaryUtils.length(reader, reader.position());
+            }
 
-                    reader.skip(GridBinaryMarshaller.DFLT_HDR_LEN);
+            if (reader != null && !BinaryUtils.hasSchema(flags)) {
+                int len = BinaryUtils.length(reader, reader.position());
 
-                    writer.out().write(reader.array(), reader.position(), len);
+                reader.skip(GridBinaryMarshaller.DFLT_HDR_LEN);
 
-                    reader.position(reader.position() + len);
-                }
+                writer.out().write(reader.array(), reader.position(), len);
+
+                reader.skip(len);
             }
 
             if (assignedVals != null && (remainsFlds == null || !remainsFlds.isEmpty())) {
