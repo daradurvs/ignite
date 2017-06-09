@@ -160,6 +160,9 @@ public enum BinaryWriteMode {
     BINARY(GridBinaryMarshaller.BINARY_OBJ),
 
     /** */
+    EXTERNALIZABLE(GridBinaryMarshaller.OBJ),
+
+    /** */
     OBJECT(GridBinaryMarshaller.OBJ),
 
     /** */

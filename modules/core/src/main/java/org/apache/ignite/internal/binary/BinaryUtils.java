@@ -1121,6 +1121,8 @@ public class BinaryUtils {
             return BinaryWriteMode.CLASS;
         else if (Proxy.class.isAssignableFrom(cls))
             return BinaryWriteMode.PROXY;
+        else if (Externalizable.class.isAssignableFrom(cls))
+            return BinaryWriteMode.EXTERNALIZABLE;
         else
             return BinaryWriteMode.OBJECT;
     }
@@ -1824,6 +1826,11 @@ public class BinaryUtils {
                 }
 
                 handles.setHandle(po, start);
+
+                BinaryClassDescriptor descr = ctx.descriptorForTypeId(true, po.typeId(), ldr, false);
+
+                if (BinaryUtils.mode(descr.describedClass()) == BinaryWriteMode.EXTERNALIZABLE)
+                    return po.deserialize();
 
                 return po;
             }

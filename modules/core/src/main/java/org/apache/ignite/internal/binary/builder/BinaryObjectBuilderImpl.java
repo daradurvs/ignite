@@ -291,6 +291,16 @@ public class BinaryObjectBuilderImpl implements BinaryObjectBuilder {
                 }
             }
 
+            if (reader != null && !BinaryUtils.hasSchema(flags)) {
+                int len = BinaryUtils.length(reader, reader.position());
+
+                reader.skip(GridBinaryMarshaller.DFLT_HDR_LEN);
+
+                writer.out().write(reader.array(), reader.position(), len);
+
+                reader.skip(len);
+            }
+
             if (assignedVals != null && (remainsFlds == null || !remainsFlds.isEmpty())) {
                 for (Map.Entry<String, Object> entry : assignedVals.entrySet()) {
                     Object val = entry.getValue();

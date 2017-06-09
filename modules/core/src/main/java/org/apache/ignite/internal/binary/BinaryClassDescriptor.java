@@ -17,6 +17,8 @@
 
 package org.apache.ignite.internal.binary;
 
+import java.io.Externalizable;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -156,7 +158,7 @@ public class BinaryClassDescriptor {
         initialSerializer = serializer;
 
         // If serializer is not defined at this point, then we have to use OptimizedMarshaller.
-        useOptMarshaller = serializer == null || isGeometryClass(cls);
+        useOptMarshaller = (serializer == null || isGeometryClass(cls)) && (!Externalizable.class.isAssignableFrom(cls));
 
         // Reset reflective serializer so that we rely on existing reflection-based serialization.
         if (serializer instanceof BinaryReflectiveSerializer)
@@ -262,6 +264,7 @@ public class BinaryClassDescriptor {
                 break;
 
             case BINARY:
+            case EXTERNALIZABLE:
                 ctor = constructor(cls);
                 fields = null;
                 stableFieldsMeta = null;
@@ -774,6 +777,25 @@ public class BinaryClassDescriptor {
 
                 break;
 
+            case EXTERNALIZABLE:
+                if (preWrite(writer, obj)) {
+                    try {
+                        ((Externalizable)obj).writeExternal(writer);
+
+                        postWrite(writer);
+
+                        postWriteHashCode(writer, obj);
+                    }
+                    catch (IOException e) {
+                        throw new BinaryObjectException("Failed to deserialize object [typeName=" + typeName + ']', e);
+                    }
+                    finally {
+                        writer.popSchema();
+                    }
+                }
+
+                break;
+
             case OBJECT:
                 if (userType && !stableSchemaPublished) {
                     // Update meta before write object with new schema
@@ -831,6 +853,15 @@ public class BinaryClassDescriptor {
                         serializer.readBinary(res, reader);
                     else
                         ((Binarylizable)res).readBinary(reader);
+
+                    break;
+
+                case EXTERNALIZABLE:
+                    res = newInstance();
+
+                    reader.setHandle(res);
+
+                    ((Externalizable)res).readExternal(reader);
 
                     break;
 
