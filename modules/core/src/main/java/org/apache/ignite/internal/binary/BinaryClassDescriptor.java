@@ -780,6 +780,8 @@ public class BinaryClassDescriptor {
             case EXTERNALIZABLE:
                 if (preWrite(writer, obj)) {
                     try {
+                        writer.rawWriter();
+
                         ((Externalizable)obj).writeExternal(writer);
 
                         postWrite(writer);
