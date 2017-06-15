@@ -1117,6 +1117,8 @@ public class BinaryUtils {
             return BinaryWriteMode.BINARY_OBJ;
         else if (Binarylizable.class.isAssignableFrom(cls))
             return BinaryWriteMode.BINARY;
+        else if (Externalizable.class.isAssignableFrom(cls))
+            return BinaryWriteMode.EXTERNALIZABLE;
         else if (isSpecialCollection(cls))
             return BinaryWriteMode.COL;
         else if (isSpecialMap(cls))
@@ -1129,8 +1131,6 @@ public class BinaryUtils {
             return BinaryWriteMode.CLASS;
         else if (Proxy.class.isAssignableFrom(cls))
             return BinaryWriteMode.PROXY;
-        else if (Externalizable.class.isAssignableFrom(cls))
-            return BinaryWriteMode.EXTERNALIZABLE;
         else
             return BinaryWriteMode.OBJECT;
     }
