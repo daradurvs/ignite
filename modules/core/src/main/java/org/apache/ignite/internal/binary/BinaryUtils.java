@@ -2171,7 +2171,7 @@ public class BinaryUtils {
      * Check if class is externalizable.
      *
      * @param cls Class.
-     * @return {@code True} if binarylizable.
+     * @return {@code True} if externalizable.
      */
     public static boolean isExternalizable(Class cls) {
         for (Class c = cls; c != null && !c.equals(Object.class); c = c.getSuperclass()) {
