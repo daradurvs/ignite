@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.binary;
 
+import java.io.Externalizable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -1189,7 +1190,7 @@ public class BinaryContext {
      * @return {@code True} if reflective serializer can be used.
      */
     private static boolean canUseReflectiveSerializer(Class cls) {
-        return BinaryUtils.isBinarylizable(cls) || BinaryUtils.isExternalizable(cls)
+        return BinaryUtils.isBinarylizable(cls) || Externalizable.class.isAssignableFrom(cls)
             || !BinaryUtils.isCustomJavaSerialization(cls);
     }
 
