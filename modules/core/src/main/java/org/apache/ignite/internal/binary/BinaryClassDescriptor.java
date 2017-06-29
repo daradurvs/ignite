@@ -42,6 +42,7 @@ import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryReflectiveSerializer;
 import org.apache.ignite.binary.BinarySerializer;
 import org.apache.ignite.binary.Binarylizable;
+import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshaller;
 import org.apache.ignite.internal.processors.cache.CacheObjectImpl;
 import org.apache.ignite.internal.processors.query.QueryUtils;
@@ -777,22 +778,24 @@ public class BinaryClassDescriptor {
                 break;
 
             case EXTERNALIZABLE:
-                if (preWrite(writer, obj)) {
-                    try {
-                        writer.rawWriter();
 
-                        ((Externalizable)obj).writeExternal(writer);
+                BinaryOutputStream out = writer.out();
 
-                        postWrite(writer);
+                out.unsafeWriteByte(GridBinaryMarshaller.EXTERNALIZABLE);
 
-                        postWriteHashCode(writer, obj);
-                    }
-                    catch (IOException e) {
-                        throw new BinaryObjectException("Failed to deserialize object [typeName=" + typeName + ']', e);
-                    }
-                    finally {
-                        writer.popSchema();
-                    }
+                out.unsafeWriteInt(registered ? typeId : GridBinaryMarshaller.UNREGISTERED_TYPE_ID);
+
+                if (!registered) {
+                    String clsName = cls.getName();
+                    if (clsName != null)
+                        writer.doWriteString(clsName);
+                }
+
+                try {
+                    ((Externalizable)obj).writeExternal(writer);
+                }
+                catch (IOException e) {
+                    throw new BinaryObjectException("Failed to serialize externalizable object [typeName=" + typeName + ']', e);
                 }
 
                 break;
