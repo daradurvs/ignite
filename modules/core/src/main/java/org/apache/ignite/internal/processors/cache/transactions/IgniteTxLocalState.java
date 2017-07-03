@@ -17,6 +17,8 @@
 
 package org.apache.ignite.internal.processors.cache.transactions;
 
+import org.apache.ignite.IgniteCheckedException;
+
 /**
  *
  */
@@ -41,4 +43,12 @@ public interface IgniteTxLocalState extends IgniteTxState {
      *
      */
     public void seal();
+
+    /**
+     * Changes local candidate owner's thread id to current thread id, it is used in pessimistic transactions resuming.
+     *
+     * @param oldThreadId Owner's initial threadId.
+     * @throws IgniteCheckedException If an candidate was removed.
+     */
+    public void updateMvccCandidatesWithCurrentThread(long oldThreadId) throws IgniteCheckedException;
 }

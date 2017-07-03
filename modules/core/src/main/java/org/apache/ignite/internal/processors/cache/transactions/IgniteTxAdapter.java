@@ -97,6 +97,7 @@ import static org.apache.ignite.transactions.TransactionState.PREPARED;
 import static org.apache.ignite.transactions.TransactionState.PREPARING;
 import static org.apache.ignite.transactions.TransactionState.ROLLED_BACK;
 import static org.apache.ignite.transactions.TransactionState.ROLLING_BACK;
+import static org.apache.ignite.transactions.TransactionState.SUSPENDED;
 
 /**
  * Managed transaction adapter.
@@ -971,67 +972,66 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
             prev = this.state;
 
             switch (state) {
-                case ACTIVE: {
-                    valid = false;
+                case ACTIVE:
+                    valid = prev == SUSPENDED;
 
                     break;
-                } // Active is initial state and cannot be transitioned to.
-                case PREPARING: {
+
+                case PREPARING:
                     valid = prev == ACTIVE;
 
                     break;
-                }
-                case PREPARED: {
+
+                case PREPARED:
                     valid = prev == PREPARING;
 
                     break;
-                }
-                case COMMITTING: {
+
+                case COMMITTING:
                     valid = prev == PREPARED;
 
                     break;
-                }
 
-                case UNKNOWN: {
+                case UNKNOWN:
                     if (setDone())
                         notify = true;
 
                     valid = prev == ROLLING_BACK || prev == COMMITTING;
 
                     break;
-                }
 
-                case COMMITTED: {
+                case COMMITTED:
                     if (setDone())
                         notify = true;
 
                     valid = prev == COMMITTING;
 
                     break;
-                }
 
-                case ROLLED_BACK: {
+                case ROLLED_BACK:
                     if (setDone())
                         notify = true;
 
                     valid = prev == ROLLING_BACK;
 
                     break;
-                }
 
-                case MARKED_ROLLBACK: {
+                case MARKED_ROLLBACK:
                     valid = prev == ACTIVE || prev == PREPARING || prev == PREPARED;
 
                     break;
-                }
 
-                case ROLLING_BACK: {
+                case ROLLING_BACK:
                     valid =
                         prev == ACTIVE || prev == MARKED_ROLLBACK || prev == PREPARING ||
                             prev == PREPARED || (prev == COMMITTING && local() && !dht());
 
                     break;
-                }
+
+                case SUSPENDED:
+                    valid = prev == ACTIVE;
+
+                    break;
             }
 
             if (valid) {
