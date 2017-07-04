@@ -778,7 +778,6 @@ public class BinaryClassDescriptor {
                 break;
 
             case EXTERNALIZABLE:
-
                 BinaryOutputStream out = writer.out();
 
                 out.unsafeWriteByte(GridBinaryMarshaller.EXTERNALIZABLE);
@@ -865,7 +864,13 @@ public class BinaryClassDescriptor {
 
                     reader.setHandle(res);
 
-                    ((Externalizable)res).readExternal(reader);
+                    try {
+                        ((Externalizable)res).readExternal(reader);
+                    } catch (IOException | ClassNotFoundException e) {
+                        //Optimazed Marshaller caused IgniteCheckedException when readExternal throw exception.
+                        //Ignore this crash some test like testResponseMessageOnUnmarshallingFailed
+                        throw new IgniteCheckedException("Failed to deserialize externalizable object [typeName=" + typeName + ']', e);
+                    }
 
                     break;
 
