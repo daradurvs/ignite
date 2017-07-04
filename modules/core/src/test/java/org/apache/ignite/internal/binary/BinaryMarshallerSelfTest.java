@@ -79,7 +79,6 @@ import org.apache.ignite.configuration.BinaryConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.binary.builder.BinaryObjectBuilderImpl;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
-import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshaller;
 import org.apache.ignite.internal.processors.cache.CacheObjectContext;
 import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -89,7 +88,6 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.logger.NullLogger;
-import org.apache.ignite.marshaller.Marshaller;
 import org.apache.ignite.marshaller.MarshallerContextTestImpl;
 import org.apache.ignite.spi.discovery.DiscoverySpiCustomMessage;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
@@ -601,59 +599,6 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
         SimpleExternalizable obj = marshalUnmarshal(exp);
 
         assertEquals(obj.field, exp.field);
-    }
-
-    /**
-     * @throws Exception If failed.
-     */
-    public void testStress() throws Exception {
-        SimpleExternalizable exp = new SimpleExternalizable("field");
-        Marshaller binaryMarshaller = binaryMarshaller();
-        binaryMarshaller.setContext(new MarshallerContextTestImpl());
-        Marshaller optimizedMarshaller = new OptimizedMarshaller(false);
-        optimizedMarshaller.setContext(new MarshallerContextTestImpl());
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-
-        int count = 1;
-        for (int j = 0; j <= 7; j++) {
-            System.out.println();
-            System.out.println("count: " + count);
-            byte[] b_bytes = new byte[0];
-            byte[] o_bytes = new byte[0];
-            long start = System.nanoTime();
-            for (int i = 0; i < count; i++) {
-                b_bytes = binaryMarshaller.marshal(exp);
-            }
-            long b_time = System.nanoTime()-start;
-
-            start = System.nanoTime();
-            for (int i = 0; i < count; i++) {
-                o_bytes = optimizedMarshaller.marshal(exp);
-            }
-            long o_time = System.nanoTime()-start;
-
-            System.out.println("Binary: " + b_time/1_000_000.0 + "ms" + " Optimized: " + o_time/1_000_000.0 + "ms" +
-                " MARSHAL Binary best on: " + (o_time*100.0/b_time - 100) + "%");
-
-
-            start = System.nanoTime();
-            for (int i = 0; i < count; i++) {
-                binaryMarshaller.unmarshal(b_bytes, loader);
-            }
-            b_time = System.nanoTime()-start;
-
-            start = System.nanoTime();
-            for (int i = 0; i < count; i++) {
-                optimizedMarshaller.unmarshal(o_bytes, loader);
-            }
-            o_time = System.nanoTime()-start;
-
-            System.out.println("Binary: " + b_time/1_000_000.0 + "ms" + " Optimized: " + o_time/1_000_000.0 + "ms" +
-                " UNMARSHAL Binary best on: " + (o_time*100.0/b_time - 100) + "%");
-
-            count *= 10;
-        }
-        System.out.println();
     }
 
     /**
