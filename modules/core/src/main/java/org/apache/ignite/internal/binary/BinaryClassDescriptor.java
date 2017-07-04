@@ -784,11 +784,8 @@ public class BinaryClassDescriptor {
 
                 out.unsafeWriteInt(registered ? typeId : GridBinaryMarshaller.UNREGISTERED_TYPE_ID);
 
-                if (!registered) {
-                    String clsName = cls.getName();
-                    if (clsName != null)
-                        writer.doWriteString(clsName);
-                }
+                if (!registered)
+                    writer.doWriteString(cls.getName());
 
                 try {
                     ((Externalizable)obj).writeExternal(writer);
