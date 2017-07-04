@@ -284,7 +284,8 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
             mapper = userType ? ctx.userTypeMapper(typeId) : BinaryContext.defaultMapper();
             schema = BinaryUtils.hasSchema(flags) ? getOrCreateSchema() : null;
-        } else if (objType == GridBinaryMarshaller.EXTERNALIZABLE){
+        }
+        else if (objType == GridBinaryMarshaller.EXTERNALIZABLE){
             int typeId0 = in.readInt();
 
             if (typeId0 == UNREGISTERED_TYPE_ID) {
@@ -302,7 +303,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
                 int clsNameLen = in.position() - off;
 
-                dataStart = in.position() + clsNameLen;
+                dataStart = in.position() /*+ clsNameLen*/;
             }
             else {
                 typeId = typeId0;

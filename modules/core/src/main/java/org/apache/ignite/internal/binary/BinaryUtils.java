@@ -1746,6 +1746,27 @@ public class BinaryUtils {
     }
 
     /**
+     * Read Externalizable object.
+     *
+     * @return Result.
+     */
+    public static Object doReadExternalizable(BinaryInputStream in, BinaryContext ctx, @Nullable ClassLoader clsLdr) {
+        BinaryReaderExImpl reader = new BinaryReaderExImpl(ctx,
+            in,
+            clsLdr,
+            null,
+            true);
+
+        Object obj0 = reader.deserialize();
+
+        BinaryClassDescriptor desc = reader.descriptor();
+
+        assert desc != null;
+
+        return obj0;
+    }
+
+    /**
      * Read object serialized using optimized marshaller.
      *
      * @return Result.
@@ -1856,6 +1877,12 @@ public class BinaryUtils {
                     return po.deserialize();
 
                 return po;
+            }
+
+            case GridBinaryMarshaller.EXTERNALIZABLE: {
+                in.position(start);
+
+                return doReadExternalizable(in, ctx, ldr);
             }
 
             case GridBinaryMarshaller.BYTE:

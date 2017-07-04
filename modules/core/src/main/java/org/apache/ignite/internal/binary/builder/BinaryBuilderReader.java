@@ -803,6 +803,16 @@ public class BinaryBuilderReader implements BinaryPositionReadable {
                 return new BinaryPlainBinaryObject(binaryObj);
             }
 
+            case GridBinaryMarshaller.EXTERNALIZABLE: {
+                final BinaryHeapInputStream bin = BinaryHeapInputStream.create(arr, pos - 1);
+
+                final Object obj = BinaryUtils.doReadExternalizable(bin, ctx, U.resolveClassLoader(ctx.configuration()));
+
+                pos = bin.position();
+
+                return obj;
+            }
+
             case GridBinaryMarshaller.OPTM_MARSH: {
                 final BinaryHeapInputStream bin = BinaryHeapInputStream.create(arr, pos);
 
