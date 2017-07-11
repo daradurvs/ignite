@@ -1870,7 +1870,7 @@ public class BinaryUtils {
                 }
 
                 handles.setHandle(po, start);
-                
+
                 return po;
             }
 
