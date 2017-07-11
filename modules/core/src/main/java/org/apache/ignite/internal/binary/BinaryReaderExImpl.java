@@ -61,6 +61,7 @@ import static org.apache.ignite.internal.binary.GridBinaryMarshaller.DOUBLE_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.ENUM;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.ENUM_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.EXTERNALIZABLE;
+import static org.apache.ignite.internal.binary.GridBinaryMarshaller.EXTERNALIZABLE_HDR_LEN;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.FLOAT;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.FLOAT_ARR;
 import static org.apache.ignite.internal.binary.GridBinaryMarshaller.HANDLE;
@@ -214,6 +215,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
         start = in.position();
 
         byte objType = in.readByte();
+
         // Perform full header parsing in case of binary object.
         if (!skipHdrCheck && (objType == GridBinaryMarshaller.OBJ)) {
             // Ensure protocol is fine.
@@ -285,7 +287,7 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
             mapper = userType ? ctx.userTypeMapper(typeId) : BinaryContext.defaultMapper();
             schema = BinaryUtils.hasSchema(flags) ? getOrCreateSchema() : null;
         }
-        else if (objType == GridBinaryMarshaller.EXTERNALIZABLE){
+        else if (objType == GridBinaryMarshaller.EXTERNALIZABLE) {
             int typeId0 = in.readInt();
 
             if (typeId0 == UNREGISTERED_TYPE_ID) {
@@ -303,12 +305,12 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
 
                 int clsNameLen = in.position() - off;
 
-                dataStart = in.position() /*+ clsNameLen*/;
+                dataStart = start + EXTERNALIZABLE_HDR_LEN + clsNameLen;
             }
             else {
                 typeId = typeId0;
 
-                dataStart = in.position();
+                dataStart = start + EXTERNALIZABLE_HDR_LEN;
             }
 
             rawOff = 0;
