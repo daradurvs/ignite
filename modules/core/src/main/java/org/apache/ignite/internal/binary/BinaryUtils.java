@@ -1870,12 +1870,7 @@ public class BinaryUtils {
                 }
 
                 handles.setHandle(po, start);
-
-                BinaryClassDescriptor descr = ctx.descriptorForTypeId(true, po.typeId(), ldr, false);
-
-                if (BinaryUtils.mode(descr.describedClass()) == BinaryWriteMode.EXTERNALIZABLE)
-                    return po.deserialize();
-
+                
                 return po;
             }
 
