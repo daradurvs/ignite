@@ -861,13 +861,7 @@ public class BinaryClassDescriptor {
 
                     reader.setHandle(res);
 
-                    try {
-                        ((Externalizable)res).readExternal(reader);
-                    } catch (IOException | ClassNotFoundException e) {
-                        //Optimazed Marshaller caused IgniteCheckedException when readExternal throw exception.
-                        //Ignore this crash some test like testResponseMessageOnUnmarshallingFailed
-                        throw new IgniteCheckedException("Failed to deserialize externalizable object [typeName=" + typeName + ']', e);
-                    }
+                    ((Externalizable)res).readExternal(reader);
 
                     break;
 
