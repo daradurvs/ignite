@@ -778,6 +778,9 @@ public class BinaryClassDescriptor {
                 break;
 
             case EXTERNALIZABLE:
+                if (writer.tryWriteAsHandle(obj))
+                    break;
+
                 BinaryOutputStream out = writer.out();
 
                 out.unsafeWriteByte(GridBinaryMarshaller.EXTERNALIZABLE);
