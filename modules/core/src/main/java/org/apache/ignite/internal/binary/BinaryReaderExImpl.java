@@ -288,6 +288,8 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
             schema = BinaryUtils.hasSchema(flags) ? getOrCreateSchema() : null;
         }
         else if (objType == GridBinaryMarshaller.EXTERNALIZABLE) {
+            in.readInt(); //skip len
+
             int typeId0 = in.readInt();
 
             if (typeId0 == UNREGISTERED_TYPE_ID) {

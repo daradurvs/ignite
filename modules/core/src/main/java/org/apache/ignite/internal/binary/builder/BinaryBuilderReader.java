@@ -361,6 +361,11 @@ public class BinaryBuilderReader implements BinaryPositionReadable {
 
                 break;
 
+            case GridBinaryMarshaller.EXTERNALIZABLE:
+                len = readInt() + 4;
+
+                break;
+
             default:
                 throw new BinaryObjectException("Invalid flag value: " + type);
         }
@@ -483,6 +488,14 @@ public class BinaryBuilderReader implements BinaryPositionReadable {
                 BinaryObjectImpl binaryObj = new BinaryObjectImpl(ctx, arr, pos + 4 + start);
 
                 return new BinaryPlainBinaryObject(binaryObj);
+            }
+
+            case GridBinaryMarshaller.EXTERNALIZABLE: {
+                final BinaryHeapInputStream bin = BinaryHeapInputStream.create(arr, pos + 1);
+
+                final Object obj = BinaryUtils.doReadExternalizable(bin, ctx, U.resolveClassLoader(ctx.configuration()));
+
+                return obj;
             }
 
             case GridBinaryMarshaller.OPTM_MARSH: {

@@ -54,6 +54,7 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.marshaller.MarshallerExclusions;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.ignite.internal.binary.BinaryUtils.computeSerialVersionUid;
 import static org.apache.ignite.internal.processors.query.QueryUtils.isGeometryClass;
 
 /**
@@ -84,6 +85,9 @@ public class BinaryClassDescriptor {
 
     /** */
     private final int typeId;
+
+    /** Short ID. */
+    private final short checksum;
 
     /** */
     private final String typeName;
@@ -360,6 +364,13 @@ public class BinaryClassDescriptor {
             writeReplacer0 = new BinaryMethodWriteReplacer(writeReplaceMthd);
 
         writeReplacer = writeReplacer0;
+
+        try {
+            checksum = computeSerialVersionUid(cls, null);
+        }
+        catch (IOException e) {
+            throw new BinaryObjectException("Failed to compute serialVersionUID [typeName=" + typeName + ']', e);
+        }
     }
 
     /**
@@ -783,12 +794,14 @@ public class BinaryClassDescriptor {
 
                 BinaryOutputStream out = writer.out();
 
-                out.unsafeWriteByte(GridBinaryMarshaller.EXTERNALIZABLE);
+                int dataStart = out.position();
 
-                out.unsafeWriteInt(registered ? typeId : GridBinaryMarshaller.UNREGISTERED_TYPE_ID);
+                out.position(dataStart + 1 + 4 + 4); // type, len, typeId
 
                 if (!registered)
                     writer.doWriteString(cls.getName());
+
+                writer.writeShort(checksum);
 
                 try {
                     ((Externalizable)obj).writeExternal(writer);
@@ -796,6 +809,16 @@ public class BinaryClassDescriptor {
                 catch (IOException e) {
                     throw new BinaryObjectException("Failed to serialize externalizable object [typeName=" + typeName + ']', e);
                 }
+
+                // Actual write.
+                int retPos = out.position();
+
+                out.position(dataStart);
+
+                out.unsafeWriteByte(GridBinaryMarshaller.EXTERNALIZABLE);
+                out.unsafeWriteInt(retPos - dataStart);
+                out.unsafeWriteInt(registered ? typeId : GridBinaryMarshaller.UNREGISTERED_TYPE_ID);
+                out.position(retPos);
 
                 break;
 
@@ -863,6 +886,13 @@ public class BinaryClassDescriptor {
                     res = newInstance();
 
                     reader.setHandle(res);
+
+                    short checksum = reader.readShort();
+
+                    if (checksum != this.checksum)
+                        throw new ClassNotFoundException("Optimized stream class checksum mismatch " +
+                            "(is same version of marshalled class present on all nodes?) " +
+                            "[expected=" + this.checksum + ", actual=" + checksum + ", cls=" + cls + ']');
 
                     ((Externalizable)res).readExternal(reader);
 
