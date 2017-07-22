@@ -17,6 +17,10 @@
 
 package org.apache.ignite.testframework.junits;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectStreamException;
 import java.io.Serializable;
 import java.lang.reflect.Field;
@@ -24,6 +28,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
+import java.net.JarURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -40,6 +45,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.jar.JarFile;
 import javax.cache.configuration.Factory;
 import javax.cache.configuration.FactoryBuilder;
 import junit.framework.TestCase;
@@ -859,6 +865,83 @@ public abstract class GridAbstractTest extends TestCase {
         }
         else
             return startRemoteGrid(igniteInstanceName, null, ctx);
+    }
+
+    /** */
+    private static final String MVN_JAR_LINK_TEMPLATE = "http://central.maven.org/maven2/org/apache/ignite/ignite-core/%VERSION%/ignite-core-%VERSION%.jar";
+
+    /**
+     * TODO: description
+     *
+     * @throws Exception If failed.
+     */
+    protected Ignite startGrid(String igniteInstanceName, IgniteConfiguration cfg, String ver, List<String> jvmArgs) throws Exception {
+//        if (!isMultiJvm())
+//            throw new IllegalStateException();
+
+        ver = "2.0.0";
+
+        String link = MVN_JAR_LINK_TEMPLATE.replaceAll("%VERSION%", ver);
+
+        URL url = new URL(link);
+
+//        JarFile file = downloadJar(url);
+
+        // TODO: download a jar-archive and save to temp dir
+
+        if (cfg == null)
+            cfg = optimize(getConfiguration(igniteInstanceName));
+
+        Collection<String> filteredJvmArgs = new ArrayList<>();
+
+        filteredJvmArgs.add("-ea");
+
+        for (String arg : U.jvmArgs()) {
+            if (arg.startsWith("-Xmx") || arg.startsWith("-Xms"))
+                filteredJvmArgs.add(arg);
+        }
+
+        String classPath = System.getProperty("java.class.path");
+
+        String[] paths = classPath.split(File.pathSeparator);
+
+        StringBuilder pathBuilder = new StringBuilder();
+
+        for (String path : paths) {
+            if (path.contains("ignite\\modules\\core\\target\\classes"))
+                continue;
+
+            pathBuilder.append(path).append(File.pathSeparator);
+        }
+
+        pathBuilder.append("c:\\TEMP\\ignite\\ignite-core-2.0.0.jar").append(File.pathSeparator);
+
+        filteredJvmArgs.add("-cp");
+        filteredJvmArgs.add(pathBuilder.toString());
+
+        return new IgniteProcessProxy(cfg, log, grid(0), true, filteredJvmArgs);
+    }
+
+    /** */
+    protected JarFile downloadJar(URL url) throws IOException {
+        JarURLConnection con = (JarURLConnection)url.openConnection();
+
+        return con.getJarFile();
+    }
+
+    /** */
+    protected byte[] downloadFile(URL url) throws IOException {
+        try (ByteArrayOutputStream os = new ByteArrayOutputStream();
+             InputStream is = url.openStream()) {
+
+            byte[] buf = new byte[1024];
+            int n;
+
+            while ((n = is.read(buf)) > 0)
+                os.write(buf, 0, n);
+
+            return os.toByteArray();
+        }
     }
 
     /**
@@ -1716,6 +1799,15 @@ public abstract class GridAbstractTest extends TestCase {
      * @see #executeOnLocalOrRemoteJvm(IgniteCache, TestCacheCallable)
      */
     protected boolean isMultiJvm() {
+        return false;
+    }
+
+    /**
+     * Gets flag whether nodes with different versions to join in topology.
+     *
+     * @return {@code true} to allow multi version nodes.
+     */
+    protected boolean isMultiVersion() {
         return false;
     }
 
