@@ -55,9 +55,9 @@ public class TestMultiVersionMode extends GridCommonAbstractTest {
         try {
             startGrid(0);
 
-            startGrid("testMultiVersion", null, "2.0.0", true);
-
-        } finally {
+            startGrid("testMultiVersion", "2.0.0", null);
+        }
+        finally {
             stopAllGrids();
         }
     }

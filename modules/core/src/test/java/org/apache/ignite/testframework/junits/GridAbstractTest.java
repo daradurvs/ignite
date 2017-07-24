@@ -878,11 +878,26 @@ public abstract class GridAbstractTest extends TestCase {
      * @param igniteInstanceName Instance name.
      * @param cfg Ignite configuration.
      * @param ver Ignite version.
+     * @return Started grid.
+     * @throws Exception If failed
+     */
+    protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg) throws Exception {
+        return startGrid(igniteInstanceName, ver, cfg, true);
+    }
+
+    /**
+     * Download Ignite's jar-artifact of given version
+     * from the maven repository.
+     * Uses the downloaded artifact to start new grid in separate JVM.
+     *
+     * @param igniteInstanceName Instance name.
+     * @param cfg Ignite configuration.
+     * @param ver Ignite version.
      * @param resetDiscovery resetDiscovery
      * @return Started grid.
      * @throws Exception If failed
      */
-    protected Ignite startGrid(String igniteInstanceName, IgniteConfiguration cfg, String ver,
+    protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg,
         boolean resetDiscovery) throws Exception {
         if (isFirstGrid(igniteInstanceName))
             throw new IllegalStateException("Start local node first");
