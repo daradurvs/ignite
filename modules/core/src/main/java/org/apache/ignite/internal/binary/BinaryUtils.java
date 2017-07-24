@@ -2205,10 +2205,10 @@ public class BinaryUtils {
     @SuppressWarnings("unchecked")
     public static boolean isCustomJavaSerialization(Class cls) {
         for (Class c = cls; c != null && !c.equals(Object.class); c = c.getSuperclass()) {
-            try {
-                if (Externalizable.class.isAssignableFrom(c))
-                    return true;
+            if (Externalizable.class.isAssignableFrom(c))
+                return true;
 
+            try {
                 Method writeObj = c.getDeclaredMethod("writeObject", ObjectOutputStream.class);
                 Method readObj = c.getDeclaredMethod("readObject", ObjectInputStream.class);
 
