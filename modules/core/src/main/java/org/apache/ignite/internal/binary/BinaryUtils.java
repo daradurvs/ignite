@@ -2206,6 +2206,9 @@ public class BinaryUtils {
     public static boolean isCustomJavaSerialization(Class cls) {
         for (Class c = cls; c != null && !c.equals(Object.class); c = c.getSuperclass()) {
             try {
+                if (Externalizable.class.isAssignableFrom(c))
+                    return true;
+
                 Method writeObj = c.getDeclaredMethod("writeObject", ObjectOutputStream.class);
                 Method readObj = c.getDeclaredMethod("readObject", ObjectInputStream.class);
 

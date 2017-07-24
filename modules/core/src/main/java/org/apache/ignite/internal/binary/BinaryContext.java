@@ -1190,8 +1190,7 @@ public class BinaryContext {
      * @return {@code True} if reflective serializer can be used.
      */
     private static boolean canUseReflectiveSerializer(Class cls) {
-        return BinaryUtils.isBinarylizable(cls) || Externalizable.class.isAssignableFrom(cls)
-            || !BinaryUtils.isCustomJavaSerialization(cls);
+        return BinaryUtils.isBinarylizable(cls) || !BinaryUtils.isCustomJavaSerialization(cls);
     }
 
     /**
