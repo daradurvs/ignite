@@ -17,10 +17,7 @@
 
 package org.apache.ignite.testframework.junits;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectStreamException;
 import java.io.Serializable;
 import java.lang.reflect.Field;
@@ -28,7 +25,6 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
-import java.net.JarURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -36,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -45,10 +42,10 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.jar.JarFile;
 import javax.cache.configuration.Factory;
 import javax.cache.configuration.FactoryBuilder;
 import junit.framework.TestCase;
+import org.apache.commons.io.FileUtils;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCheckedException;
@@ -870,24 +867,33 @@ public abstract class GridAbstractTest extends TestCase {
     /** */
     private static final String MVN_JAR_LINK_TEMPLATE = "http://central.maven.org/maven2/org/apache/ignite/ignite-core/%VERSION%/ignite-core-%VERSION%.jar";
 
+
+    private static final Map<String, File> TEMP_FILES_STORE = new HashMap<>();
+
     /**
      * TODO: description
      *
      * @throws Exception If failed.
      */
-    protected Ignite startGrid(String igniteInstanceName, IgniteConfiguration cfg, String ver, List<String> jvmArgs) throws Exception {
-//        if (!isMultiJvm())
-//            throw new IllegalStateException();
+    protected Ignite startGrid(String igniteInstanceName, IgniteConfiguration cfg, String ver, boolean resetDiscovery) throws Exception {
+        if (isFirstGrid(igniteInstanceName))
+            throw new IllegalStateException("Start local node first");
 
-        ver = "2.0.0";
+        if (!isMultiJvm())
+            throw new IllegalStateException("");
 
-        String link = MVN_JAR_LINK_TEMPLATE.replaceAll("%VERSION%", ver);
+        File tempJarFile = TEMP_FILES_STORE.get(ver);
 
-        URL url = new URL(link);
+        if (tempJarFile == null) {
+            String link = MVN_JAR_LINK_TEMPLATE.replaceAll("%VERSION%", ver);
 
-//        JarFile file = downloadJar(url);
+            tempJarFile = new File(System.getProperty("java.io.tmpdir") + File.separator + link.substring(link.lastIndexOf("/")));
 
-        // TODO: download a jar-archive and save to temp dir
+            FileUtils.copyURLToFile(new URL(link), tempJarFile);
+
+            TEMP_FILES_STORE.put(ver, tempJarFile);
+        }
+        // TODO: remove temp files after tests
 
         if (cfg == null)
             cfg = optimize(getConfiguration(igniteInstanceName));
@@ -914,34 +920,12 @@ public abstract class GridAbstractTest extends TestCase {
             pathBuilder.append(path).append(File.pathSeparator);
         }
 
-        pathBuilder.append("c:\\TEMP\\ignite\\ignite-core-2.0.0.jar").append(File.pathSeparator);
+        pathBuilder.append(tempJarFile.getPath()).append(File.pathSeparator);
 
         filteredJvmArgs.add("-cp");
         filteredJvmArgs.add(pathBuilder.toString());
 
-        return new IgniteProcessProxy(cfg, log, grid(0), true, filteredJvmArgs);
-    }
-
-    /** */
-    protected JarFile downloadJar(URL url) throws IOException {
-        JarURLConnection con = (JarURLConnection)url.openConnection();
-
-        return con.getJarFile();
-    }
-
-    /** */
-    protected byte[] downloadFile(URL url) throws IOException {
-        try (ByteArrayOutputStream os = new ByteArrayOutputStream();
-             InputStream is = url.openStream()) {
-
-            byte[] buf = new byte[1024];
-            int n;
-
-            while ((n = is.read(buf)) > 0)
-                os.write(buf, 0, n);
-
-            return os.toByteArray();
-        }
+        return new IgniteProcessProxy(cfg, log, grid(0), resetDiscovery, filteredJvmArgs);
     }
 
     /**
@@ -1799,15 +1783,6 @@ public abstract class GridAbstractTest extends TestCase {
      * @see #executeOnLocalOrRemoteJvm(IgniteCache, TestCacheCallable)
      */
     protected boolean isMultiJvm() {
-        return false;
-    }
-
-    /**
-     * Gets flag whether nodes with different versions to join in topology.
-     *
-     * @return {@code true} to allow multi version nodes.
-     */
-    protected boolean isMultiVersion() {
         return false;
     }
 

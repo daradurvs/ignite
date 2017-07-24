@@ -17,6 +17,9 @@
 
 package org.apache.ignite.testframework.junits.multijvm;
 
+import com.thoughtworks.xstream.converters.ConversionException;
+import com.thoughtworks.xstream.converters.reflection.AbstractReflectionConverter;
+import com.thoughtworks.xstream.mapper.MapperWrapper;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
@@ -39,6 +42,10 @@ import org.apache.ignite.internal.util.GridJavaProcess;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.marshaller.Marshaller;
+import org.apache.ignite.spi.communication.CommunicationSpi;
+import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
+import org.apache.ignite.spi.discovery.DiscoverySpi;
+import org.apache.ignite.spi.discovery.DiscoverySpiListener;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.testframework.junits.IgniteTestResources;
 import sun.jvmstat.monitor.HostIdentifier;
@@ -130,6 +137,9 @@ public class IgniteNodeRunner {
             cfg0.setMBeanServer(null);
             cfg0.setGridLogger(null);
 
+            // TODO: workaround
+            cfg0.setCommunicationSpi(null);
+
             new XStream().toXML(cfg0, out);
         }
     }
@@ -146,7 +156,10 @@ public class IgniteNodeRunner {
     private static IgniteConfiguration readCfgFromFileAndDeleteFile(String fileName)
         throws IOException, IgniteCheckedException {
         try(BufferedReader cfgReader = new BufferedReader(new FileReader(fileName))) {
-            IgniteConfiguration cfg = (IgniteConfiguration)new XStream().fromXML(cfgReader);
+            XStream xStream = new XStream();
+            xStream.ignoreUnknownElements(); // to avoid UnknownFieldException in MultiVersion mode
+
+            IgniteConfiguration cfg = (IgniteConfiguration)xStream.fromXML(cfgReader);
 
             if (cfg.getMarshaller() == null) {
                 Marshaller marsh = IgniteTestResources.getMarshaller();
@@ -161,6 +174,10 @@ public class IgniteNodeRunner {
                 disco.setIpFinder(GridCacheAbstractFullApiSelfTest.LOCAL_IP_FINDER);
                 cfg.setDiscoverySpi(disco);
             }
+
+            // TODO: workaround
+            cfg.setLateAffinityAssignment(true);
+            cfg.setPeerClassLoadingEnabled(true);
 
             return cfg;
         }

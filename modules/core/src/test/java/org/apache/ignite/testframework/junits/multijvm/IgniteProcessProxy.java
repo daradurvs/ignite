@@ -200,7 +200,7 @@ public class IgniteProcessProxy implements IgniteEx {
      * @param resetDiscovery Reset DiscoverySpi at the configuration.
      * @throws Exception On error.
      */
-    public IgniteProcessProxy(IgniteConfiguration cfg, IgniteLogger log, Ignite locJvmGrid, boolean resetDiscovery, Collection<String> ver)
+    public IgniteProcessProxy(IgniteConfiguration cfg, IgniteLogger log, Ignite locJvmGrid, boolean resetDiscovery, Collection<String> filteredJvmArgs)
         throws Exception {
         this.cfg = cfg;
         this.locJvmGrid = locJvmGrid;
@@ -245,7 +245,7 @@ public class IgniteProcessProxy implements IgniteEx {
             },
             null,
             System.getProperty(TEST_MULTIJVM_JAVA_HOME),
-            ver, // JVM Args.
+            filteredJvmArgs, // JVM Args.
             System.getProperty("surefire.test.class.path")
         );
 
