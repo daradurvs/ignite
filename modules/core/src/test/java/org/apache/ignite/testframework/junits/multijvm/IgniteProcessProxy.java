@@ -19,6 +19,7 @@ package org.apache.ignite.testframework.junits.multijvm;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -135,62 +136,7 @@ public class IgniteProcessProxy implements IgniteEx {
      */
     public IgniteProcessProxy(IgniteConfiguration cfg, IgniteLogger log, Ignite locJvmGrid, boolean resetDiscovery)
         throws Exception {
-        this.cfg = cfg;
-        this.locJvmGrid = locJvmGrid;
-        this.log = log.getLogger("jvm-" + id.toString().substring(0, id.toString().indexOf('-')));
-
-        String cfgFileName = IgniteNodeRunner.storeToFile(cfg.setNodeId(id), resetDiscovery);
-
-        Collection<String> filteredJvmArgs = new ArrayList<>();
-
-        filteredJvmArgs.add("-ea");
-
-        Marshaller marsh = cfg.getMarshaller();
-
-        if (marsh != null)
-            filteredJvmArgs.add("-D" + IgniteTestResources.MARSH_CLASS_NAME + "=" + marsh.getClass().getName());
-        else
-            filteredJvmArgs.add("-D" + IgniteTestResources.MARSH_CLASS_NAME + "=" + BinaryMarshaller.class.getName());
-
-        for (String arg : U.jvmArgs()) {
-            if (arg.startsWith("-Xmx") || arg.startsWith("-Xms") ||
-                arg.startsWith("-cp") || arg.startsWith("-classpath") ||
-                (marsh != null && arg.startsWith("-D" + IgniteTestResources.MARSH_CLASS_NAME)))
-                filteredJvmArgs.add(arg);
-        }
-
-        final CountDownLatch rmtNodeStartedLatch = new CountDownLatch(1);
-
-        if (locJvmGrid != null)
-            locJvmGrid.events().localListen(new NodeStartedListener(id, rmtNodeStartedLatch), EventType.EVT_NODE_JOINED);
-
-        proc = GridJavaProcess.exec(
-            IgniteNodeRunner.class.getCanonicalName(),
-            cfgFileName, // Params.
-            this.log,
-            // Optional closure to be called each time wrapped process prints line to system.out or system.err.
-            new IgniteInClosure<String>() {
-                @Override public void apply(String s) {
-                    IgniteProcessProxy.this.log.info(s);
-                }
-            },
-            null,
-            System.getProperty(TEST_MULTIJVM_JAVA_HOME),
-            filteredJvmArgs, // JVM Args.
-            System.getProperty("surefire.test.class.path")
-        );
-
-        if (locJvmGrid != null)
-            assert rmtNodeStartedLatch.await(30, TimeUnit.SECONDS): "Remote node has not joined [id=" + id + ']';
-
-        IgniteProcessProxy prevVal = gridProxies.putIfAbsent(cfg.getIgniteInstanceName(), this);
-
-        if (prevVal != null) {
-            remoteCompute().run(new StopGridTask(cfg.getIgniteInstanceName(), true));
-
-            throw new IllegalStateException("There was found instance assotiated with " + cfg.getIgniteInstanceName() +
-                ", instance= " + prevVal + ". New started node was stopped.");
-        }
+        this(cfg, log, locJvmGrid, resetDiscovery, null);
     }
 
     /**
@@ -198,35 +144,38 @@ public class IgniteProcessProxy implements IgniteEx {
      * @param log Logger.
      * @param locJvmGrid Local JVM grid.
      * @param resetDiscovery Reset DiscoverySpi at the configuration.
+     * @param jvmArgs JVM Arguments.
      * @throws Exception On error.
      */
-    public IgniteProcessProxy(IgniteConfiguration cfg, IgniteLogger log, Ignite locJvmGrid, boolean resetDiscovery, Collection<String> filteredJvmArgs)
-        throws Exception {
+    public IgniteProcessProxy(IgniteConfiguration cfg, IgniteLogger log, Ignite locJvmGrid, boolean resetDiscovery,
+        Collection<String> jvmArgs) throws Exception {
         this.cfg = cfg;
         this.locJvmGrid = locJvmGrid;
         this.log = log.getLogger("jvm-" + id.toString().substring(0, id.toString().indexOf('-')));
 
         String cfgFileName = IgniteNodeRunner.storeToFile(cfg.setNodeId(id), resetDiscovery);
-        
-/*
-        Collection<String> filteredJvmArgs = new ArrayList<>();
 
-        filteredJvmArgs.add("-ea");
+        Collection<String> filteredJvmArgs = jvmArgs;
 
-        Marshaller marsh = cfg.getMarshaller();
+        if (filteredJvmArgs == null) {
+            filteredJvmArgs = new ArrayList<>();
 
-        if (marsh != null)
-            filteredJvmArgs.add("-D" + IgniteTestResources.MARSH_CLASS_NAME + "=" + marsh.getClass().getName());
-        else
-            filteredJvmArgs.add("-D" + IgniteTestResources.MARSH_CLASS_NAME + "=" + BinaryMarshaller.class.getName());
+            filteredJvmArgs.add("-ea");
 
-        for (String arg : U.jvmArgs()) {
-            if (arg.startsWith("-Xmx") || arg.startsWith("-Xms") ||
-                arg.startsWith("-cp") || arg.startsWith("-classpath") ||
-                (marsh != null && arg.startsWith("-D" + IgniteTestResources.MARSH_CLASS_NAME)))
-                filteredJvmArgs.add(arg);
+            Marshaller marsh = cfg.getMarshaller();
+
+            if (marsh != null)
+                filteredJvmArgs.add("-D" + IgniteTestResources.MARSH_CLASS_NAME + "=" + marsh.getClass().getName());
+            else
+                filteredJvmArgs.add("-D" + IgniteTestResources.MARSH_CLASS_NAME + "=" + BinaryMarshaller.class.getName());
+
+            for (String arg : U.jvmArgs()) {
+                if (arg.startsWith("-Xmx") || arg.startsWith("-Xms") ||
+                    arg.startsWith("-cp") || arg.startsWith("-classpath") ||
+                    (marsh != null && arg.startsWith("-D" + IgniteTestResources.MARSH_CLASS_NAME)))
+                    filteredJvmArgs.add(arg);
+            }
         }
-*/
 
         final CountDownLatch rmtNodeStartedLatch = new CountDownLatch(1);
 

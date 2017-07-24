@@ -36,15 +36,11 @@ public class TestMultiVersionMode extends GridCommonAbstractTest {
         super.beforeTestsStarted();
 
         TestCompatibilityPluginProvider.enable();
-
-        startGrid(0);
     }
 
     /** {@inheritDoc} */
     @Override protected void afterTestsStopped() throws Exception {
         super.afterTestsStopped();
-
-        stopAllGrids();
 
         TestCompatibilityPluginProvider.disable();
     }
@@ -55,8 +51,14 @@ public class TestMultiVersionMode extends GridCommonAbstractTest {
     }
 
     /** */
-    public void testFile() throws Exception {
-        startGrid("testMultiVersion", null, "2.0.0", true);
-//        startGrid(1);
+    public void testJoinMultiVersionTopology() throws Exception {
+        try {
+            startGrid(0);
+
+            startGrid("testMultiVersion", null, "2.0.0", true);
+
+        } finally {
+            stopAllGrids();
+        }
     }
 }

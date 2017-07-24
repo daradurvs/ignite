@@ -867,20 +867,25 @@ public abstract class GridAbstractTest extends TestCase {
     /** */
     private static final String MVN_JAR_LINK_TEMPLATE = "http://central.maven.org/maven2/org/apache/ignite/ignite-core/%VERSION%/ignite-core-%VERSION%.jar";
 
-
+    /** */
     private static final Map<String, File> TEMP_FILES_STORE = new HashMap<>();
 
     /**
-     * TODO: description
+     * Download Ignite's jar-artifact of given version
+     * from the maven repository.
+     * Uses the downloaded artifact to start new grid in separate JVM.
      *
-     * @throws Exception If failed.
+     * @param igniteInstanceName Instance name.
+     * @param cfg Ignite configuration.
+     * @param ver Ignite version.
+     * @param resetDiscovery resetDiscovery
+     * @return Started grid.
+     * @throws Exception If failed
      */
-    protected Ignite startGrid(String igniteInstanceName, IgniteConfiguration cfg, String ver, boolean resetDiscovery) throws Exception {
+    protected Ignite startGrid(String igniteInstanceName, IgniteConfiguration cfg, String ver,
+        boolean resetDiscovery) throws Exception {
         if (isFirstGrid(igniteInstanceName))
             throw new IllegalStateException("Start local node first");
-
-        if (!isMultiJvm())
-            throw new IllegalStateException("");
 
         File tempJarFile = TEMP_FILES_STORE.get(ver);
 
