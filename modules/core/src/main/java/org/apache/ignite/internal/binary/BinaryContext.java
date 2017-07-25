@@ -381,7 +381,7 @@ public class BinaryContext {
                 QueryUtils.isGeometryClass(cls);
         }
         else
-            return desc.useOptimizedMarshaller() || Externalizable.class.isAssignableFrom(cls);
+            return desc.useOptimizedMarshaller() || (desc.userType() && Externalizable.class.isAssignableFrom(cls));
     }
 
     /**
