@@ -794,9 +794,9 @@ public class BinaryClassDescriptor {
 
                 BinaryOutputStream out = writer.out();
 
-                int dataStart = out.position();
+                int start = out.position();
 
-                out.position(dataStart + 1 + 4 + 4); // type, len, typeId
+                out.position(start + GridBinaryMarshaller.EXTERNALIZABLE_HDR_LEN);
 
                 if (!registered)
                     writer.doWriteString(cls.getName());
@@ -813,11 +813,12 @@ public class BinaryClassDescriptor {
                 // Actual write.
                 int retPos = out.position();
 
-                out.position(dataStart);
+                out.position(start);
 
                 out.unsafeWriteByte(GridBinaryMarshaller.EXTERNALIZABLE);
-                out.unsafeWriteInt(retPos - dataStart);
+                out.unsafeWriteInt(retPos - start);
                 out.unsafeWriteInt(registered ? typeId : GridBinaryMarshaller.UNREGISTERED_TYPE_ID);
+
                 out.position(retPos);
 
                 break;
