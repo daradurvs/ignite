@@ -362,9 +362,9 @@ public class BinaryBuilderReader implements BinaryPositionReadable {
                 break;
 
             case GridBinaryMarshaller.EXTERNALIZABLE:
-                len = readInt() + 4;
+                pos += readInt() - 1;
 
-                break;
+                return;
 
             default:
                 throw new BinaryObjectException("Invalid flag value: " + type);
