@@ -232,7 +232,7 @@ public class GridBinaryMarshaller {
     public static final byte DFLT_HDR_LEN = 24;
 
     /** */
-    public static final byte EXTERNALIZABLE_HDR_LEN = 9; // type(byte) + len(int) + typeId(int)
+    public static final byte EXTERNALIZABLE_HDR_LEN = 9;
 
     /** */
     private final BinaryContext ctx;
