@@ -31,6 +31,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.AbstractQueue;
@@ -685,7 +686,7 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
 
         obj.simpl = new SimpleExternalizable("field");
 
-        final BinaryObject po = marshal(obj, binaryMarshaller());
+        BinaryObject po = marshal(obj, binaryMarshaller());
 
         BinaryObjectBuilder builder = BinaryObjectBuilderImpl.wrap(po);
 
@@ -716,6 +717,31 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
         assertEquals(map, obj2.field("simpl"));
 
         assertEquals(map, obj2.toBuilder().getField("simpl"));
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testwriteFieldByOrderWithExternalizable() throws Exception {
+        BinaryMarshaller marsh = binaryMarshaller();
+
+        SimpleEnclosingObject obj = new SimpleEnclosingObject();
+
+        obj.simpl = new SimpleExternalizable("field");
+
+        int len = marshal(obj.simpl, marsh).array().length;
+
+        BinaryObjectImpl bObj = marshal(obj, marsh);
+
+        BinaryFieldEx field = (BinaryFieldEx)bObj.type().field("simpl");
+
+        ByteBuffer buf = ByteBuffer.allocate(len);
+
+        field.writeField(bObj, buf);
+
+        Object obj2 = marsh.unmarshal(buf.array(), null);
+
+        assertEquals(obj.simpl, obj2);
     }
 
     /**
