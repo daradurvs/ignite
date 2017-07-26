@@ -870,6 +870,12 @@ public abstract class GridAbstractTest extends TestCase {
     /** */
     private static final Map<String, File> TEMP_FILES_STORE = new HashMap<>();
 
+    protected Ignite startGrid(int idx, String ver) throws Exception {
+        String instanceName = getTestIgniteInstanceName(idx);
+
+        return startGrid(instanceName, ver, optimize(getConfiguration(instanceName)));
+    }
+
     /**
      * Download Ignite's jar-artifact of given version
      * from the maven repository.
@@ -899,8 +905,6 @@ public abstract class GridAbstractTest extends TestCase {
      */
     protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg,
         boolean resetDiscovery) throws Exception {
-        if (isFirstGrid(igniteInstanceName))
-            throw new IllegalStateException("Start local node first");
 
         File tempJarFile = TEMP_FILES_STORE.get(ver);
 
@@ -927,7 +931,9 @@ public abstract class GridAbstractTest extends TestCase {
                 filteredJvmArgs.add(arg);
         }
 
-        String classPath = System.getProperty("java.class.path");
+        final String tempClassPath = System.getProperty("java.class.path");
+
+        String classPath = tempClassPath;
 
         String[] paths = classPath.split(File.pathSeparator);
 
@@ -944,6 +950,16 @@ public abstract class GridAbstractTest extends TestCase {
 
         filteredJvmArgs.add("-cp");
         filteredJvmArgs.add(pathBuilder.toString());
+
+/*        if (isFirstGrid(igniteInstanceName)) {
+            System.setProperty("java.class.path", pathBuilder.toString());
+
+            Ignite ignite = startGrid(igniteInstanceName, cfg, null);
+
+            System.setProperty("java.class.path", tempClassPath);
+
+            return ignite;
+        }*/
 
         return new IgniteProcessProxy(cfg, log, grid(0), resetDiscovery, filteredJvmArgs);
     }

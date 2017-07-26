@@ -17,6 +17,9 @@
 
 package org.apache.ignite.testframework.junits.multijvm;
 
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.mapper.CannotResolveClassException;
+import com.thoughtworks.xstream.mapper.MapperWrapper;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
@@ -28,7 +31,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import com.thoughtworks.xstream.XStream;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.Ignition;
@@ -130,9 +132,6 @@ public class IgniteNodeRunner {
             cfg0.setMBeanServer(null);
             cfg0.setGridLogger(null);
 
-            // TODO: workaround
-            cfg0.setCommunicationSpi(null);
-
             new XStream().toXML(cfg0, out);
         }
     }
@@ -143,13 +142,30 @@ public class IgniteNodeRunner {
      * @param fileName File name.
      * @return Readed configuration.
      * @throws IOException If failed.
-     * @see #storeToFile(IgniteConfiguration, boolean)
      * @throws IgniteCheckedException On error.
+     * @see #storeToFile(IgniteConfiguration, boolean)
      */
     private static IgniteConfiguration readCfgFromFileAndDeleteFile(String fileName)
         throws IOException, IgniteCheckedException {
-        try(BufferedReader cfgReader = new BufferedReader(new FileReader(fileName))) {
-            XStream xStream = new XStream();
+        try (BufferedReader cfgReader = new BufferedReader(new FileReader(fileName))) {
+
+            XStream xStream = new XStream() {
+                @Override protected MapperWrapper wrapMapper(MapperWrapper next) {
+                    return new MapperWrapper(next) {
+                        @Override public Class realClass(String elementName) {
+                            try {
+                                return super.realClass(elementName);
+                            }
+                            catch (CannotResolveClassException ignored) {
+                                // in case of addition to configurations  a field with a new type of class
+                                // and can't be deserialized because a definition is absent in classpath
+                                return null;
+                            }
+                        }
+                    };
+                }
+            };
+
             xStream.ignoreUnknownElements(); // to avoid UnknownFieldException in MultiVersion mode
 
             IgniteConfiguration cfg = (IgniteConfiguration)xStream.fromXML(cfgReader);
@@ -170,7 +186,6 @@ public class IgniteNodeRunner {
 
             // TODO: workaround
             cfg.setLateAffinityAssignment(true);
-            cfg.setPeerClassLoadingEnabled(true);
 
             return cfg;
         }
