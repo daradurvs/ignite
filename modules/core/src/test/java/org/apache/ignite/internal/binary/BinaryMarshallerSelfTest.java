@@ -692,7 +692,6 @@ public class BinaryMarshallerSelfTest extends GridCommonAbstractTest {
         assertTrue(builder.build().hasField("simpl"));
 
         assertEquals(obj.simpl, builder.getField("simpl"));
-
     }
 
     /**
