@@ -491,7 +491,7 @@ public class BinaryBuilderReader implements BinaryPositionReadable {
             }
 
             case GridBinaryMarshaller.EXTERNALIZABLE: {
-                final BinaryHeapInputStream bin = BinaryHeapInputStream.create(arr, pos + 1);
+                final BinaryHeapInputStream bin = BinaryHeapInputStream.create(arr, pos);
 
                 final Object obj = BinaryUtils.doReadExternalizable(bin, ctx, U.resolveClassLoader(ctx.configuration()));
 
