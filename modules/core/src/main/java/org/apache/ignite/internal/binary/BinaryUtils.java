@@ -65,7 +65,6 @@ import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.binary.BinaryRawWriter;
 import org.apache.ignite.binary.BinaryType;
 import org.apache.ignite.binary.Binarylizable;
-import org.apache.ignite.cache.affinity.AffinityKey;
 import org.apache.ignite.internal.binary.builder.BinaryLazyValue;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.MutableSingletonList;
@@ -1039,7 +1038,7 @@ public class BinaryUtils {
      * @return Mode.
      */
     @SuppressWarnings("IfMayBeConditional")
-    public static BinaryWriteMode mode(Class<?> cls) {
+    public static BinaryWriteMode mode(Class<?> cls, boolean useSerializer) {
         assert cls != null;
 
         // Primitives.
@@ -1125,7 +1124,7 @@ public class BinaryUtils {
             return BinaryWriteMode.BINARY_OBJ;
         else if (Binarylizable.class.isAssignableFrom(cls))
             return BinaryWriteMode.BINARY;
-        else if (Externalizable.class.isAssignableFrom(cls) && !AffinityKey.class.isAssignableFrom(cls))
+        else if (!useSerializer && Externalizable.class.isAssignableFrom(cls))
             return BinaryWriteMode.EXTERNALIZABLE;
         else if (isSpecialCollection(cls))
             return BinaryWriteMode.COL;
