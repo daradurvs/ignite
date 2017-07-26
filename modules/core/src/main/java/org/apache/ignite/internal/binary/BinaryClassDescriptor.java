@@ -350,7 +350,6 @@ public class BinaryClassDescriptor {
 
         Method writeReplaceMthd;
 
-        if (mode == BinaryWriteMode.BINARY || mode == BinaryWriteMode.OBJECT) {
         if (mode == BinaryWriteMode.BINARY || mode == BinaryWriteMode.OBJECT || mode == BinaryWriteMode.EXTERNALIZABLE) {
             readResolveMtd = U.findNonPublicMethod(cls, "readResolve");
 
