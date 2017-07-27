@@ -864,18 +864,6 @@ public abstract class GridAbstractTest extends TestCase {
             return startRemoteGrid(igniteInstanceName, null, ctx);
     }
 
-    /** */
-    private static final String MVN_JAR_LINK_TEMPLATE = "http://central.maven.org/maven2/org/apache/ignite/ignite-core/%VERSION%/ignite-core-%VERSION%.jar";
-
-    /** */
-    private static final Map<String, File> TEMP_FILES_STORE = new HashMap<>();
-
-    protected Ignite startGrid(int idx, String ver) throws Exception {
-        String instanceName = getTestIgniteInstanceName(idx);
-
-        return startGrid(instanceName, ver, optimize(getConfiguration(instanceName)));
-    }
-
     /**
      * Download Ignite's jar-artifact of given version
      * from the maven repository.
@@ -890,6 +878,12 @@ public abstract class GridAbstractTest extends TestCase {
     protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg) throws Exception {
         return startGrid(igniteInstanceName, ver, cfg, true);
     }
+
+    /** */
+    private static final String MVN_JAR_LINK_TEMPLATE = "http://central.maven.org/maven2/org/apache/ignite/ignite-core/%VERSION%/ignite-core-%VERSION%.jar";
+
+    /** */
+    private static final Map<String, File> ARTIFACTS_STORE = new HashMap<>();
 
     /**
      * Download Ignite's jar-artifact of given version
@@ -906,18 +900,20 @@ public abstract class GridAbstractTest extends TestCase {
     protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg,
         boolean resetDiscovery) throws Exception {
 
-        File tempJarFile = TEMP_FILES_STORE.get(ver);
+        assert !isFirstGrid(igniteInstanceName);
 
-        if (tempJarFile == null) {
+        // TODO: work with Maven's repositories
+        File artifact = ARTIFACTS_STORE.get(ver);
+
+        if (artifact == null) {
             String link = MVN_JAR_LINK_TEMPLATE.replaceAll("%VERSION%", ver);
 
-            tempJarFile = new File(System.getProperty("java.io.tmpdir") + File.separator + link.substring(link.lastIndexOf("/")));
+            artifact = new File(System.getProperty("java.io.tmpdir") + File.separator + link.substring(link.lastIndexOf("/")));
 
-            FileUtils.copyURLToFile(new URL(link), tempJarFile);
+            FileUtils.copyURLToFile(new URL(link), artifact);
 
-            TEMP_FILES_STORE.put(ver, tempJarFile);
+            ARTIFACTS_STORE.put(ver, artifact);
         }
-        // TODO: remove temp files after tests
 
         if (cfg == null)
             cfg = optimize(getConfiguration(igniteInstanceName));
@@ -931,9 +927,8 @@ public abstract class GridAbstractTest extends TestCase {
                 filteredJvmArgs.add(arg);
         }
 
-        final String tempClassPath = System.getProperty("java.class.path");
 
-        String classPath = tempClassPath;
+        String classPath = System.getProperty("java.class.path");
 
         String[] paths = classPath.split(File.pathSeparator);
 
@@ -946,20 +941,10 @@ public abstract class GridAbstractTest extends TestCase {
             pathBuilder.append(path).append(File.pathSeparator);
         }
 
-        pathBuilder.append(tempJarFile.getPath()).append(File.pathSeparator);
+        pathBuilder.append(artifact.getPath()).append(File.pathSeparator);
 
         filteredJvmArgs.add("-cp");
         filteredJvmArgs.add(pathBuilder.toString());
-
-/*        if (isFirstGrid(igniteInstanceName)) {
-            System.setProperty("java.class.path", pathBuilder.toString());
-
-            Ignite ignite = startGrid(igniteInstanceName, cfg, null);
-
-            System.setProperty("java.class.path", tempClassPath);
-
-            return ignite;
-        }*/
 
         return new IgniteProcessProxy(cfg, log, grid(0), resetDiscovery, filteredJvmArgs);
     }
