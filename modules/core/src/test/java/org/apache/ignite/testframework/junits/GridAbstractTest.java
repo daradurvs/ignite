@@ -85,6 +85,7 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.lang.IgniteCallable;
 import org.apache.ignite.lang.IgniteClosure;
+import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.logger.NullLogger;
 import org.apache.ignite.marshaller.Marshaller;
 import org.apache.ignite.marshaller.MarshallerContextTestImpl;
@@ -870,13 +871,14 @@ public abstract class GridAbstractTest extends TestCase {
      * Uses the downloaded artifact to start new grid in separate JVM.
      *
      * @param igniteInstanceName Instance name.
-     * @param cfg Ignite configuration.
      * @param ver Ignite version.
+     * @param cfg Ignite configuration.
+     * @param clos IgniteClosure.
      * @return Started grid.
      * @throws Exception If failed
      */
-    protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg) throws Exception {
-        return startGrid(igniteInstanceName, ver, cfg, true);
+    protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg, IgniteInClosure<IgniteConfiguration> clos) throws Exception {
+        return startGrid(igniteInstanceName, ver, cfg, true, null, clos);
     }
 
     /** */
@@ -898,7 +900,7 @@ public abstract class GridAbstractTest extends TestCase {
      * @throws Exception If failed
      */
     protected Ignite startGrid(String igniteInstanceName, String ver, IgniteConfiguration cfg,
-        boolean resetDiscovery) throws Exception {
+        boolean resetDiscovery, Collection<String> jvmArgs, IgniteInClosure<IgniteConfiguration> clos) throws Exception {
 
         assert !isFirstGrid(igniteInstanceName);
 
@@ -927,6 +929,7 @@ public abstract class GridAbstractTest extends TestCase {
                 filteredJvmArgs.add(arg);
         }
 
+        // TODO: additional JVM args
 
         String classPath = System.getProperty("java.class.path");
 
@@ -946,7 +949,7 @@ public abstract class GridAbstractTest extends TestCase {
         filteredJvmArgs.add("-cp");
         filteredJvmArgs.add(pathBuilder.toString());
 
-        return new IgniteProcessProxy(cfg, log, grid(0), resetDiscovery, filteredJvmArgs);
+        return new IgniteProcessProxy(cfg, log, grid(0), resetDiscovery, filteredJvmArgs, clos);
     }
 
     /**

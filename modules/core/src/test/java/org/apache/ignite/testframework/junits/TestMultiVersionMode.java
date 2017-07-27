@@ -18,6 +18,7 @@
 package org.apache.ignite.testframework.junits;
 
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.plugin.security.compatibility.TestCompatibilityPluginProvider;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
@@ -55,10 +56,17 @@ public class TestMultiVersionMode extends GridCommonAbstractTest {
         try {
             startGrid(0);
 
-            startGrid("testMultiVersion", "2.0.0", null);
+            startGrid("testMultiVersion", "2.0.0", null, new ConfigurationPostProcessor());
         }
         finally {
             stopAllGrids();
+        }
+    }
+
+    /** */
+    private static class ConfigurationPostProcessor implements IgniteInClosure<IgniteConfiguration> {
+        @Override public void apply(IgniteConfiguration cfg) {
+            cfg.setLateAffinityAssignment(true);
         }
     }
 }
