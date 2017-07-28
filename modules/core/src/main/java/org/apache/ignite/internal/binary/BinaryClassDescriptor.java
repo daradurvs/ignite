@@ -122,6 +122,9 @@ public class BinaryClassDescriptor {
     /** */
     private final boolean useOptMarshaller;
 
+    /** Flag indicating that the Externalizable objects marshal through custom serialization methods. */
+    private final boolean useCustomSerialization;
+
     /** */
     private final boolean excluded;
 
@@ -163,7 +166,14 @@ public class BinaryClassDescriptor {
         initialSerializer = serializer;
 
         // If serializer is not defined at this point, then we have to use OptimizedMarshaller.
-        useOptMarshaller = (serializer == null || isGeometryClass(cls)) && !Externalizable.class.isAssignableFrom(cls);
+        // But if class represents the Externalizable, then we have to use BinaryMarshaller.
+        if ((serializer == null || isGeometryClass(cls))) {
+            useCustomSerialization = Externalizable.class.isAssignableFrom(cls);
+            useOptMarshaller =  !useCustomSerialization;
+        } else {
+            useOptMarshaller =  false;
+            useCustomSerialization = false;
+        }
 
         // Reset reflective serializer so that we rely on existing reflection-based serialization.
         if (serializer instanceof BinaryReflectiveSerializer)
@@ -191,7 +201,7 @@ public class BinaryClassDescriptor {
             if (cls == BinaryEnumObjectImpl.class)
                 mode = BinaryWriteMode.BINARY_ENUM;
             else
-                mode = serializer != null ? BinaryWriteMode.BINARY : BinaryUtils.mode(cls, initialSerializer != null);
+                mode = serializer != null ? BinaryWriteMode.BINARY : BinaryUtils.mode(cls, useCustomSerialization);
         }
 
         if (useOptMarshaller && userType && !U.isIgnite(cls) && !U.isJdk(cls) && !QueryUtils.isGeometryClass(cls)) {
@@ -500,6 +510,14 @@ public class BinaryClassDescriptor {
      */
     public boolean useOptimizedMarshaller() {
         return useOptMarshaller;
+    }
+
+    /**
+     * @return {@code true} if {@link BinaryMarshaller} marshal the Externalizable objects
+     * through custom serialization methods.
+     */
+    boolean useCustomSerialization() {
+        return useCustomSerialization;
     }
 
     /**

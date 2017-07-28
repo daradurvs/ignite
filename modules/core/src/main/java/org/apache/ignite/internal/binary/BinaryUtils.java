@@ -1035,10 +1035,12 @@ public class BinaryUtils {
 
     /**
      * @param cls Class.
+     * @param customSerialization Flag indicating that that the Externalizable objects
+     * marshal through custom serialization methods.
      * @return Mode.
      */
     @SuppressWarnings("IfMayBeConditional")
-    public static BinaryWriteMode mode(Class<?> cls, boolean useSerializer) {
+    public static BinaryWriteMode mode(Class<?> cls, boolean customSerialization) {
         assert cls != null;
 
         // Primitives.
@@ -1124,7 +1126,7 @@ public class BinaryUtils {
             return BinaryWriteMode.BINARY_OBJ;
         else if (Binarylizable.class.isAssignableFrom(cls))
             return BinaryWriteMode.BINARY;
-        else if (!useSerializer && Externalizable.class.isAssignableFrom(cls))
+        else if (customSerialization && Externalizable.class.isAssignableFrom(cls))
             return BinaryWriteMode.EXTERNALIZABLE;
         else if (isSpecialCollection(cls))
             return BinaryWriteMode.COL;
