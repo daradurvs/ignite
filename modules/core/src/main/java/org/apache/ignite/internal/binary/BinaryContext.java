@@ -17,7 +17,6 @@
 
 package org.apache.ignite.internal.binary;
 
-import java.io.Externalizable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
