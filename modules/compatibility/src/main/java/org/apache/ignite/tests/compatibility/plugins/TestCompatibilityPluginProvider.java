@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.plugin.compatibility;
+package org.apache.ignite.tests.compatibility.plugins;
 
 import java.io.Serializable;
 import java.util.UUID;

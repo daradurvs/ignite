@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.ignite;
+package org.apache.ignite.tests.compatibility;
 
 import com.google.common.base.Charsets;
 import com.google.common.io.CharStreams;
@@ -24,7 +24,6 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -148,9 +147,7 @@ public class MavenUtils {
 
         final Process p = pb.start();
 
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-
-        Future<Integer> fut = executor.submit(new Callable<Integer>() {
+        Future<Integer> fut = Executors.newSingleThreadExecutor().submit(new Callable<Integer>() {
             @Override public Integer call() throws Exception {
                 return p.waitFor();
             }

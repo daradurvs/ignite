@@ -15,18 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.testframework.junits;
+package org.apache.ignite;
 
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.Event;
 import org.apache.ignite.internal.managers.eventstorage.GridLocalEventListener;
 import org.apache.ignite.lang.IgniteInClosure;
-import org.apache.ignite.plugin.compatibility.TestCompatibilityPluginProvider;
 import org.apache.ignite.testframework.GridTestUtils;
-import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
+import org.apache.ignite.tests.compatibility.plugins.TestCompatibilityPluginProvider;
 
 /** */
-public class TestMultiVersionMode extends GridCommonAbstractTest {
+public class TestMultiVersionMode extends IgniteCompatibilityAbstractTest {
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration() throws Exception {
         IgniteConfiguration cfg = super.getConfiguration();

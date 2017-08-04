@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.plugin.compatibility;
+package org.apache.ignite.tests.compatibility.plugins;
 
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
