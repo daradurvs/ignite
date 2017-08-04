@@ -50,7 +50,31 @@ public class MavenUtils {
      * @see #getPathToArtifact(String)
      */
     public static String getPathToIgniteCoreArtifact(String ver) throws Exception {
-        return getPathToArtifact("org.apache.ignite:ignite-core:" + ver);
+        return getPathToIgniteCoreArtifact(ver, null);
+    }
+
+    /**
+     * Gets a path to an artifact with given version
+     * and groupId=org.apache.ignite and artifactId=ignite-core.
+     *
+     * At first, artifact is looked for in the Maven local repository,
+     * if it isn't exists there, it will be downloaded and stored via Maven.
+     *
+     * @param ver Version of ignite-core artifact.
+     * @param identifier Identifier of ignite-core artifact.
+     * @return Path to the artifact.
+     * @throws Exception In case of an error.
+     * @see #getPathToArtifact(String)
+     */
+    public static String getPathToIgniteCoreArtifact(String ver, String identifier) throws Exception {
+        String id = "org.apache.ignite:ignite-core";
+
+        if (identifier != null && !identifier.isEmpty())
+            id += "-" + identifier;
+
+        id += ":" + ver;
+
+        return getPathToArtifact(id);
     }
 
     /**

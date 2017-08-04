@@ -15,11 +15,12 @@
  * limitations under the License.
  */
 
-package org.apache.ignite;
+package org.apache.ignite.testframework.junits;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
+import org.apache.ignite.Ignite;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteInClosure;

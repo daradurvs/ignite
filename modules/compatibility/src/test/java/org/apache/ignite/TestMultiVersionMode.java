@@ -22,6 +22,7 @@ import org.apache.ignite.events.Event;
 import org.apache.ignite.internal.managers.eventstorage.GridLocalEventListener;
 import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.testframework.GridTestUtils;
+import org.apache.ignite.testframework.junits.IgniteCompatibilityAbstractTest;
 import org.apache.ignite.tests.compatibility.plugins.TestCompatibilityPluginProvider;
 
 /** */
