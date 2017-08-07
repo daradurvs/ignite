@@ -29,6 +29,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Provides some useful methods to work with Maven.
@@ -38,65 +40,76 @@ public class MavenUtils {
     private static String locRepPath = null;
 
     /**
-     * Gets a path to an artifact with given version
-     * and groupId=org.apache.ignite and artifactId=ignite-core.
+     * Gets a path to an artifact with given version and groupId=org.apache.ignite and artifactId=ignite-core.
      *
-     * At first, artifact is looked for in the Maven local repository,
-     * if it isn't exists there, it will be downloaded and stored via Maven.
+     * At first, artifact is looked for in the Maven local repository, if it isn't exists there, it will be downloaded
+     * and stored via Maven.
      *
      * @param ver Version of ignite-core artifact.
      * @return Path to the artifact.
      * @throws Exception In case of an error.
      * @see #getPathToArtifact(String)
      */
-    public static String getPathToIgniteCoreArtifact(String ver) throws Exception {
+    public static String getPathToIgniteCoreArtifact(@NotNull String ver) throws Exception {
         return getPathToIgniteCoreArtifact(ver, null);
     }
 
     /**
-     * Gets a path to an artifact with given version
-     * and groupId=org.apache.ignite and artifactId=ignite-core.
+     * Gets a path to an artifact with given version and groupId=org.apache.ignite and artifactId=ignite-core.
      *
-     * At first, artifact is looked for in the Maven local repository,
-     * if it isn't exists there, it will be downloaded and stored via Maven.
+     * At first, artifact is looked for in the Maven local repository, if it isn't exists there, it will be downloaded
+     * and stored via Maven.
      *
      * @param ver Version of ignite-core artifact.
-     * @param identifier Identifier of ignite-core artifact.
+     * @param classifier Artifact classifier.
      * @return Path to the artifact.
      * @throws Exception In case of an error.
      * @see #getPathToArtifact(String)
      */
-    public static String getPathToIgniteCoreArtifact(String ver, String identifier) throws Exception {
-        String id = "org.apache.ignite:ignite-core";
+    public static String getPathToIgniteCoreArtifact(@NotNull String ver,
+        @Nullable String classifier) throws Exception {
+        String artifact = "org.apache.ignite:ignite-core:" + ver;
 
-        if (identifier != null && !identifier.isEmpty())
-            id += "-" + identifier;
+        if (classifier != null)
+            artifact += ":jar:" + classifier;
 
-        id += ":" + ver;
-
-        return getPathToArtifact(id);
+        return getPathToArtifact(artifact);
     }
 
     /**
      * Gets a path to an artifact with given identifier.
      *
-     * At first, artifact is looked for in the Maven local repository,
-     * if it isn't exists there, it will be downloaded and stored via Maven.
+     * At first, artifact is looked for in the Maven local repository, if it isn't exists there, it will be downloaded
+     * and stored via Maven.
      *
-     * @param artifact Artifact identifier, must match pattern [groupId:artifactId:version].
+     * @param artifact Artifact identifier, must match pattern [groupId:artifactId:version[:packaging[:classifier]]].
      * @return Path to the artifact.
      * @throws Exception In case of an error.
      */
-    public static String getPathToArtifact(String artifact) throws Exception {
+    public static String getPathToArtifact(@NotNull String artifact) throws Exception {
         String[] names = artifact.split(":");
 
-        assert names.length == 3;
+        assert names.length >= 3;
 
         String groupId = names[0];
         String artifactId = names[1];
         String version = names[2];
+        String packaging = null;
+        String classifier = null;
 
-        String jarFileName = String.format("%s-%s.jar", artifactId, version);
+        if (names.length > 3) {
+            packaging = names[3];
+
+            if (names.length > 4)
+                classifier = names[4];
+        }
+
+        String jarFileName = String.format("%s-%s%s.%s",
+            artifactId,
+            version,
+            (classifier == null ? "" : "-" + classifier),
+            (packaging == null ? "jar" : packaging)
+        );
 
         String pathToArtifact = getMavenLocalRepositoryPath() + File.separator +
             groupId.replace(".", File.separator) + File.separator +
@@ -178,7 +191,7 @@ public class MavenUtils {
         });
 
         try {
-            int exitVal = fut.get(5, TimeUnit.MINUTES);
+            int exitVal = fut.get(10, TimeUnit.MINUTES);
 
             if (exitVal != 0)
                 throw new Exception(String.format("Abnormal exit value of %s for pid %s", exitVal, U.jvmPid()));

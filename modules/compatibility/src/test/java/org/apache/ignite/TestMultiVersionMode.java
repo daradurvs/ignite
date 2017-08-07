@@ -18,11 +18,11 @@
 package org.apache.ignite;
 
 import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.events.Event;
-import org.apache.ignite.internal.managers.eventstorage.GridLocalEventListener;
+import org.apache.ignite.internal.processors.cache.GridCacheAbstractFullApiSelfTest;
+import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.lang.IgniteInClosure;
-import org.apache.ignite.testframework.GridTestUtils;
-import org.apache.ignite.testframework.junits.IgniteCompatibilityAbstractTest;
+import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
+import org.apache.ignite.testframework.junits.campatibility.IgniteCompatibilityAbstractTest;
 import org.apache.ignite.tests.compatibility.plugins.TestCompatibilityPluginProvider;
 
 /** */
@@ -49,11 +49,6 @@ public class TestMultiVersionMode extends IgniteCompatibilityAbstractTest {
         TestCompatibilityPluginProvider.disable();
     }
 
-    /** {@inheritDoc} */
-    @Override protected boolean isMultiJvm() {
-        return true;
-    }
-
     /** */
     public void testJoinMultiVersionTopology() throws Exception {
         try {
@@ -69,14 +64,11 @@ public class TestMultiVersionMode extends IgniteCompatibilityAbstractTest {
     /** */
     private static class PostConfigurationClosure implements IgniteInClosure<IgniteConfiguration> {
         @Override public void apply(IgniteConfiguration cfg) {
-            GridTestUtils.setFieldValue(
-                cfg.getCommunicationSpi(),
-                "discoLsnr",
-                new GridLocalEventListener() {
-                    @Override public void onEvent(Event evt) {
-                    }
-                }
-            );
+            cfg.setIgniteInstanceName("testMultiVersion");
+            cfg.setLocalHost("127.0.0.1");
+            TcpDiscoverySpi disco = new TcpDiscoverySpi();
+            disco.setIpFinder(GridCacheAbstractFullApiSelfTest.LOCAL_IP_FINDER);
+            cfg.setDiscoverySpi(disco);
         }
     }
 }

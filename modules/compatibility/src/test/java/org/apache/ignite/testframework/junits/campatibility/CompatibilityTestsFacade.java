@@ -18,7 +18,6 @@
 package org.apache.ignite.testframework.junits.campatibility;
 
 import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.testframework.junits.IgniteCompatibilityAbstractTest;
 
 /**
  * Provides useful methods for compatibility tests.
@@ -42,6 +41,11 @@ public class CompatibilityTestsFacade {
         /** {@inheritDoc} */
         @Override public IgniteConfiguration getConfiguration() throws Exception {
             return super.getConfiguration();
+        }
+
+        /** {@inheritDoc} */
+        @Override protected boolean isMultiJvm() {
+            return true;
         }
     }
 }

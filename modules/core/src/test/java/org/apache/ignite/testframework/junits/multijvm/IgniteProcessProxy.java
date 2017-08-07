@@ -71,6 +71,7 @@ import org.apache.ignite.internal.processors.cache.GridCacheUtilityKey;
 import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
 import org.apache.ignite.internal.processors.hadoop.Hadoop;
 import org.apache.ignite.internal.util.GridJavaProcess;
+import org.apache.ignite.internal.util.lang.GridAbsClosure;
 import org.apache.ignite.internal.util.lang.IgnitePredicateX;
 import org.apache.ignite.internal.util.typedef.G;
 import org.apache.ignite.internal.util.typedef.X;
@@ -174,7 +175,7 @@ public class IgniteProcessProxy implements IgniteEx {
         if (locJvmGrid != null)
             locJvmGrid.events().localListen(new NodeStartedListener(id, rmtNodeStartedLatch), EventType.EVT_NODE_JOINED);
 
-        proc = GridJavaProcess.exec(
+        proc = exec(
             IgniteNodeRunner.class.getCanonicalName(),
             params,
             this.log,
@@ -201,6 +202,35 @@ public class IgniteProcessProxy implements IgniteEx {
             throw new IllegalStateException("There was found instance assotiated with " + cfg.getIgniteInstanceName() +
                 ", instance= " + prevVal + ". New started node was stopped.");
         }
+    }
+
+    /**
+     * Executes main() method of the given class in a separate system process.
+     *
+     * @param clsName Class with main() method to be run.
+     * @param params main() method parameters.
+     * @param log Log to use.
+     * @param printC Optional closure to be called each time wrapped process prints line to system.out or system.err.
+     * @param procKilledC Optional closure to be called when process termination is detected.
+     * @param javaHome Java home location. The process will be started under given JVM.
+     * @param jvmArgs JVM arguments to use.
+     * @param cp Additional classpath.
+     * @return GridJavaProcess - wrapper around {@link Process}.
+     * @throws Exception In case of an error.
+     */
+    protected GridJavaProcess exec(String clsName, String params, @Nullable IgniteLogger log,
+        @Nullable IgniteInClosure<String> printC, @Nullable GridAbsClosure procKilledC,
+        @Nullable String javaHome, @Nullable Collection<String> jvmArgs, @Nullable String cp) throws Exception {
+        return GridJavaProcess.exec(
+            clsName,
+            params,
+            log,
+            printC,
+            procKilledC,
+            javaHome,
+            jvmArgs,
+            cp
+        );
     }
 
     /**

@@ -63,7 +63,7 @@ public class IgniteNodeRunner {
         File.separator + "igniteConfiguration.tmp_";
 
     /** */
-    private static volatile Ignite ignite;
+    protected static volatile Ignite ignite;
 
     /**
      * Starts {@link Ignite} instance accorging to given arguments.
@@ -87,12 +87,14 @@ public class IgniteNodeRunner {
             cfg = readCfgFromFileAndDeleteFile(args[0]);
 
         ignite = Ignition.start(cfg);
+
+
     }
 
     /**
      * @return Ignite instance started at main.
      */
-    public static IgniteEx startedInstance(){
+    public static IgniteEx startedInstance() {
         return (IgniteEx)ignite;
     }
 
@@ -111,7 +113,8 @@ public class IgniteNodeRunner {
      * @throws IOException If failed.
      * @see #readCfgFromFileAndDeleteFile(String)
      */
-    public static String storeToFile(IgniteConfiguration cfg, boolean resetDiscovery) throws IOException, IgniteCheckedException {
+    public static String storeToFile(IgniteConfiguration cfg,
+        boolean resetDiscovery) throws IOException, IgniteCheckedException {
         String fileName = IGNITE_CONFIGURATION_FILE + cfg.getNodeId();
 
         storeToFile(cfg, fileName, true, resetDiscovery);
@@ -132,7 +135,7 @@ public class IgniteNodeRunner {
     public static void storeToFile(IgniteConfiguration cfg, String fileName,
         boolean resetMarshaller,
         boolean resetDiscovery) throws IOException, IgniteCheckedException {
-        try(OutputStream out = new BufferedOutputStream(new FileOutputStream(fileName))) {
+        try (OutputStream out = new BufferedOutputStream(new FileOutputStream(fileName))) {
             IgniteConfiguration cfg0 = new IgniteConfiguration(cfg);
 
             if (resetMarshaller)
@@ -163,8 +166,8 @@ public class IgniteNodeRunner {
     }
 
     /**
-     * Reads configuration and closure from given files names,
-     * applies the closure to the configuration and delete the files after.
+     * Reads configuration and closure from given files names, applies the closure to the configuration and delete the
+     * files after.
      *
      * @param cfgFileName Configuration file name.
      * @param closFileName Closure file name.
@@ -202,7 +205,7 @@ public class IgniteNodeRunner {
      */
     private static IgniteConfiguration readCfgFromFileAndDeleteFile(String fileName)
         throws IOException, IgniteCheckedException {
-        try(BufferedReader cfgReader = new BufferedReader(new FileReader(fileName))) {
+        try (BufferedReader cfgReader = new BufferedReader(new FileReader(fileName))) {
             IgniteConfiguration cfg = (IgniteConfiguration)createXStreamer().fromXML(cfgReader);
 
             if (cfg.getMarshaller() == null) {
@@ -232,7 +235,7 @@ public class IgniteNodeRunner {
      * @return List of killed process ids.
      * @throws Exception If exception.
      */
-    public static List<Integer> killAll() throws Exception{
+    public static List<Integer> killAll() throws Exception {
         MonitoredHost monitoredHost = MonitoredHost.getMonitoredHost(new HostIdentifier("localhost"));
 
         Set<Integer> jvms = monitoredHost.activeVms();
@@ -263,9 +266,9 @@ public class IgniteNodeRunner {
     }
 
     /**
-     * Creates an instance of {@link XStream} and configure it to ignore {@link CannotResolveClassException},
-     * and to ignore unknown elements during deserialization.
-     * It needs for deserialization of configuration classes on nodes with different build versions.
+     * Creates an instance of {@link XStream} and configure it to ignore {@link CannotResolveClassException}, and to
+     * ignore unknown elements during deserialization. It needs for deserialization of configuration classes on nodes
+     * with different build versions.
      *
      * @return Configured {@link XStream}.
      */
