@@ -170,8 +170,9 @@ public class BinaryClassDescriptor {
         if ((serializer == null || isGeometryClass(cls))) {
             useCustomSerialization = Externalizable.class.isAssignableFrom(cls);
             useOptMarshaller =  !useCustomSerialization;
-        } else {
-            useOptMarshaller =  false;
+        }
+        else {
+            useOptMarshaller = false;
             useCustomSerialization = false;
         }
 
