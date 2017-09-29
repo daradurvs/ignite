@@ -15,14 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.query.h2.opt;
+namespace Apache.Ignite.Core.Tests.Binary
+{
+    using NUnit.Framework;
 
-import org.apache.ignite.internal.util.offheap.unsafe.GridOffHeapSmartPointer;
-import org.h2.result.SearchRow;
-
-/**
- * Search row which supports pointer operations.
- */
-public interface GridSearchRowPointer extends SearchRow, GridOffHeapSmartPointer {
-    // No-op.
+    /// <summary>
+    /// Binary test with considering arrays lengths in varint encoding.
+    /// </summary>
+    [TestFixture]
+    public class BinarySelfTestVarintArrayLengthMode : BinarySelfTest
+    {
+        /** <inheritdoc /> */
+        protected override bool UseVarintArrayLength()
+        {
+            return true;
+        }
+    }
 }

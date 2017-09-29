@@ -15,24 +15,16 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.testsuites;
-
-import junit.framework.TestSuite;
-import org.apache.ignite.internal.util.offheap.unsafe.GridOffheapSnapTreeSelfTest;
+package org.apache.ignite.internal.binary;
 
 /**
- * Indexing SPI tests.
+ * {@inheritDoc}
+ *
+ * Tests writing arrays lengths in varint encoding.
  */
-public class IgniteSpiIndexingSelfTestSuite extends TestSuite {
-    /**
-     * @return Failover SPI tests suite.
-     * @throws Exception If failed.
-     */
-    public static TestSuite suite() throws Exception {
-        TestSuite suite = new TestSuite("Ignite Indexing SPI Test Suite");
-
-        suite.addTest(new TestSuite(GridOffheapSnapTreeSelfTest.class));
-
-        return suite;
+public class BinaryMarshallerIntArraysSizeTest extends BinaryMarshallerSelfTest {
+    /** {@inheritDoc} */
+    @Override protected boolean useVarintArrayLength() {
+        return true;
     }
 }

@@ -20,6 +20,7 @@ namespace Apache.Ignite.Core.Binary
     using System;
     using System.Collections.Generic;
     using System.ComponentModel;
+    using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
     using System.Linq;
     using Apache.Ignite.Core.Impl.Common;
@@ -39,8 +40,16 @@ namespace Apache.Ignite.Core.Binary
         /// </summary>
         public const bool DefaultKeepDeserialized = true;
 
+        /// <summary>
+        /// Default <see cref="UseVarintArrayLength"/> setting.
+        /// </summary>
+        public const bool DefaultUseVarintArrayLength = false;
+
         /** Footer setting. */
         private bool? _compactFooter;
+
+        /** Varint array length setting. */
+        private bool? _useVarintArrayLength;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BinaryConfiguration"/> class.
@@ -58,10 +67,24 @@ namespace Apache.Ignite.Core.Binary
         {
             IgniteArgumentCheck.NotNull(cfg, "cfg");
 
+            CopyLocalProperties(cfg);
+        }
+
+        /// <summary>
+        /// Copies the local properties.
+        /// </summary>
+        internal void CopyLocalProperties(BinaryConfiguration cfg)
+        {
+            Debug.Assert(cfg != null);
+
             IdMapper = cfg.IdMapper;
             NameMapper = cfg.NameMapper;
             KeepDeserialized = cfg.KeepDeserialized;
-            Serializer = cfg.Serializer;
+
+            if (cfg.Serializer != null)
+            {
+                Serializer = cfg.Serializer;
+            }
 
             TypeConfigurations = cfg.TypeConfigurations == null
                 ? null
@@ -69,7 +92,12 @@ namespace Apache.Ignite.Core.Binary
 
             Types = cfg.Types == null ? null : cfg.Types.ToList();
 
-            CompactFooter = cfg.CompactFooter;
+            if (cfg.CompactFooterInternal != null)
+            {
+                CompactFooter = cfg.CompactFooterInternal.Value;
+            }
+          
+            UseVarintArrayLength = cfg.UseVarintArrayLength;
         }
 
         /// <summary>
@@ -135,35 +163,28 @@ namespace Apache.Ignite.Core.Binary
         }
 
         /// <summary>
+        /// Indicates whether to consider arrays lengths in varint encoding. When enabled, Ignite will consider arrays
+        /// lengths in varint encoding.
+        /// <a href="https://developers.google.com/protocol-buffers/docs/encoding#varints">Varint encoding description.
+        /// </a>
+        /// <para/>
+        /// <b>WARNING!</b> This mode should be disabled when already serialized data can be taken from some external
+        /// sources (e.g.cache store which stores data in binary form, data center replication, etc.). 
+        /// Otherwise binary objects without any associated metadata could could not be deserialized.
+        /// </summary>
+        [DefaultValue(DefaultUseVarintArrayLength)]
+        public bool UseVarintArrayLength
+        {
+            get { return _useVarintArrayLength ?? DefaultUseVarintArrayLength; }
+            set { _useVarintArrayLength = value; }
+        }
+
+        /// <summary>
         /// Gets the compact footer internal nullable value.
         /// </summary>
         internal bool? CompactFooterInternal
         {
             get { return _compactFooter; }
-        }
-
-        /// <summary>
-        /// Merges other config into this.
-        /// </summary>
-        internal void MergeTypes(BinaryConfiguration localConfig)
-        {
-            if (TypeConfigurations == null)
-            {
-                TypeConfigurations = localConfig.TypeConfigurations;
-            }
-            else if (localConfig.TypeConfigurations != null)
-            {
-                // Both configs are present.
-                // Local configuration is more complete and takes preference when it exists for a given type.
-                var localTypeNames = new HashSet<string>(localConfig.TypeConfigurations.Select(x => x.TypeName), 
-                    StringComparer.OrdinalIgnoreCase);
-
-                var configs = new List<BinaryTypeConfiguration>(localConfig.TypeConfigurations);
-
-                configs.AddRange(TypeConfigurations.Where(x=>!localTypeNames.Contains(x.TypeName)));
-
-                TypeConfigurations = configs;
-            }
         }
     }
 }

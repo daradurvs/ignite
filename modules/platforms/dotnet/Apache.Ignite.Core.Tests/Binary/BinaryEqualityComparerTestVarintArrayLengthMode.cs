@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,24 +15,20 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.util.offheap.unsafe;
+namespace Apache.Ignite.Core.Tests.Binary
+{
+    using NUnit.Framework;
 
-/**
- * Smart pointer with reference counting.
- */
-public interface GridOffHeapSmartPointer {
-    /**
-     * @return Pointer address.
-     */
-    public long pointer();
-
-    /**
-     * Increment reference count.
-     */
-    public void incrementRefCount();
-
-    /**
-     * Decrement reference count.
-     */
-    public void decrementRefCount();
+    /// <summary>
+    /// Equality comparers test with considering arrays lengths in varint encoding.
+    /// </summary>
+    [TestFixture]
+    public class BinaryEqualityComparerTestVarintArrayLengthMode : BinaryEqualityComparerTest
+    {
+        /** <inheritdoc /> */
+        protected override bool UseVarintArrayLength()
+        {
+            return true;
+        }
+    }
 }
