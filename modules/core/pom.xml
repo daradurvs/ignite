@@ -495,5 +495,80 @@
                 </plugins>
             </build>
         </profile>
+
+        <profile>
+            <id>coverage</id>
+
+            <properties>
+                <argLine>-ea -server -Xms1g -Xmx6g -XX:+HeapDumpOnOutOfMemoryError -XX:+AggressiveOpts -DIGNITE_UPDATE_NOTIFIER=false -DIGNITE_NO_DISCO_ORDER=true -DIGNITE_PERFORMANCE_SUGGESTIONS_DISABLED=true -DIGNITE_QUIET=false -Djava.net.preferIPv4Stack=true</argLine>
+                <coverage.dataFile>${runDirectory}/coverage-reports/jacoco-ut.exec</coverage.dataFile>
+                <coverage.outputDir>${runDirectory}/jacoco-ut</coverage.outputDir>
+            </properties>
+
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>default-test</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>test</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>0.8.1</version>
+                        <executions>
+                            <execution>
+                                <id>default-prepare-agent</id>
+                                <goals>
+                                    <goal>prepare-agent</goal>
+                                </goals>
+                                <configuration>
+                                    <destFile>${coverage.dataFile}</destFile>
+                                </configuration>
+                            </execution>
+							<!--execution>
+                                <id>post-merge</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>merge</goal>
+                                </goals>
+                                <configuration>
+									<fileSets>
+										<fileSet>
+											<directory>${basedir}</directory>
+											<includes>
+											  <include>results/*/coverage-reports/jacoco-ut.exec</include>
+											</includes>
+										</fileSet>
+									</fileSets>
+                                    <destFile>merged.exe</destFile>
+                                </configuration>
+                            </execution-->
+							<!--execution>
+                                <id>generate-report</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>report</goal>
+                                </goals>
+                                <configuration>
+                                    <dataFile>${basedir}/merged.exe</dataFile>
+                                    <outputDirectory>${basedir}/coverage-report</outputDirectory>
+                                </configuration>
+                            </execution-->
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>
