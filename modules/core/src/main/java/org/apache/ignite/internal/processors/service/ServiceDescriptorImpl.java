@@ -36,27 +36,28 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
 
     /** Configuration. */
     @GridToStringInclude
-    private final GridServiceDeployment dep;
+    private final GridServiceAssignments assign;
 
     /** Topology snapshot. */
     @GridToStringInclude
     private Map<UUID, Integer> top;
 
     /**
-     * @param dep Deployment.
+     * @param assign Deployment.
      */
-    public ServiceDescriptorImpl(GridServiceDeployment dep) {
-        this.dep = dep;
+    public ServiceDescriptorImpl(GridServiceAssignments assign) {
+        this.assign = assign;
+        this.top = assign.assigns();
     }
 
     /** {@inheritDoc} */
     @Override public String name() {
-        return dep.configuration().getName();
+        return assign.configuration().getName();
     }
 
     /** {@inheritDoc} */
     @Override public Class<? extends Service> serviceClass() {
-        ServiceConfiguration cfg = dep.configuration();
+        ServiceConfiguration cfg = assign.configuration();
 
         if (cfg instanceof LazyServiceConfiguration) {
             String clsName = ((LazyServiceConfiguration)cfg).serviceClassName();
@@ -69,33 +70,33 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
             }
         }
         else
-            return dep.configuration().getService().getClass();
+            return assign.configuration().getService().getClass();
     }
 
     /** {@inheritDoc} */
     @Override public int totalCount() {
-        return dep.configuration().getTotalCount();
+        return assign.configuration().getTotalCount();
     }
 
     /** {@inheritDoc} */
     @Override public int maxPerNodeCount() {
-        return dep.configuration().getMaxPerNodeCount();
+        return assign.configuration().getMaxPerNodeCount();
     }
 
     /** {@inheritDoc} */
     @Nullable @Override public String cacheName() {
-        return dep.configuration().getCacheName();
+        return assign.configuration().getCacheName();
     }
 
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
     @Nullable @Override public <K> K affinityKey() {
-        return (K)dep.configuration().getAffinityKey();
+        return (K)assign.configuration().getAffinityKey();
     }
 
     /** {@inheritDoc} */
     @Override public UUID originNodeId() {
-        return dep.nodeId();
+        return assign.nodeId();
     }
 
     /** {@inheritDoc} */

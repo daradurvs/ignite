@@ -62,9 +62,9 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
     /** Callable factories. */
     @SuppressWarnings("unchecked")
     private static final Factory[] serviceFactories = new Factory[] {
-        Parameters.factory(TestServiceImpl.class),
-        Parameters.factory(TestServiceImplExternalizable.class),
-        Parameters.factory(TestServiceImplBinarylizable.class)
+        Parameters.factory(TestServiceImpl.class)
+//        Parameters.factory(TestServiceImplExternalizable.class),
+//        Parameters.factory(TestServiceImplBinarylizable.class)
     };
 
     /** {@inheritDoc} */
@@ -116,7 +116,7 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
      *
      * @throws Exception If failed.
      */
-    public void testKeyAffinityDeploy() throws Exception {
+    public void ignore_testKeyAffinityDeploy() throws Exception {
         runInAllDataModes(new ServiceTestRunnable(false, new DeployClosure() {
             @Override public void run(IgniteServices services, String svcName, TestService svc) {
                 IgniteCache<Object, Object> cache = grid(testedNodeIdx).getOrCreateCache(CACHE_NAME);
