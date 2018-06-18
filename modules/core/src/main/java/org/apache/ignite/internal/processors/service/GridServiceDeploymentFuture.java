@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -28,11 +29,15 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     /** */
     private final ServiceConfiguration cfg;
 
+    /** */
+    public AtomicInteger cntr;
+
     /**
      * @param cfg Configuration.
      */
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
         this.cfg = cfg;
+        this.cntr = new AtomicInteger(cfg.getTotalCount());
     }
 
     /**

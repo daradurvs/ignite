@@ -35,12 +35,12 @@ public class IgniteServiceConfigVariationsFullApiTestSuite extends TestSuite {
     @SuppressWarnings("unchecked")
     private static final ConfigParameter<IgniteConfiguration>[][] PARAMS = new ConfigParameter[][] {
         Parameters.objectParameters("setMarshaller",
-            Parameters.factory(JdkMarshaller.class),
-            Parameters.factory(BinaryMarshaller.class),
-            ConfigVariations.binaryMarshallerFactory()
+//            Parameters.factory(JdkMarshaller.class),
+            Parameters.factory(BinaryMarshaller.class)
+//            ConfigVariations.binaryMarshallerFactory()
         ),
 
-        Parameters.booleanParameters("setPeerClassLoadingEnabled")
+//        Parameters.booleanParameters("setPeerClassLoadingEnabled")
     };
 
     /**
@@ -58,34 +58,34 @@ public class IgniteServiceConfigVariationsFullApiTestSuite extends TestSuite {
             .build());
 
         // Tests run on server (node#0) & client(node#1).
-//        suite.addTest(new ConfigVariationsTestSuiteBuilder(
-//            "1 server, 1 client",
-//            IgniteServiceConfigVariationsFullApiTest.class)
-//            .igniteParams(PARAMS)
-//            .gridsCount(2)
-//            .testedNodesCount(2)
-//            .withClients()
-//            .build());
+        suite.addTest(new ConfigVariationsTestSuiteBuilder(
+            "1 server, 1 client",
+            IgniteServiceConfigVariationsFullApiTest.class)
+            .igniteParams(PARAMS)
+            .gridsCount(2)
+            .testedNodesCount(2)
+            .withClients()
+            .build());
 
         // Tests run on servers (node#0,node#2,node#3) & client(node#1).
-//        suite.addTest(new ConfigVariationsTestSuiteBuilder(
-//            "3 servers, 1 client",
-//            IgniteServiceConfigVariationsFullApiTest.class)
-//            .igniteParams(PARAMS)
-//            .gridsCount(4)
-//            .testedNodesCount(2)
-//            .withClients()
-//            .build());
+        suite.addTest(new ConfigVariationsTestSuiteBuilder(
+            "3 servers, 1 client",
+            IgniteServiceConfigVariationsFullApiTest.class)
+            .igniteParams(PARAMS)
+            .gridsCount(4)
+            .testedNodesCount(2)
+            .withClients()
+            .build());
 
         // Tests run on servers (node#0,node#2,node#3) & client(node#1,node#4).
-//        suite.addTest(new ConfigVariationsTestSuiteBuilder(
-//            "3 servers, 2 clients",
-//            IgniteServiceConfigVariationsFullApiTest.class)
-//            .igniteParams(PARAMS)
-//            .gridsCount(5)
-//            .testedNodesCount(2)
-//            .withClients()
-//            .build());
+        suite.addTest(new ConfigVariationsTestSuiteBuilder(
+            "3 servers, 2 clients",
+            IgniteServiceConfigVariationsFullApiTest.class)
+            .igniteParams(PARAMS)
+            .gridsCount(5)
+            .testedNodesCount(2)
+            .withClients()
+            .build());
 
         return suite;
     }

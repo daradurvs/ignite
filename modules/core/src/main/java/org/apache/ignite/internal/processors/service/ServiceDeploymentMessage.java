@@ -52,6 +52,9 @@ public class ServiceDeploymentMessage implements DiscoveryCustomMessage {
     public String svcName;
 
     /** */
+    public Throwable t;
+
+    /** */
     public ServiceDeploymentMessage(Action act) {
         this.act = act;
     }

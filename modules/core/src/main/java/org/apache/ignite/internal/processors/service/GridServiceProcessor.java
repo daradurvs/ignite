@@ -32,25 +32,20 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
-import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.compute.ComputeJobContext;
 import org.apache.ignite.configuration.DeploymentMode;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.events.EventType;
-import org.apache.ignite.internal.GridClosureCallMode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteClientDisconnectedCheckedException;
-import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
@@ -67,10 +62,8 @@ import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
 import org.apache.ignite.internal.processors.cache.binary.MetadataUpdateAcceptedMessage;
 import org.apache.ignite.internal.processors.cache.binary.MetadataUpdateProposedMessage;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
-import org.apache.ignite.internal.processors.task.GridInternal;
 import org.apache.ignite.internal.processors.timeout.GridTimeoutObject;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
-import org.apache.ignite.internal.util.SerializableTransient;
 import org.apache.ignite.internal.util.future.GridCompoundFuture;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
@@ -78,19 +71,13 @@ import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.LT;
-import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
-import org.apache.ignite.lang.IgniteBiPredicate;
-import org.apache.ignite.lang.IgniteCallable;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
 import org.apache.ignite.plugin.security.SecurityException;
 import org.apache.ignite.plugin.security.SecurityPermission;
-import org.apache.ignite.resources.IgniteInstanceResource;
-import org.apache.ignite.resources.JobContextResource;
-import org.apache.ignite.resources.LoggerResource;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
@@ -107,6 +94,7 @@ import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMP
 import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.ASSIGN;
 import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.CANCEL;
 import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.DEPLOY;
+import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.DEPLOYED;
 
 /**
  * Grid service processor.
@@ -136,9 +124,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Deployment futures. */
     private final ConcurrentMap<String, GridFutureAdapter<?>> undepFuts = new ConcurrentHashMap<>();
 
-    /** Pending compute job contexts that waiting for utility cache initialization. */
-    private final List<ComputeJobContext> pendingJobCtxs = new ArrayList<>(0);
-
     /** Deployment executor service. */
     private volatile ExecutorService depExe;
 
@@ -160,12 +145,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** Topology listener. */
     private DiscoveryEventListener topLsnr = new TopologyListener();
-
-    /** */
-    private final CountDownLatch startLatch = new CountDownLatch(1);
-
-    /** Services deployments. */
-    private final ConcurrentMap<String, GridServiceDeployment> svcDeps = new ConcurrentHashMap<>();
 
     /** Services assignments. */
     private final Map<String, GridServiceAssignments> svcAssigns = new ConcurrentHashMap<>();
@@ -215,13 +194,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
-        if (!ctx.clientNode()) {
+        if (!ctx.clientNode())
             ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
 
-            ctx.discovery().setCustomEventListener(ServiceDeploymentMessage.class, noLsnr);
-        }
-
-        startLatch.countDown();
+        ctx.discovery().setCustomEventListener(ServiceDeploymentMessage.class, noLsnr);
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -245,8 +221,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             this.busyLock = null;
         }
-
-        startLatch.countDown();
 
         U.shutdownNow(GridServiceProcessor.class, depExe, log);
 
@@ -634,17 +608,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
 
         // TODO: wait in proper way
-//        for (boolean a = true; a; ) {
-//            a = false;
-//
-//            for (IgniteInternalFuture<Object> fut : res.futures()) {
-//                if (!fut.isDone()) {
-//                    a = true;
-//
-//                    break;
-//                }
-//            }
-//        }
+        for (boolean a = true; a; ) {
+            a = false;
+
+            for (IgniteInternalFuture<Object> fut : res.futures()) {
+                if (!fut.isDone()) {
+                    a = true;
+
+                    break;
+                }
+            }
+        }
 
         res.markInitialized();
 
@@ -667,8 +641,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 depExe.execute(new DepRunnable() {
                     @Override public void run0() {
                         switch (msg.act) {
-                            case DEPLOY:
-                                // Если узел координатор, то необходимо вычислить распеределение и отослать по кольцу
+                            case DEPLOY: {
                                 ClusterNode oldest = U.oldest(ctx.discovery().nodes(topVer), null);
 
                                 GridServiceDeployment dep = msg.dDep;
@@ -677,26 +650,39 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                     return;
 
                                 // Process deployment on coordinator only.
-                                processDeployment(dep.configuration().getName(), dep);
+                                onDeployment(dep, topVer);
+                            }
 
-                                break;
+                            break;
 
                             case ASSIGN: {
                                 GridServiceAssignments assigns = msg.assigns;
 
                                 String name = assigns.name();
 
-                                GridServiceDeploymentFuture fut = depFuts.remove(name);
+                                svcAssigns.put(name, assigns);
 
-                                try {
-                                    processAssignment(name, assigns);
+                                processAssignment(name, assigns);
+                            }
 
-                                    if (fut != null)
-                                        fut.onDone();
-                                }
-                                catch (Exception e) {
-                                    if (fut != null)
-                                        fut.onDone(e);
+                            break;
+
+                            case DEPLOYED: {
+                                String name = msg.svcName;
+
+                                GridServiceDeploymentFuture fut = depFuts.get(name);
+
+                                if (fut != null) {
+                                    int res = fut.cntr.decrementAndGet();
+
+                                    if (res <= 0) {
+                                        if (msg.t == null)
+                                            fut.onDone();
+                                        else
+                                            fut.onDone(msg.t);
+
+                                        depFuts.remove(name);
+                                    }
                                 }
                             }
 
@@ -708,7 +694,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 GridFutureAdapter fut = undepFuts.remove(name);
 
                                 try {
-                                    processDeployment(name, null); // undeploy
+                                    undeploy(name);
 
                                     if (fut != null)
                                         fut.onDone();
@@ -725,7 +711,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             break;
 
                             default:
-                                throw new IllegalStateException();
+                                throw new IllegalStateException("Unexpected ");
                         }
                     }
                 });
@@ -762,20 +748,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
 
-            GridServiceDeployment dep = new GridServiceDeployment(ctx.localNodeId(), cfg);
-
             GridServiceAssignments oldDep = svcAssigns.get(name);
-
-            ServiceDeploymentMessage depMsg = new ServiceDeploymentMessage(DEPLOY) {
-                // не должно быть отослано дальше координатора
-                @Override public boolean stopProcess() {
-                    return true;
-                }
-            };
-
-            depMsg.dDep = dep;
-
-            ctx.discovery().sendCustomEvent(depMsg);
 
             if (oldDep != null) {
                 if (!oldDep.configuration().equalsIgnoreNodeFilter(cfg)) {
@@ -787,6 +760,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
             else
                 res.add(fut, true);
+
+            GridServiceDeployment dep = new GridServiceDeployment(ctx.localNodeId(), cfg);
+
+            ServiceDeploymentMessage depMsg = new ServiceDeploymentMessage(DEPLOY) {
+                // Shouldn't be send once coordinator received it
+                @Override public boolean stopProcess() {
+                    return true;
+                }
+            };
+
+            depMsg.dDep = dep;
+
+            ctx.discovery().sendCustomEvent(depMsg);
         }
         catch (IgniteCheckedException e) {
             fut.onDone(e);
@@ -942,17 +928,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
         // TODO: ClusterNode node = ctx.affinity().mapKeyToNode(name);
-        ClusterNode node = ctx.discovery().localNode();
+//        ClusterNode node = ctx.discovery().localNode();
 
-        final ServiceTopologyCallable call = new ServiceTopologyCallable(name);
+//        final ServiceTopologyCallable call = new ServiceTopologyCallable(name);
 
-        return ctx.closure().callAsyncNoFailover(
-            GridClosureCallMode.BROADCAST,
-            call,
-            Collections.singletonList(node),
-            false,
-            timeout,
-            true).get();
+        return svcAssigns.get(name).assigns();
+
+//        return ctx.closure().callAsyncNoFailover(
+//            GridClosureCallMode.BROADCAST,
+//            call,
+//            Collections.singletonList(node),
+//            false,
+//            timeout,
+//            true).get();
     }
 
     /**
@@ -1259,8 +1247,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 assigns.assigns(cnts);
 
-                svcAssigns.put(name, assigns);
-
                 ////
                 ServiceDeploymentMessage assignsMsg = new ServiceDeploymentMessage(ASSIGN);
 
@@ -1495,59 +1481,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Called right after utility cache is started and ready for the usage.
-     */
-    public void onUtilityCacheStarted() {
-        synchronized (pendingJobCtxs) {
-            if (pendingJobCtxs.size() == 0)
-                return;
-
-            Iterator<ComputeJobContext> iter = pendingJobCtxs.iterator();
-
-            while (iter.hasNext()) {
-                iter.next().callcc();
-                iter.remove();
-            }
-        }
-    }
-
-    /**
-     */
-    private void processDeployment(String name, GridServiceDeployment dep) {
-        if (dep != null) {
-            svcName.set(name);
-
-            // Ignore other utility cache events.
-            AffinityTopologyVersion topVer = ctx.discovery().topologyVersionEx();
-
-            ClusterNode oldest = U.oldest(ctx.discovery().nodes(topVer), null);
-
-            // Process deployment on coordinator only.
-            if (oldest.isLocal())
-                onDeployment(dep, topVer);
-        }
-        // Handle undeployment.
-        else {
-            undeploy(name);
-
-            // Finish deployment futures if undeployment happened.
-            GridFutureAdapter<?> fut = depFuts.remove(name);
-
-            if (fut != null)
-                fut.onDone();
-
-            // Complete undeployment future.
-            fut = undepFuts.remove(name);
-
-            if (fut != null)
-                fut.onDone();
-
-            // Remove assignment on primary node in case of undeploy.
-            svcAssigns.remove(name);
-        }
-    }
-
-    /**
      * Deployment callback.
      *
      * @param dep Service deployment.
@@ -1658,7 +1591,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 //                                    ServiceDeploymentPredicate.INSTANCE);
 
 //                                while (it.hasNext()) {
-                                for (Map.Entry<String, GridServiceDeployment> entry : svcDeps.entrySet()) {
+                                // TODO
+/*                                for (Map.Entry<String, GridServiceDeployment> entry : svcDeps.entrySet()) {
                                     // If topology changed again, let next event handle it.
                                     AffinityTopologyVersion currTopVer0 = currTopVer;
 
@@ -1690,7 +1624,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                                         retries.add(dep);
                                     }
-                                }
+                                }*/
                             }
                             finally {
                                 if (ctx.deploy().enabled())
@@ -1702,21 +1636,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         }
 
                         // Clean up zombie assignments.
-                        for (Map.Entry<String, GridServiceAssignments> e : svcAssigns.entrySet()) {
-                            String name = e.getKey();
-
-                            try {
-                                if (!locSvcs.containsKey(name)) {
-                                    if (log.isDebugEnabled())
-                                        log.debug("Removed zombie assignments: " + e.getValue());
-
-                                    svcAssigns.remove(e.getKey());
-                                }
-                            }
-                            catch (Exception ex) {
-                                U.error(log, "Failed to clean up zombie assignments for service: " + name, ex);
-                            }
-                        }
+//                        for (Map.Entry<String, GridServiceAssignments> e : svcAssigns.entrySet()) {
+//                            String name = e.getKey();
+//
+//                            try {
+//                                if (!locSvcs.containsKey(name)) {
+//                                    if (log.isDebugEnabled())
+//                                        log.debug("Removed zombie assignments: " + e.getValue());
+//
+//                                    svcAssigns.remove(e.getKey());
+//                                }
+//                            }
+//                            catch (Exception ex) {
+//                                U.error(log, "Failed to clean up zombie assignments for service: " + name, ex);
+//                            }
+//                        }
                     }
                 });
             }
@@ -1804,30 +1738,28 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 throw ex;
         }
 
-        if (assigns != null) {
-            svcName.set(assigns.name());
+        svcName.set(assigns.name());
 
-            Throwable t = null;
+        Throwable t = null;
 
-            try {
-                redeploy(assigns);
-            }
-            catch (Error | RuntimeException th) {
-                t = th;
-            }
-
-            GridServiceDeploymentFuture fut = depFuts.get(assigns.name());
-
-            if (fut != null && fut.configuration().equalsIgnoreNodeFilter(assigns.configuration())) {
-                depFuts.remove(assigns.name(), fut);
-
-                // Complete deployment futures once the assignments have been stored in cache.
-                fut.onDone(null, t);
-            }
+        try {
+            redeploy(assigns);
         }
-        // Handle undeployment.
-        else
-            undeploy(name);
+        catch (Error | RuntimeException th) {
+            t = th;
+        }
+
+        ServiceDeploymentMessage msg = new ServiceDeploymentMessage(DEPLOYED);
+
+        msg.svcName = name;
+        msg.t = t;
+
+        try {
+            ctx.discovery().sendCustomEvent(msg);
+        }
+        catch (IgniteCheckedException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -1847,6 +1779,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 cancel(ctxs, ctxs.size());
             }
         }
+
+        // Finish deployment futures if undeployment happened.
+        GridFutureAdapter<?> fut = depFuts.remove(name);
+
+        if (fut != null)
+            fut.onDone();
+
+        // Complete undeployment future.
+        fut = undepFuts.remove(name);
+
+        if (fut != null)
+            fut.onDone();
+
+        // Remove assignment on primary node in case of undeploy.
+        svcAssigns.remove(name);
     }
 
     /**
@@ -1903,98 +1850,5 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
          * Abstract run method protected by busy lock.
          */
         public abstract void run0();
-    }
-
-    /**
-     *
-     */
-    static class ServiceAssignmentsPredicate implements IgniteBiPredicate<Object, Object> {
-        /** */
-        static final ServiceAssignmentsPredicate INSTANCE = new ServiceAssignmentsPredicate();
-
-        /** */
-        private static final long serialVersionUID = 0L;
-
-        /** {@inheritDoc} */
-        @Override public boolean apply(Object key, Object val) {
-            return key instanceof GridServiceAssignmentsKey;
-        }
-
-        /** {@inheritDoc} */
-        @Override public String toString() {
-            return S.toString(ServiceAssignmentsPredicate.class, this);
-        }
-    }
-
-    /**
-     */
-    @GridInternal
-    @SerializableTransient(methodName = "serializableTransient")
-    private static class ServiceTopologyCallable implements IgniteCallable<Map<UUID, Integer>> {
-        /** */
-        private static final long serialVersionUID = 0L;
-
-        /** */
-        private final String svcName;
-
-        /** */
-        private transient boolean waitedCacheInit;
-
-        /** */
-        @IgniteInstanceResource
-        private IgniteEx ignite;
-
-        /** */
-        @JobContextResource
-        private transient ComputeJobContext jCtx;
-
-        /** */
-        @LoggerResource
-        private transient IgniteLogger log;
-
-        /**
-         * @param svcName Service name.
-         */
-        public ServiceTopologyCallable(String svcName) {
-            this.svcName = svcName;
-        }
-
-        /** {@inheritDoc} */
-        @Override public Map<UUID, Integer> call() throws Exception {
-            IgniteInternalCache<Object, Object> cache = ignite.context().cache().utilityCache();
-
-            if (cache == null) {
-                List<ComputeJobContext> pendingCtxs = ignite.context().service().pendingJobCtxs;
-
-                synchronized (pendingCtxs) {
-                    // Double check cache reference after lock acqusition.
-                    cache = ignite.context().cache().utilityCache();
-
-                    if (cache == null) {
-                        if (!waitedCacheInit) {
-                            log.debug("Utility cache hasn't been initialized yet. Waiting.");
-
-                            // waiting for a minute for cache initialization.
-                            jCtx.holdcc(60 * 1000);
-
-                            pendingCtxs.add(jCtx);
-
-                            waitedCacheInit = true;
-
-                            return null;
-                        }
-                        else {
-                            log.error("Failed to gather service topology. Utility " +
-                                "cache initialization is stuck.");
-
-                            throw new IgniteCheckedException("Failed to gather service topology. Utility " +
-                                "cache initialization is stuck.");
-                        }
-                    }
-                }
-            }
-
-            return serviceTopology(cache, svcName);
-        }
     }
 }
