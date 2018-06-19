@@ -77,7 +77,7 @@ public class ServiceDeploymentMessage implements DiscoveryCustomMessage {
 
     /** {@inheritDoc} */
     @Override public boolean stopProcess() {
-        return false;
+        return act == Action.DEPLOY;
     }
 
     /** {@inheritDoc} */

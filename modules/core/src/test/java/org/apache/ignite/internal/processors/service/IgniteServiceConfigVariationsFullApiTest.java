@@ -116,7 +116,7 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
      *
      * @throws Exception If failed.
      */
-    public void ignore_testKeyAffinityDeploy() throws Exception {
+    public void testKeyAffinityDeploy() throws Exception {
         runInAllDataModes(new ServiceTestRunnable(false, new DeployClosure() {
             @Override public void run(IgniteServices services, String svcName, TestService svc) {
                 IgniteCache<Object, Object> cache = grid(testedNodeIdx).getOrCreateCache(CACHE_NAME);

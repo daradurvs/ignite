@@ -35,12 +35,12 @@ public class IgniteServiceConfigVariationsFullApiTestSuite extends TestSuite {
     @SuppressWarnings("unchecked")
     private static final ConfigParameter<IgniteConfiguration>[][] PARAMS = new ConfigParameter[][] {
         Parameters.objectParameters("setMarshaller",
-//            Parameters.factory(JdkMarshaller.class),
-            Parameters.factory(BinaryMarshaller.class)
-//            ConfigVariations.binaryMarshallerFactory()
+            Parameters.factory(JdkMarshaller.class),
+            Parameters.factory(BinaryMarshaller.class),
+            ConfigVariations.binaryMarshallerFactory()
         ),
 
-//        Parameters.booleanParameters("setPeerClassLoadingEnabled")
+        Parameters.booleanParameters("setPeerClassLoadingEnabled")
     };
 
     /**

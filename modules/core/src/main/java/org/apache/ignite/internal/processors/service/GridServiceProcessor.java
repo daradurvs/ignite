@@ -58,7 +58,6 @@ import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
-import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
 import org.apache.ignite.internal.processors.cache.binary.MetadataUpdateAcceptedMessage;
 import org.apache.ignite.internal.processors.cache.binary.MetadataUpdateProposedMessage;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
@@ -122,7 +121,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final ConcurrentMap<String, GridServiceDeploymentFuture> depFuts = new ConcurrentHashMap<>();
 
     /** Deployment futures. */
-    private final ConcurrentMap<String, GridFutureAdapter<?>> undepFuts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, GridServiceDeploymentFuture> undepFuts = new ConcurrentHashMap<>();
 
     /** Deployment executor service. */
     private volatile ExecutorService depExe;
@@ -691,13 +690,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             case CANCEL: {
                                 String name = msg.svcName;
 
-                                GridFutureAdapter fut = undepFuts.remove(name);
+                                GridServiceDeploymentFuture fut = undepFuts.get(name);
 
                                 try {
                                     undeploy(name);
 
-                                    if (fut != null)
-                                        fut.onDone();
+                                    if (fut != null) {
+                                        int res = fut.cntr.decrementAndGet();
+
+                                        if (res <= 0) {
+                                            fut.onDone();
+
+                                            undepFuts.remove(name);
+                                        }
+                                    }
                                 }
                                 catch (Exception e) {
                                     undepFuts.remove(name, fut);
@@ -763,12 +769,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             GridServiceDeployment dep = new GridServiceDeployment(ctx.localNodeId(), cfg);
 
-            ServiceDeploymentMessage depMsg = new ServiceDeploymentMessage(DEPLOY) {
-                // Shouldn't be send once coordinator received it
-                @Override public boolean stopProcess() {
-                    return true;
-                }
-            };
+            ServiceDeploymentMessage depMsg = new ServiceDeploymentMessage(DEPLOY);
 
             depMsg.dDep = dep;
 
@@ -902,9 +903,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return new CancelResult(new GridFinishedFuture<>(e), false);
         }
 
-        GridFutureAdapter<?> fut = new GridFutureAdapter<>();
+        GridServiceAssignments assign = svcAssigns.get(name);
 
-        GridFutureAdapter<?> old = undepFuts.putIfAbsent(name, fut);
+        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(assign.configuration());
+
+        GridServiceDeploymentFuture old = undepFuts.putIfAbsent(name, fut);
 
         if (old != null)
             return new CancelResult(old, false);
@@ -922,38 +925,27 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /**
      * @param name Service name.
-     * @param timeout If greater than 0 limits task execution time. Cannot be negative.
      * @return Service topology.
-     * @throws IgniteCheckedException On error.
      */
-    public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
-        // TODO: ClusterNode node = ctx.affinity().mapKeyToNode(name);
-//        ClusterNode node = ctx.discovery().localNode();
+    public Map<UUID, Integer> serviceTopology(String name) {
+        GridServiceAssignments assignments = svcAssigns.get(name);
 
-//        final ServiceTopologyCallable call = new ServiceTopologyCallable(name);
+        // TODO: clients requests
+        if (assignments == null) {
+            try {
+                U.sleep(5_000);
+            }
+            catch (IgniteInterruptedCheckedException e) {
+                e.printStackTrace();
+            }
+            assignments = svcAssigns.get(name);
+        }
 
-        return svcAssigns.get(name).assigns();
+        Map<UUID, Integer> assigns = assignments.assigns();
 
-//        return ctx.closure().callAsyncNoFailover(
-//            GridClosureCallMode.BROADCAST,
-//            call,
-//            Collections.singletonList(node),
-//            false,
-//            timeout,
-//            true).get();
-    }
+        assert assigns != null;
 
-    /**
-     * @param cache Utility cache.
-     * @param svcName Service name.
-     * @return Service topology.
-     * @throws IgniteCheckedException In case of error.
-     */
-    private static Map<UUID, Integer> serviceTopology(IgniteInternalCache<Object, Object> cache, String svcName)
-        throws IgniteCheckedException {
-        GridServiceAssignments val = (GridServiceAssignments)cache.get(new GridServiceAssignmentsKey(svcName));
-
-        return val != null ? val.assigns() : null;
+        return assigns;
     }
 
     /**
@@ -1792,7 +1784,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (fut != null)
             fut.onDone();
 
-        // Remove assignment on primary node in case of undeploy.
         svcAssigns.remove(name);
     }
 
