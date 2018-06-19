@@ -147,7 +147,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Topology listener. */
     private DiscoveryEventListener topLsnr = new TopologyListener();
 
-    /** Services assignments. */
+    /** Contains all services assignments, not only locally deployed. */
     private final Map<String, GridServiceAssignments> svcAssigns = new ConcurrentHashMap<>();
 
     /**
@@ -1009,7 +1009,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void reassign(GridServiceDeployment dep, AffinityTopologyVersion topVer) throws IgniteCheckedException {
-        ServiceConfiguration cfg = dep.configuration();
+        reassign(dep.configuration(), dep.nodeId(), topVer);
+    }
+
+    /** */
+    private void reassign(ServiceConfiguration cfg, UUID nodeId,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+//        ServiceConfiguration cfg = dep.configuration();
         Object nodeFilter = cfg.getNodeFilter();
 
         if (nodeFilter != null)
@@ -1021,7 +1027,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Object affKey = cfg.getAffinityKey();
 
         while (true) {
-            GridServiceAssignments assigns = new GridServiceAssignments(cfg, dep.nodeId(), topVer.topologyVersion());
+//            GridServiceAssignments assigns = new GridServiceAssignments(cfg, dep.nodeId(), topVer.topologyVersion());
+            GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
 
             Collection<ClusterNode> nodes;
 
@@ -1145,7 +1152,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 ServiceDeploymentMessage assignsMsg = new ServiceDeploymentMessage(ASSIGN);
 
                 assignsMsg.assigns = assigns;
-                assignsMsg.nodeId = dep.nodeId();
+                assignsMsg.nodeId = nodeId;
 
                 ctx.discovery().sendCustomEvent(assignsMsg);
                 ////
@@ -1476,76 +1483,43 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         ClusterNode oldest = discoCache.oldestAliveServerNode();
 
                         if (oldest != null && oldest.isLocal()) {
-                            final Collection<GridServiceDeployment> retries = new ConcurrentLinkedQueue<>();
+                            final Collection<GridServiceAssignments> retries = new ConcurrentLinkedQueue<>();
 
-                            if (ctx.deploy().enabled())
-                                ctx.cache().context().deploy().ignoreOwnership(true);
+                            // If topology changed again, let next event handle it.
+                            AffinityTopologyVersion currTopVer0 = currTopVer;
 
-                            try {
-//                                Iterator<Cache.Entry<Object, Object>> it = serviceEntries(
-//                                    ServiceDeploymentPredicate.INSTANCE);
+                            if (currTopVer0 != topVer) {
+                                if (log.isInfoEnabled())
+                                    log.info("Service processor detected a topology change during " +
+                                        "assignments calculation (will abort current iteration and " +
+                                        "re-calculate on the newer version): " +
+                                        "[topVer=" + topVer + ", newTopVer=" + currTopVer0 + ']');
 
-//                                while (it.hasNext()) {
-                                // TODO
-/*                                for (Map.Entry<String, GridServiceDeployment> entry : svcDeps.entrySet()) {
-                                    // If topology changed again, let next event handle it.
-                                    AffinityTopologyVersion currTopVer0 = currTopVer;
-
-                                    if (currTopVer0 != topVer) {
-                                        if (log.isInfoEnabled())
-                                            log.info("Service processor detected a topology change during " +
-                                                "assignments calculation (will abort current iteration and " +
-                                                "re-calculate on the newer version): " +
-                                                "[topVer=" + topVer + ", newTopVer=" + currTopVer0 + ']');
-
-                                        return;
-                                    }
-
-//                                    Cache.Entry<Object, Object> e = it.next();
-
-                                    GridServiceDeployment dep = (GridServiceDeployment)entry.getValue();
-
-                                    try {
-                                        svcName.set(dep.configuration().getName());
-
-                                        ctx.cache().context().exchange().affinityReadyFuture(topVer).get();
-
-                                        reassign(dep, topVer);
-                                    }
-                                    catch (IgniteCheckedException ex) {
-                                        if (!(ex instanceof ClusterTopologyCheckedException))
-                                            LT.error(log, ex, "Failed to do service reassignment (will retry): " +
-                                                dep.configuration().getName());
-
-                                        retries.add(dep);
-                                    }
-                                }*/
+                                return;
                             }
-                            finally {
-                                if (ctx.deploy().enabled())
-                                    ctx.cache().context().deploy().ignoreOwnership(false);
+
+                            for (Map.Entry<String, GridServiceAssignments> entry : svcAssigns.entrySet()) {
+                                GridServiceAssignments dep = entry.getValue();
+
+                                try {
+                                    svcName.set(dep.configuration().getName());
+
+                                    ctx.cache().context().exchange().affinityReadyFuture(topVer).get();
+
+                                    reassign(dep.configuration(), dep.nodeId(), topVer);
+                                }
+                                catch (IgniteCheckedException ex) {
+                                    if (!(ex instanceof ClusterTopologyCheckedException))
+                                        LT.error(log, ex, "Failed to do service reassignment (will retry): " +
+                                            dep.configuration().getName());
+
+                                    retries.add(dep);
+                                }
                             }
 
                             if (!retries.isEmpty())
                                 onReassignmentFailed(topVer, retries);
                         }
-
-                        // Clean up zombie assignments.
-//                        for (Map.Entry<String, GridServiceAssignments> e : svcAssigns.entrySet()) {
-//                            String name = e.getKey();
-//
-//                            try {
-//                                if (!locSvcs.containsKey(name)) {
-//                                    if (log.isDebugEnabled())
-//                                        log.debug("Removed zombie assignments: " + e.getValue());
-//
-//                                    svcAssigns.remove(e.getKey());
-//                                }
-//                            }
-//                            catch (Exception ex) {
-//                                U.error(log, "Failed to clean up zombie assignments for service: " + name, ex);
-//                            }
-//                        }
                     }
                 });
             }
@@ -1561,7 +1535,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
          * @param retries Retries.
          */
         private void onReassignmentFailed(final AffinityTopologyVersion topVer,
-            final Collection<GridServiceDeployment> retries) {
+            final Collection<GridServiceAssignments> retries) {
             GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
 
             if (busyLock == null || !busyLock.enterBusy())
@@ -1572,13 +1546,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (ctx.discovery().topologyVersionEx().equals(topVer))
                     return;
 
-                for (Iterator<GridServiceDeployment> it = retries.iterator(); it.hasNext(); ) {
-                    GridServiceDeployment dep = it.next();
+                for (Iterator<GridServiceAssignments> it = retries.iterator(); it.hasNext(); ) {
+                    GridServiceAssignments dep = it.next();
 
                     try {
                         svcName.set(dep.configuration().getName());
 
-                        reassign(dep, topVer);
+                        reassign(dep.configuration(), dep.nodeId(), topVer);
 
                         it.remove();
                     }
