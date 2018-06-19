@@ -17,6 +17,9 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -30,7 +33,10 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     private final ServiceConfiguration cfg;
 
     /** */
-    public AtomicInteger cntr;
+    public final AtomicInteger cntr;
+
+    /** */
+    public final Map<UUID, byte[]> errors;
 
     /**
      * @param cfg Configuration.
@@ -38,6 +44,7 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
         this.cfg = cfg;
         this.cntr = new AtomicInteger(cfg.getTotalCount());
+        this.errors = new HashMap<>();
     }
 
     /**

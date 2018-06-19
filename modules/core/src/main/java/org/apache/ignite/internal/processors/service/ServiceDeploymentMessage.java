@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.List;
+import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
@@ -35,6 +36,9 @@ public class ServiceDeploymentMessage implements DiscoveryCustomMessage {
 
     /** */
     private final IgniteUuid id = IgniteUuid.randomUuid();
+
+    /** Initiator node id. */
+    public UUID nodeId;
 
     /** */
     public Action act;
