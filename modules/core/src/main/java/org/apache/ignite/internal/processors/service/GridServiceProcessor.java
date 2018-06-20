@@ -231,6 +231,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (!ctx.clientNode())
             ctx.event().removeDiscoveryEventListener(topLsnr);
 
+        ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnr);
+
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
         synchronized (locSvcs) {
