@@ -17,7 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
@@ -38,34 +38,33 @@ public class ServiceDeploymentMessage implements DiscoveryCustomMessage {
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
     /** Deployment initiator id. */
-    public UUID nodeId;
+    private final UUID nodeId;
+
+    /** */
+    private final ServiceConfiguration cfg;
 
     /** */
     public Action act;
 
-    /** */
-    public ServiceConfiguration cfg;
+    /** Topology version. */
+    @Nullable public Long topVer;
 
-    /** */
-    public List<ServiceConfiguration> cfgs;
+    /** Assignments. */
+    @Nullable public Map<UUID, Integer> assigns;
 
-    /** */
-    public GridServiceAssignments assigns;
+    /**
+     * @param nodeId Node id.
+     * @param cfg Config.
+     */
+    public ServiceDeploymentMessage(UUID nodeId, ServiceConfiguration cfg) {
+        this.nodeId = nodeId;
+        this.cfg = cfg;
 
-    /** */
-    public String svcName;
-
-    /** */
-    public Throwable t;
-
-    /** */
-    public ServiceDeploymentMessage(Action act) {
-        this.act = act;
+        this.act = Action.DEPLOY;
     }
 
     /** {@inheritDoc} */
     @Override public IgniteUuid id() {
-
         return id;
     }
 
@@ -91,8 +90,37 @@ public class ServiceDeploymentMessage implements DiscoveryCustomMessage {
     }
 
     /**
-     *
+     * @return Deployment initiator id.
      */
+    public UUID nodeId() {
+        return nodeId;
+    }
+
+    /**
+     * @return Service configuration.
+     */
+    public ServiceConfiguration config() {
+        return cfg;
+    }
+
+    /**
+     * @return Service name;
+     */
+    public String name() {
+        return cfg.getName();
+    }
+
+    /**
+     * @param assigns Sets assignments.
+     */
+    public void assignments(Map<UUID, Integer> assigns, long topVer) {
+        this.assigns = assigns;
+        this.topVer = topVer;
+
+        this.act = Action.ASSIGN;
+    }
+
+    /** */
     public enum Action {
         /** */
         DEPLOY,

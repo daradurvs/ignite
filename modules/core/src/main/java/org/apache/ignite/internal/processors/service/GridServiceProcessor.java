@@ -93,9 +93,7 @@ import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
-import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.ASSIGN;
 import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.CANCEL;
-import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.DEPLOY;
 
 /**
  * Grid service processor.
@@ -141,11 +139,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Thread local for service name. */
     private ThreadLocal<String> svcName = new ThreadLocal<>();
 
-    /** Services messages discovery listener. */
-    private ServiceDeploymentListener noLsnr = new ServiceDeploymentListener();
-
     /** Topology listener. */
     private DiscoveryEventListener topLsnr = new TopologyListener();
+
+    /** Services messages discovery listener. */
+    private final ServiceDeploymentListener discoLsnr = new ServiceDeploymentListener();
+
+    /** Services meassages communication listener. */
+    private final ServiceDeploymentResultListener commLsnr = new ServiceDeploymentResultListener();
 
     /** Contains all services assignments, not only locally deployed. */
     private final Map<String, GridServiceAssignments> svcAssigns = new ConcurrentHashMap<>();
@@ -198,9 +199,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (!ctx.clientNode())
             ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
 
-        ctx.discovery().setCustomEventListener(ServiceDeploymentMessage.class, noLsnr);
+        ctx.discovery().setCustomEventListener(ServiceDeploymentMessage.class, discoLsnr);
 
-        ctx.io().addMessageListener(TOPIC_SERVICES, new ServiceDeploymentResultListener());
+        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -545,14 +546,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         cfgsCp.sort(Comparator.comparing(ServiceConfiguration::getName));
 
-        // Аккумулирует результаты деплоя
         GridServiceDeploymentCompoundFuture res;
 
         while (true) {
             res = new GridServiceDeploymentCompoundFuture();
-
-            if (ctx.deploy().enabled())
-                ctx.cache().context().deploy().ignoreOwnership(true);
 
             try {
                 for (ServiceConfiguration cfg : cfgsCp) {
@@ -584,10 +581,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return res;
                 }
             }
-            finally {
-                if (ctx.deploy().enabled())
-                    ctx.cache().context().deploy().ignoreOwnership(false);
-            }
         }
 
         if (ctx.clientDisconnected()) {
@@ -609,19 +602,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             for (GridServiceDeploymentFuture fut : failedFuts)
                 res.add(fut, false);
         }
-
-        // TODO: wait in proper way
-//        for (boolean a = true; a; ) {
-//            a = false;
-//
-//            for (IgniteInternalFuture<Object> fut : res.futures()) {
-//                if (!fut.isDone()) {
-//                    a = true;
-//
-//                    break;
-//                }
-//            }
-//        }
 
         res.markInitialized();
 
@@ -653,12 +633,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
 
-            GridServiceAssignments oldDep = svcAssigns.get(name);
+            GridServiceAssignments oldAssign = svcAssigns.get(name);
 
-            if (oldDep != null) {
-                if (!oldDep.configuration().equalsIgnoreNodeFilter(cfg)) {
+            if (oldAssign != null) {
+                if (!oldAssign.configuration().equalsIgnoreNodeFilter(cfg)) {
                     throw new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                        "different configuration) [deployed=" + oldDep.configuration() + ", new=" + cfg + ']');
+                        "different configuration) [deployed=" + oldAssign.configuration() + ", new=" + cfg + ']');
                 }
                 else
                     res.add(fut, false);
@@ -666,12 +646,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             else
                 res.add(fut, true);
 
-            ServiceDeploymentMessage depMsg = new ServiceDeploymentMessage(DEPLOY);
+            ServiceDeploymentMessage msg = new ServiceDeploymentMessage(ctx.localNodeId(), cfg);
 
-            depMsg.nodeId = ctx.localNodeId();
-            depMsg.cfg = cfg;
-
-            ctx.discovery().sendCustomEvent(depMsg);
+            ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
             fut.onDone(e);
@@ -810,9 +787,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (old != null)
             return new CancelResult(old, false);
         else {
-            ServiceDeploymentMessage msg = new ServiceDeploymentMessage(CANCEL);
+            ServiceDeploymentMessage msg = new ServiceDeploymentMessage(assign.nodeId(), assign.configuration());
 
-            msg.svcName = name;
+            msg.act = CANCEL;
 
             ctx.discovery().sendCustomEvent(msg);
 
@@ -1142,12 +1119,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 // To be able to collect results
                 depFuts.putIfAbsent(name, new GridServiceDeploymentFuture(cfg));
 
-                ServiceDeploymentMessage assignsMsg = new ServiceDeploymentMessage(ASSIGN);
+                ServiceDeploymentMessage msg = new ServiceDeploymentMessage(nodeId, cfg);
 
-                assignsMsg.assigns = assigns;
-                assignsMsg.nodeId = nodeId;
+                msg.assignments(assigns.assigns(), topVer.topologyVersion());
 
-                ctx.discovery().sendCustomEvent(assignsMsg);
+                ctx.discovery().sendCustomEvent(msg);
                 ////
 
                 break;
@@ -1752,13 +1728,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                     return;
 
                                 // Process deployment on coordinator only.
-                                onDeployment(msg.cfg, msg.nodeId, topVer);
+                                onDeployment(msg.config(), msg.nodeId(), topVer);
                             }
 
                             break;
 
                             case ASSIGN: {
-                                GridServiceAssignments assigns = msg.assigns;
+                                GridServiceAssignments assigns = new GridServiceAssignments(msg.config(), msg.nodeId(), msg.topVer);
+
+                                assigns.assigns(msg.assigns);
 
                                 String name = assigns.name();
 
@@ -1770,7 +1748,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             break;
 
                             case CANCEL: {
-                                String name = msg.svcName;
+                                String name = msg.name();
 
                                 GridServiceDeploymentFuture fut = undepFuts.get(name);
 
@@ -1799,7 +1777,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             break;
 
                             default:
-                                throw new IllegalStateException("Unexpected ");
+                                throw new IllegalStateException("Unexpected message's goal.");
                         }
                     }
                 });
