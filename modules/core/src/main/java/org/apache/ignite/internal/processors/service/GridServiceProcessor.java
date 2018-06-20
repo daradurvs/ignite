@@ -93,7 +93,6 @@ import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
-import static org.apache.ignite.internal.processors.service.ServiceDeploymentMessage.Action.CANCEL;
 
 /**
  * Grid service processor.
@@ -199,7 +198,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (!ctx.clientNode())
             ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
 
-        ctx.discovery().setCustomEventListener(ServiceDeploymentMessage.class, discoLsnr);
+        ctx.discovery().setCustomEventListener(DynamicServiceChangeRequest.class, discoLsnr);
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -648,9 +647,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             else
                 res.add(fut, true);
 
-            ServiceDeploymentMessage msg = new ServiceDeploymentMessage(ctx.localNodeId(), cfg);
+            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deployRequest(ctx.localNodeId(), cfg);
 
-            ctx.discovery().sendCustomEvent(msg);
+            ctx.discovery().sendCustomEvent(req);
         }
         catch (IgniteCheckedException e) {
             fut.onDone(e);
@@ -789,11 +788,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (old != null)
             return new CancelResult(old, false);
         else {
-            ServiceDeploymentMessage msg = new ServiceDeploymentMessage(assign.nodeId(), assign.configuration());
+            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.cancelRequest(assign.nodeId(), assign.configuration());
 
-            msg.act = CANCEL;
-
-            ctx.discovery().sendCustomEvent(msg);
+            ctx.discovery().sendCustomEvent(req);
 
             // TODO: handle rollback
             return new CancelResult(fut, false);
@@ -1121,11 +1118,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 // To be able to collect results
                 depFuts.putIfAbsent(name, new GridServiceDeploymentFuture(cfg));
 
-                ServiceDeploymentMessage msg = new ServiceDeploymentMessage(nodeId, cfg);
+                DynamicServiceChangeRequest req = DynamicServiceChangeRequest.assignmentsRequest(nodeId, cfg,
+                    assigns.assigns(), topVer.topologyVersion());
 
-                msg.assignments(assigns.assigns(), topVer.topologyVersion());
-
-                ctx.discovery().sendCustomEvent(msg);
+                ctx.discovery().sendCustomEvent(req);
                 ////
 
                 break;
@@ -1712,10 +1708,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      *
      */
-    private class ServiceDeploymentListener implements CustomEventListener<ServiceDeploymentMessage> {
+    private class ServiceDeploymentListener implements CustomEventListener<DynamicServiceChangeRequest> {
         /** {@inheritDoc} */
         @Override public void onCustomEvent(AffinityTopologyVersion topVer, ClusterNode snd,
-            ServiceDeploymentMessage msg) {
+            DynamicServiceChangeRequest msg) {
             GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
 
             if (busyLock == null || !busyLock.enterBusy())
@@ -1724,66 +1720,58 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 depExe.execute(new DepRunnable() {
                     @Override public void run0() {
-                        switch (msg.act) {
-                            case DEPLOY: {
-                                if (!isLocalNodeCoordinator(topVer))
-                                    return;
+                        if (msg.isDeploy()) {
 
-                                // Process deployment on coordinator only.
-                                onDeployment(msg.config(), msg.nodeId(), topVer);
-                            }
+                            if (!isLocalNodeCoordinator(topVer))
+                                return;
 
-                            break;
+                            // Process deployment on coordinator only.
+                            onDeployment(msg.config(), msg.nodeId(), topVer);
+                        }
 
-                            case ASSIGN: {
-                                GridServiceAssignments assigns = new GridServiceAssignments(msg.config(), msg.nodeId(), msg.topVer);
+                        else if (msg.isAssignments()) {
+                            GridServiceAssignments assigns = new GridServiceAssignments(msg.config(), msg.nodeId(), msg.topVer);
 
-                                assigns.assigns(msg.assigns);
+                            assigns.assigns(msg.assigns);
 
-                                String name = assigns.name();
+                            String name = assigns.name();
 
-                                svcAssigns.put(name, assigns);
+                            svcAssigns.put(name, assigns);
 
-                                processAssignment(name, assigns);
-                            }
+                            processAssignment(name, assigns);
+                        }
 
-                            break;
+                        else if (msg.isCancel()) {
+                            String name = msg.name();
 
-                            case CANCEL: {
-                                String name = msg.name();
+                            GridServiceDeploymentFuture fut = undepFuts.get(name);
 
-                                GridServiceDeploymentFuture fut = undepFuts.get(name);
+                            try {
+                                undeploy(name);
 
-                                try {
-                                    undeploy(name);
+                                if (fut != null) {
+                                    int res = fut.cntr.decrementAndGet();
 
-                                    if (fut != null) {
-                                        int res = fut.cntr.decrementAndGet();
+                                    if (res <= 0) {
+                                        fut.onDone();
 
-                                        if (res <= 0) {
-                                            fut.onDone();
-
-                                            undepFuts.remove(name);
-                                        }
+                                        undepFuts.remove(name);
                                     }
                                 }
-                                catch (Exception e) {
-                                    undepFuts.remove(name, fut);
-
-                                    fut.onDone(e);
-
-                                    throw e;
-                                }
                             }
+                            catch (Exception e) {
+                                undepFuts.remove(name, fut);
 
-                            break;
+                                fut.onDone(e);
 
-                            default:
-                                throw new IllegalStateException("Unexpected message's goal.");
+                                throw e;
+                            }
                         }
+
+                        else
+                            throw new IllegalStateException("Unexpected message's goal.");
                     }
                 });
-
             }
             finally {
                 busyLock.leaveBusy();
