@@ -37,17 +37,17 @@ public class ServiceDeploymentMessage implements DiscoveryCustomMessage {
     /** */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
-    /** Initiator node id. */
+    /** Deployment initiator id. */
     public UUID nodeId;
 
     /** */
     public Action act;
 
     /** */
-    public List<ServiceConfiguration> cfgs;
+    public ServiceConfiguration cfg;
 
     /** */
-    public GridServiceDeployment dDep;
+    public List<ServiceConfiguration> cfgs;
 
     /** */
     public GridServiceAssignments assigns;

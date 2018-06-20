@@ -666,11 +666,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             else
                 res.add(fut, true);
 
-            GridServiceDeployment dep = new GridServiceDeployment(ctx.localNodeId(), cfg);
-
             ServiceDeploymentMessage depMsg = new ServiceDeploymentMessage(DEPLOY);
 
-            depMsg.dDep = dep;
+            depMsg.nodeId = ctx.localNodeId();
+            depMsg.cfg = cfg;
 
             ctx.discovery().sendCustomEvent(depMsg);
         }
@@ -1004,18 +1003,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Reassigns service to nodes.
      *
-     * @param dep Service deployment.
+     * @param cfg Service configuration.
+     * @param nodeId Deployment initiator id.
      * @param topVer Topology version.
      * @throws IgniteCheckedException If failed.
      */
-    private void reassign(GridServiceDeployment dep, AffinityTopologyVersion topVer) throws IgniteCheckedException {
-        reassign(dep.configuration(), dep.nodeId(), topVer);
-    }
-
-    /** */
     private void reassign(ServiceConfiguration cfg, UUID nodeId,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
-//        ServiceConfiguration cfg = dep.configuration();
         Object nodeFilter = cfg.getNodeFilter();
 
         if (nodeFilter != null)
@@ -1027,7 +1021,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Object affKey = cfg.getAffinityKey();
 
         while (true) {
-//            GridServiceAssignments assigns = new GridServiceAssignments(cfg, dep.nodeId(), topVer.topologyVersion());
             GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
 
             Collection<ClusterNode> nodes;
@@ -1385,21 +1378,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Deployment callback.
      *
-     * @param dep Service deployment.
+     * @param cfg Service configuration.
+     * @param nodeId Deployment initiator id.
      * @param topVer Topology version.
      */
-    private void onDeployment(final GridServiceDeployment dep, final AffinityTopologyVersion topVer) {
+    private void onDeployment(final ServiceConfiguration cfg, final UUID nodeId, final AffinityTopologyVersion topVer) {
         // Retry forever.
         try {
             AffinityTopologyVersion newTopVer = ctx.discovery().topologyVersionEx();
 
             // If topology version changed, reassignment will happen from topology event.
             if (newTopVer.equals(topVer))
-                reassign(dep, topVer);
+                reassign(cfg, nodeId, topVer);
         }
         catch (IgniteCheckedException e) {
             if (!(e instanceof ClusterTopologyCheckedException))
-                log.error("Failed to do service reassignment (will retry): " + dep.configuration().getName(), e);
+                log.error("Failed to do service reassignment (will retry): " + cfg.getName(), e);
 
             AffinityTopologyVersion newTopVer = ctx.discovery().topologyVersionEx();
 
@@ -1426,7 +1420,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 @Override public void onTimeout() {
                     depExe.execute(new DepRunnable() {
                         @Override public void run0() {
-                            onDeployment(dep, topVer);
+                            onDeployment(cfg, nodeId, topVer);
                         }
                     });
                 }
@@ -1729,6 +1723,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * @param topVer Topology version.
+     */
+    private boolean isLocalNodeCoordinator(AffinityTopologyVersion topVer) {
+        ClusterNode oldest = U.oldest(ctx.discovery().nodes(topVer), null);
+
+        return oldest.isLocal();
+    }
+
+    /**
      *
      */
     private class ServiceDeploymentListener implements CustomEventListener<ServiceDeploymentMessage> {
@@ -1745,15 +1748,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     @Override public void run0() {
                         switch (msg.act) {
                             case DEPLOY: {
-                                ClusterNode oldest = U.oldest(ctx.discovery().nodes(topVer), null);
-
-                                GridServiceDeployment dep = msg.dDep;
-
-                                if (!oldest.isLocal())
+                                if (!isLocalNodeCoordinator(topVer))
                                     return;
 
                                 // Process deployment on coordinator only.
-                                onDeployment(dep, topVer);
+                                onDeployment(msg.cfg, msg.nodeId, topVer);
                             }
 
                             break;
@@ -1766,27 +1765,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 svcAssigns.put(name, assigns);
 
                                 processAssignment(name, assigns);
-                            }
-
-                            break;
-
-                            case DEPLOYED: {
-//                                String name = msg.svcName;
-//
-//                                GridServiceDeploymentFuture fut = depFuts.get(name);
-//
-//                                if (fut != null) {
-//                                    int res = fut.cntr.decrementAndGet();
-//
-//                                    if (res <= 0) {
-//                                        if (msg.t == null)
-//                                            fut.onDone();
-//                                        else
-//                                            fut.onDone(msg.t);
-//
-//                                        depFuts.remove(name);
-//                                    }
-//                                }
                             }
 
                             break;
