@@ -38,6 +38,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
+import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.DeploymentMode;
@@ -801,25 +802,35 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param name Service name.
      * @return Service topology.
      */
-    public Map<UUID, Integer> serviceTopology(String name) {
-        GridServiceAssignments assignments = svcAssigns.get(name);
+    public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
+        GridServiceAssignments assigns = svcAssigns.get(name);
 
-        // TODO: clients requests
-        if (assignments == null) {
+        if (assigns == null) {
+            GridServiceDeploymentFuture fut = depFuts.get(name);
+
             try {
-                U.sleep(5_000);
+                if (fut != null && !fut.isDone()) {
+                    if (timeout > 0)
+                        fut.get(timeout);
+                    else
+                        fut.get();
+                }
             }
-            catch (IgniteInterruptedCheckedException e) {
-                e.printStackTrace();
+            catch (IgniteCheckedException e) {
+                log.error("Failed to gather service topology. Deployment stuck or timeout reached.");
+
+                throw e;
             }
-            assignments = svcAssigns.get(name);
+
+            assigns = svcAssigns.get(name);
         }
 
-        Map<UUID, Integer> assigns = assignments.assigns();
+        if (assigns == null) {
+            throw new IgniteIllegalStateException("Failed to gather service topology with given name. " +
+                "Did you deploy the service?");
+        }
 
-        assert assigns != null;
-
-        return assigns;
+        return assigns.assigns();
     }
 
     /**

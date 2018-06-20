@@ -282,14 +282,14 @@ public class GridServiceProxy<T> implements Serializable {
 
     /**
      * @param name Service name.
-     * @return Local node if it has a given service deployed or randomly chosen remote node,
      * otherwise ({@code null} if given service is not deployed on any node.
+     * @throws IgniteCheckedException In case od an error.
      */
-    private ClusterNode randomNodeForService(String name) {
+    private ClusterNode randomNodeForService(String name) throws IgniteCheckedException {
         if (hasLocNode && ctx.service().service(name) != null)
             return ctx.discovery().localNode();
 
-        Map<UUID, Integer> snapshot = ctx.service().serviceTopology(name);
+        Map<UUID, Integer> snapshot = ctx.service().serviceTopology(name, waitTimeout);
 
         if (snapshot == null || snapshot.isEmpty())
             return null;
