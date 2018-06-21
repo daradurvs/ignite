@@ -31,7 +31,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * TODO: description
  */
-public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
+public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -66,7 +66,7 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
      * @param nodeId Node id.
      * @param cfg Config.
      */
-    private DynamicServiceChangeRequest(UUID nodeId, ServiceConfiguration cfg) {
+    private DynamicServiceChangeRequestMessage(UUID nodeId, ServiceConfiguration cfg) {
         this.nodeId = nodeId;
         this.cfg = cfg;
     }
@@ -76,8 +76,8 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
      * @param cfg Service configuration.
      * @return Service deploy request.
      */
-    public static DynamicServiceChangeRequest deployRequest(UUID nodeId, ServiceConfiguration cfg) {
-        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(nodeId, cfg);
+    public static DynamicServiceChangeRequestMessage deployRequest(UUID nodeId, ServiceConfiguration cfg) {
+        DynamicServiceChangeRequestMessage req = new DynamicServiceChangeRequestMessage(nodeId, cfg);
 
         req.markDeploy();
 
@@ -91,13 +91,13 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
      * @param topVer Topology version.
      * @return Service assignments request.
      */
-    public static DynamicServiceChangeRequest assignmentsRequest(
+    public static DynamicServiceChangeRequestMessage assignmentsRequest(
         UUID nodeId,
         ServiceConfiguration cfg,
         Map<UUID, Integer> assigns,
         long topVer
     ) {
-        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(nodeId, cfg);
+        DynamicServiceChangeRequestMessage req = new DynamicServiceChangeRequestMessage(nodeId, cfg);
 
         req.assignments(assigns, topVer);
         req.markAssignments();
@@ -110,8 +110,8 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
      * @param cfg Service configuration.
      * @return Service cancel request.
      */
-    public static DynamicServiceChangeRequest cancelRequest(UUID nodeId, ServiceConfiguration cfg) {
-        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(nodeId, cfg);
+    public static DynamicServiceChangeRequestMessage cancelRequest(UUID nodeId, ServiceConfiguration cfg) {
+        DynamicServiceChangeRequestMessage req = new DynamicServiceChangeRequestMessage(nodeId, cfg);
 
         req.markCancel();
 

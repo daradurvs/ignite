@@ -199,7 +199,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (!ctx.clientNode())
             ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
 
-        ctx.discovery().setCustomEventListener(DynamicServiceChangeRequest.class, discoLsnr);
+        ctx.discovery().setCustomEventListener(DynamicServiceChangeRequestMessage.class, discoLsnr);
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -642,9 +642,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             else
                 res.add(fut, true);
 
-            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deployRequest(ctx.localNodeId(), cfg);
+            DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.deployRequest(ctx.localNodeId(), cfg);
 
-            ctx.discovery().sendCustomEvent(req);
+            ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
             fut.onDone(e);
@@ -783,9 +783,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (old != null)
             return new CancelResult(old, false);
         else {
-            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.cancelRequest(assign.nodeId(), assign.configuration());
+            DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.cancelRequest(assign.nodeId(), assign.configuration());
 
-            ctx.discovery().sendCustomEvent(req);
+            ctx.discovery().sendCustomEvent(msg);
 
             // TODO: handle rollback
             return new CancelResult(fut, false);
@@ -1123,10 +1123,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 // To be able to collect results
                 depFuts.putIfAbsent(name, new GridServiceDeploymentFuture(cfg));
 
-                DynamicServiceChangeRequest req = DynamicServiceChangeRequest.assignmentsRequest(nodeId, cfg,
+                DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.assignmentsRequest(nodeId, cfg,
                     assigns.assigns(), topVer.topologyVersion());
 
-                ctx.discovery().sendCustomEvent(req);
+                ctx.discovery().sendCustomEvent(msg);
                 ////
 
                 break;
@@ -1728,10 +1728,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Services messages discovery listener.
      */
-    private class ServiceDeploymentListener implements CustomEventListener<DynamicServiceChangeRequest> {
+    private class ServiceDeploymentListener implements CustomEventListener<DynamicServiceChangeRequestMessage> {
         /** {@inheritDoc} */
         @Override public void onCustomEvent(AffinityTopologyVersion topVer, ClusterNode snd,
-            DynamicServiceChangeRequest msg) {
+            DynamicServiceChangeRequestMessage msg) {
             GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
 
             if (busyLock == null || !busyLock.enterBusy())
@@ -1789,7 +1789,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 GridServiceDeploymentFuture fut = depFuts.get(name);
 
-                if (depMsg.isToInitiator()) {
+                if (depMsg.notifyInitiator()) {
                     if (fut != null) {
                         if (!depMsg.hasError())
                             fut.onDone();
@@ -1831,7 +1831,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             // Notify initiator
                             ServiceDeploymentResultMessage resMsg = new ServiceDeploymentResultMessage(name);
 
-                            resMsg.markToInitiator();
+                            resMsg.markNotifyInitiator();
 
                             if (!fut.errors.isEmpty())
                                 resMsg.errorBytes(fut.errors.entrySet().iterator().next().getValue());

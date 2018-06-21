@@ -31,7 +31,7 @@ public class ServiceDeploymentResultMessage implements Message {
     private static final long serialVersionUID = 0L;
 
     /** */
-    private static final byte SENT_TO_INITIATOR = 0b0001;
+    private static final byte NOTIFY_INITIATOR = 0b0001;
 
     /** Flags. */
     private byte flags;
@@ -59,15 +59,15 @@ public class ServiceDeploymentResultMessage implements Message {
     /**
      * @return
      */
-    public void markToInitiator() {
-        flags |= SENT_TO_INITIATOR;
+    public void markNotifyInitiator() {
+        flags |= NOTIFY_INITIATOR;
     }
 
     /**
      * @return
      */
-    public boolean isToInitiator() {
-        return (flags & SENT_TO_INITIATOR) != 0;
+    public boolean notifyInitiator() {
+        return (flags & NOTIFY_INITIATOR) != 0;
     }
 
     /**
