@@ -110,7 +110,8 @@ public class GridServiceProxy<T> implements Serializable {
         Class<? super T> svc,
         boolean sticky,
         long timeout,
-        GridKernalContext ctx) {
+        GridKernalContext ctx)
+    {
         assert timeout >= 0 : timeout;
 
         this.prj = prj;
@@ -282,8 +283,8 @@ public class GridServiceProxy<T> implements Serializable {
 
     /**
      * @param name Service name.
+     * @return Local node if it has a given service deployed or randomly chosen remote node,
      * otherwise ({@code null} if given service is not deployed on any node.
-     * @throws IgniteCheckedException In case od an error.
      */
     private ClusterNode randomNodeForService(String name) throws IgniteCheckedException {
         if (hasLocNode && ctx.service().service(name) != null)
