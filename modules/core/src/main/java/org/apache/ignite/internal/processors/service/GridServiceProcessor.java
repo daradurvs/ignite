@@ -1586,13 +1586,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         try {
             ServiceDeploymentResultMessage resMsg = new ServiceDeploymentResultMessage(name);
 
-            if (t != null) {
-                resMsg.isSuccess = false;
-
-                resMsg.errBytes = U.marshal(ctx, t);
-            }
-            else
-                resMsg.isSuccess = true;
+            if (t != null)
+                resMsg.errorBytes(U.marshal(ctx, t));
 
             // Send result to coordinator
             ClusterNode oldest = U.oldest(ctx.discovery().nodes(assigns.topologyVersion()), null);
@@ -1789,17 +1784,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             ServiceDeploymentResultMessage depMsg = (ServiceDeploymentResultMessage)msg;
 
-            String name = depMsg.name;
+            String name = depMsg.name();
 
             try {
                 GridServiceDeploymentFuture fut = depFuts.get(name);
 
-                if (depMsg.toInitiator) {
+                if (depMsg.isToInitiator()) {
                     if (fut != null) {
-                        if (depMsg.isSuccess)
+                        if (!depMsg.hasError())
                             fut.onDone();
                         else {
-                            Throwable t = U.unmarshal(ctx, depMsg.errBytes, null);
+                            Throwable t = U.unmarshal(ctx, depMsg.errorBytes(), null);
 
                             fut.onDone(new ServiceDeploymentException(t, Collections.singleton(fut.configuration())));
                         }
@@ -1818,12 +1813,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         // Coordinator should collect deployment results from assigned nodes.
                         int res = fut.cntr.decrementAndGet();
 
-                        if (!depMsg.isSuccess)
-                            fut.errors.put(nodeId, depMsg.errBytes);
+                        if (depMsg.hasError())
+                            fut.errors.put(nodeId, depMsg.errorBytes());
 
                         if (res <= 0) {
 
-                            if (depMsg.isSuccess)
+                            if (!depMsg.hasError())
                                 fut.onDone();
                             else {
                                 byte[] errBytes = fut.errors.entrySet().iterator().next().getValue();
@@ -1834,17 +1829,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
 
                             // Notify initiator
-                            ServiceDeploymentResultMessage resMsg = new ServiceDeploymentResultMessage();
-                            resMsg.name = name;
-                            resMsg.toInitiator = true;
+                            ServiceDeploymentResultMessage resMsg = new ServiceDeploymentResultMessage(name);
 
-                            if (!fut.errors.isEmpty()) {
-                                resMsg.isSuccess = false;
+                            resMsg.markToInitiator();
 
-                                resMsg.errBytes = fut.errors.entrySet().iterator().next().getValue();
-                            }
-                            else
-                                resMsg.isSuccess = true;
+                            if (!fut.errors.isEmpty())
+                                resMsg.errorBytes(fut.errors.entrySet().iterator().next().getValue());
 
                             ctx.io().sendToGridTopic(assigns.nodeId(), TOPIC_SERVICES, resMsg, SERVICE_POOL);
 

@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
+import org.jetbrains.annotations.Nullable;
 
 /**
  *
@@ -30,16 +31,16 @@ public class ServiceDeploymentResultMessage implements Message {
     private static final long serialVersionUID = 0L;
 
     /** */
-    public String name;
+    private static final byte SENT_TO_INITIATOR = 0b0001;
 
-    /** */
-    public boolean isSuccess;
+    /** Flags. */
+    private byte flags;
+
+    /** Service name. */
+    private String name;
 
     /** Serialized deployment error. */
-    public byte[] errBytes;
-
-    /** */
-    public boolean toInitiator;
+    @Nullable private byte[] errBytes;
 
     /**
      * Default constructor.
@@ -55,6 +56,55 @@ public class ServiceDeploymentResultMessage implements Message {
         this.name = name;
     }
 
+    /**
+     * @return
+     */
+    public void markToInitiator() {
+        flags |= SENT_TO_INITIATOR;
+    }
+
+    /**
+     * @return
+     */
+    public boolean isToInitiator() {
+        return (flags & SENT_TO_INITIATOR) != 0;
+    }
+
+    /**
+     * @return Service name.
+     */
+    public String name() {
+        return name;
+    }
+
+    /**
+     * @param name New service name.
+     */
+    public void name(String name) {
+        this.name = name;
+    }
+
+    /**
+     * @return
+     */
+    public boolean hasError() {
+        return errBytes != null;
+    }
+
+    /**
+     * @return Serialized deployment error.
+     */
+    public byte[] errorBytes() {
+        return errBytes;
+    }
+
+    /**
+     * @param errBytes New serialized deployment error.
+     */
+    public void errorBytes(byte[] errBytes) {
+        this.errBytes = errBytes;
+    }
+
     /** {@inheritDoc} */
     @Override public boolean writeTo(ByteBuffer buf, MessageWriter writer) {
         writer.setBuffer(buf);
@@ -68,25 +118,19 @@ public class ServiceDeploymentResultMessage implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeString("name", name))
+                if (!writer.writeByte("flags", flags))
                     return false;
 
                 writer.incrementState();
 
             case 1:
-                if (!writer.writeBoolean("isSuccess", isSuccess))
+                if (!writer.writeString("name", name))
                     return false;
 
                 writer.incrementState();
 
             case 2:
                 if (!writer.writeByteArray("errBytes", errBytes))
-                    return false;
-
-                writer.incrementState();
-
-            case 3:
-                if (!writer.writeBoolean("toInitiator", toInitiator))
                     return false;
 
                 writer.incrementState();
@@ -104,7 +148,7 @@ public class ServiceDeploymentResultMessage implements Message {
 
         switch (reader.state()) {
             case 0:
-                name = reader.readString("name");
+                flags = reader.readByte("flags");
 
                 if (!reader.isLastRead())
                     return false;
@@ -112,7 +156,7 @@ public class ServiceDeploymentResultMessage implements Message {
                 reader.incrementState();
 
             case 1:
-                isSuccess = reader.readBoolean("isSuccess");
+                name = reader.readString("name");
 
                 if (!reader.isLastRead())
                     return false;
@@ -121,14 +165,6 @@ public class ServiceDeploymentResultMessage implements Message {
 
             case 2:
                 errBytes = reader.readByteArray("errBytes");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 3:
-                toInitiator = reader.readBoolean("toInitiator");
 
                 if (!reader.isLastRead())
                     return false;
