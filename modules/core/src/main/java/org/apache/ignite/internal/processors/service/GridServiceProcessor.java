@@ -1119,15 +1119,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 assigns.assigns(cnts);
 
-                ////
-                // To be able to collect results
-                depFuts.putIfAbsent(name, new GridServiceDeploymentFuture(cfg));
+                // To collect results from assigned nodes on coordinator.
+                depFuts.putIfAbsent(name, new GridServiceDeploymentFuture(cfg, assigns.assigns().size()));
 
                 DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.assignmentRequest(nodeId, cfg,
                     assigns.assigns(), topVer.topologyVersion());
 
                 ctx.discovery().sendCustomEvent(msg);
-                ////
 
                 break;
             }

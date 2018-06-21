@@ -42,8 +42,15 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
      * @param cfg Configuration.
      */
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
+        this(cfg, 0);
+    }
+
+    /**
+     * @param cfg Configuration.
+     */
+    public GridServiceDeploymentFuture(ServiceConfiguration cfg, int nodes) {
         this.cfg = cfg;
-        this.cntr = new AtomicInteger(cfg.getTotalCount());
+        this.cntr = new AtomicInteger(nodes);
         this.errors = new HashMap<>();
     }
 
