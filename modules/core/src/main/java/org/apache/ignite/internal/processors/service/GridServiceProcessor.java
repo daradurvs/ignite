@@ -1737,13 +1737,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 return;
 
                             // Process deployment on coordinator only.
-                            onDeployment(msg.config(), msg.nodeId(), topVer);
+                            onDeployment(msg.configuration(), msg.nodeId(), topVer);
                         }
 
                         else if (msg.isAssignments()) {
-                            GridServiceAssignments assigns = new GridServiceAssignments(msg.config(), msg.nodeId(), msg.topVer);
+                            GridServiceAssignments assigns = new GridServiceAssignments(msg.configuration(),
+                                msg.nodeId(), msg.topologyVersion());
 
-                            assigns.assigns(msg.assigns);
+                            assigns.assigns(msg.assignments());
 
                             String name = assigns.name();
 

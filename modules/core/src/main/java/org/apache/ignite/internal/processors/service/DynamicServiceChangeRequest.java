@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
@@ -56,94 +57,18 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
     private final ServiceConfiguration cfg;
 
     /** Topology version. */
-    @Nullable public Long topVer;
+    private long topVer;
 
     /** Assignments. */
-    @Nullable public Map<UUID, Integer> assigns;
+    @Nullable private Map<UUID, Integer> assigns;
 
     /**
      * @param nodeId Node id.
      * @param cfg Config.
      */
-    public DynamicServiceChangeRequest(UUID nodeId, ServiceConfiguration cfg) {
+    private DynamicServiceChangeRequest(UUID nodeId, ServiceConfiguration cfg) {
         this.nodeId = nodeId;
         this.cfg = cfg;
-    }
-
-    /** {@inheritDoc} */
-    @Override public IgniteUuid id() {
-        return id;
-    }
-
-    /**
-     * @return Deployment initiator id.
-     */
-    public UUID nodeId() {
-        return nodeId;
-    }
-
-    /**
-     * @return Service configuration.
-     */
-    public ServiceConfiguration config() {
-        return cfg;
-    }
-
-    /**
-     * @return Service name;
-     */
-    public String name() {
-        return cfg.getName();
-    }
-
-    /**
-     * @param assigns Sets assignments.
-     */
-    public void assignments(Map<UUID, Integer> assigns, long topVer) {
-        this.assigns = assigns;
-        this.topVer = topVer;
-    }
-
-    /**
-     * Mark that request type as deploy.
-     */
-    void markDeploy() {
-        flags |= DEPLOY_REQUEST;
-    }
-
-    /**
-     * @return
-     */
-    boolean isDeploy() {
-        return (flags & DEPLOY_REQUEST) != 0;
-    }
-
-    /**
-     * Mark that request type as assignment.
-     */
-    void markAssignments() {
-        flags |= ASSIGNMENTS_REQUEST;
-    }
-
-    /**
-     * @return
-     */
-    boolean isAssignments() {
-        return (flags & ASSIGNMENTS_REQUEST) != 0;
-    }
-
-    /**
-     * Mark that request type as cancel.
-     */
-    void markCancel() {
-        flags |= CANCEL_REQUEST;
-    }
-
-    /**
-     * @return
-     */
-    boolean isCancel() {
-        return (flags & CANCEL_REQUEST) != 0;
     }
 
     /**
@@ -191,6 +116,96 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
         req.markCancel();
 
         return req;
+    }
+
+    /**
+     * @return Deployment initiator id.
+     */
+    public UUID nodeId() {
+        return nodeId;
+    }
+
+    /**
+     * @return Service configuration.
+     */
+    public ServiceConfiguration configuration() {
+        return cfg;
+    }
+
+    /**
+     * @return Service name.
+     */
+    public String name() {
+        return cfg.getName();
+    }
+
+    /**
+     * @return Topology version.
+     */
+    public long topologyVersion() {
+        return topVer;
+    }
+
+    /**
+     * @return Service assignments.
+     */
+    @Nullable public Map<UUID, Integer> assignments() {
+        return assigns;
+    }
+
+    /**
+     * @param assigns Sets assignments.
+     */
+    void assignments(Map<UUID, Integer> assigns, long topVer) {
+        this.assigns = assigns == null ? Collections.EMPTY_MAP : assigns;
+        this.topVer = topVer;
+    }
+
+    /**
+     * Mark that request type as deploy.
+     */
+    void markDeploy() {
+        flags |= DEPLOY_REQUEST;
+    }
+
+    /**
+     * @return
+     */
+    boolean isDeploy() {
+        return (flags & DEPLOY_REQUEST) != 0;
+    }
+
+    /**
+     * Mark that request type as assignment.
+     */
+    void markAssignments() {
+        flags |= ASSIGNMENTS_REQUEST;
+    }
+
+    /**
+     * @return
+     */
+    boolean isAssignments() {
+        return (flags & ASSIGNMENTS_REQUEST) != 0;
+    }
+
+    /**
+     * Mark that request type as cancel.
+     */
+    void markCancel() {
+        flags |= CANCEL_REQUEST;
+    }
+
+    /**
+     * @return
+     */
+    boolean isCancel() {
+        return (flags & CANCEL_REQUEST) != 0;
+    }
+
+    /** {@inheritDoc} */
+    @Override public IgniteUuid id() {
+        return id;
     }
 
     /** {@inheritDoc} */
