@@ -444,70 +444,64 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         IgnitePredicate<ClusterNode> dfltNodeFilter) {
         List<ServiceConfiguration> cfgsCp = new ArrayList<>(cfgs.size());
 
+        Marshaller marsh = ctx.config().getMarshaller();
+
         List<GridServiceDeploymentFuture> failedFuts = null;
-        try {
 
-            Marshaller marsh = ctx.config().getMarshaller();
+        for (ServiceConfiguration cfg : cfgs) {
+            Exception err = null;
 
-            for (ServiceConfiguration cfg : cfgs) {
-                Exception err = null;
+            // Deploy to projection node by default
+            // or only on server nodes if no projection .
+            if (cfg.getNodeFilter() == null && dfltNodeFilter != null)
+                cfg.setNodeFilter(dfltNodeFilter);
 
-                // Deploy to projection node by default
-                // or only on server nodes if no projection .
-                if (cfg.getNodeFilter() == null && dfltNodeFilter != null)
-                    cfg.setNodeFilter(dfltNodeFilter);
+            try {
+                validate(cfg);
+            }
+            catch (Exception e) {
+                U.error(log, "Failed to validate service configuration [name=" + cfg.getName() +
+                    ", srvc=" + cfg.getService() + ']', e);
 
+                err = e;
+            }
+
+            if (err == null) {
                 try {
-                    validate(cfg);
+                    ctx.security().authorize(cfg.getName(), SecurityPermission.SERVICE_DEPLOY, null);
                 }
                 catch (Exception e) {
-                    U.error(log, "Failed to validate service configuration [name=" + cfg.getName() +
+                    U.error(log, "Failed to authorize service creation [name=" + cfg.getName() +
                         ", srvc=" + cfg.getService() + ']', e);
 
                     err = e;
                 }
+            }
 
-                if (err == null) {
-                    try {
-                        ctx.security().authorize(cfg.getName(), SecurityPermission.SERVICE_DEPLOY, null);
-                    }
-                    catch (Exception e) {
-                        U.error(log, "Failed to authorize service creation [name=" + cfg.getName() +
-                            ", srvc=" + cfg.getService() + ']', e);
+            if (err == null) {
+                try {
+                    byte[] srvcBytes = U.marshal(marsh, cfg.getService());
 
-                        err = e;
-                    }
+                    cfgsCp.add(new LazyServiceConfiguration(cfg, srvcBytes));
                 }
+                catch (Exception e) {
+                    U.error(log, "Failed to marshal service with configured marshaller [name=" + cfg.getName() +
+                        ", srvc=" + cfg.getService() + ", marsh=" + marsh + "]", e);
 
-                if (err == null) {
-                    try {
-                        byte[] srvcBytes = U.marshal(marsh, cfg.getService());
-
-                        cfgsCp.add(new LazyServiceConfiguration(cfg, srvcBytes));
-                    }
-                    catch (Exception e) {
-                        U.error(log, "Failed to marshal service with configured marshaller [name=" + cfg.getName() +
-                            ", srvc=" + cfg.getService() + ", marsh=" + marsh + "]", e);
-
-                        err = e;
-                    }
-                }
-
-                if (err != null) {
-                    if (failedFuts == null)
-                        failedFuts = new ArrayList<>();
-
-                    GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
-
-                    fut.onDone(err);
-
-                    failedFuts.add(fut);
+                    err = e;
                 }
             }
 
-        }
-        catch (Exception e) {
-            e.printStackTrace();
+            if (err != null) {
+                if (failedFuts == null)
+                    failedFuts = new ArrayList<>();
+
+                GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
+
+                fut.onDone(err);
+
+                failedFuts.add(fut);
+            }
         }
 
         return new PreparedConfigurations(cfgsCp, failedFuts);
@@ -1572,21 +1566,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /** */
-    private void processAssignment(String name, GridServiceAssignments val) {
-        GridServiceAssignments assigns;
+    /**
+     * @param assigns Service assignments.
+     */
+    private void onAssignment(GridServiceAssignments assigns) {
+        String name = assigns.name();
 
-        try {
-            assigns = val;
-        }
-        catch (IgniteException ex) {
-            if (X.hasCause(ex, ClassNotFoundException.class))
-                return;
-            else
-                throw ex;
-        }
-
-        svcName.set(assigns.name());
+        svcName.set(name);
 
         Throwable t = null;
 
@@ -1609,12 +1595,40 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 resMsg.isSuccess = true;
 
             // Send result to coordinator
-            ClusterNode oldest = U.oldest(ctx.discovery().nodes(val.topologyVersion()), null);
+            ClusterNode oldest = U.oldest(ctx.discovery().nodes(assigns.topologyVersion()), null);
 
             ctx.io().sendToGridTopic(oldest, TOPIC_SERVICES, resMsg, SERVICE_POOL);
         }
         catch (IgniteCheckedException e) {
             throw U.convertException(e);
+        }
+    }
+
+    /**
+     * @param name Service name.
+     */
+    private void onCancel(String name) {
+        GridServiceDeploymentFuture fut = undepFuts.get(name);
+
+        try {
+            undeploy(name);
+
+            if (fut != null) {
+                int res = fut.cntr.decrementAndGet();
+
+                if (res <= 0) {
+                    fut.onDone();
+
+                    undepFuts.remove(name);
+                }
+            }
+        }
+        catch (Exception e) {
+            undepFuts.remove(name, fut);
+
+            fut.onDone(e);
+
+            throw e;
         }
     }
 
@@ -1717,7 +1731,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     *
+     * Services messages discovery listener.
      */
     private class ServiceDeploymentListener implements CustomEventListener<DynamicServiceChangeRequest> {
         /** {@inheritDoc} */
@@ -1739,47 +1753,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             // Process deployment on coordinator only.
                             onDeployment(msg.configuration(), msg.nodeId(), topVer);
                         }
-
                         else if (msg.isAssignments()) {
                             GridServiceAssignments assigns = new GridServiceAssignments(msg.configuration(),
                                 msg.nodeId(), msg.topologyVersion());
 
                             assigns.assigns(msg.assignments());
 
-                            String name = assigns.name();
+                            svcAssigns.put(assigns.name(), assigns);
 
-                            svcAssigns.put(name, assigns);
-
-                            processAssignment(name, assigns);
+                            onAssignment(assigns);
                         }
-
-                        else if (msg.isCancel()) {
-                            String name = msg.name();
-
-                            GridServiceDeploymentFuture fut = undepFuts.get(name);
-
-                            try {
-                                undeploy(name);
-
-                                if (fut != null) {
-                                    int res = fut.cntr.decrementAndGet();
-
-                                    if (res <= 0) {
-                                        fut.onDone();
-
-                                        undepFuts.remove(name);
-                                    }
-                                }
-                            }
-                            catch (Exception e) {
-                                undepFuts.remove(name, fut);
-
-                                fut.onDone(e);
-
-                                throw e;
-                            }
-                        }
-
+                        else if (msg.isCancel())
+                            onCancel(msg.name());
                         else
                             throw new IllegalStateException("Unexpected message's goal.");
                     }
@@ -1791,7 +1776,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /** */
+    /**
+     * Services meassages communication listener.
+     */
     private class ServiceDeploymentResultListener implements GridMessageListener {
         /** {@inheritDoc} */
         @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
