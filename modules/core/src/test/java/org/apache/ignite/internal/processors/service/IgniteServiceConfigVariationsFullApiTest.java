@@ -62,9 +62,9 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
     /** Callable factories. */
     @SuppressWarnings("unchecked")
     private static final Factory[] serviceFactories = new Factory[] {
-        Parameters.factory(TestServiceImpl.class)
-//        Parameters.factory(TestServiceImplExternalizable.class),
-//        Parameters.factory(TestServiceImplBinarylizable.class)
+        Parameters.factory(TestServiceImpl.class),
+        Parameters.factory(TestServiceImplExternalizable.class),
+        Parameters.factory(TestServiceImplBinarylizable.class)
     };
 
     /** {@inheritDoc} */
