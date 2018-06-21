@@ -30,7 +30,7 @@ public class ServiceDeploymentResultMessage implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** */
+    /** Notify deployment initiator flag mask. */
     private static final byte NOTIFY_INITIATOR = 0b0001;
 
     /** Flags. */
@@ -57,14 +57,14 @@ public class ServiceDeploymentResultMessage implements Message {
     }
 
     /**
-     * @return
+     *
      */
     public void markNotifyInitiator() {
         flags |= NOTIFY_INITIATOR;
     }
 
     /**
-     * @return
+     * @return Whenever the message's goal is notifying deployment initiator.
      */
     public boolean notifyInitiator() {
         return (flags & NOTIFY_INITIATOR) != 0;
@@ -85,7 +85,7 @@ public class ServiceDeploymentResultMessage implements Message {
     }
 
     /**
-     * @return
+     * @return Whenever the message has deployment error.
      */
     public boolean hasError() {
         return errBytes != null;

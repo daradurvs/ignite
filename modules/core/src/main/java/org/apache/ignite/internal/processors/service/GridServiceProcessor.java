@@ -1123,7 +1123,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 // To be able to collect results
                 depFuts.putIfAbsent(name, new GridServiceDeploymentFuture(cfg));
 
-                DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.assignmentsRequest(nodeId, cfg,
+                DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.assignmentRequest(nodeId, cfg,
                     assigns.assigns(), topVer.topologyVersion());
 
                 ctx.discovery().sendCustomEvent(msg);

@@ -35,13 +35,13 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** */
+    /** Deploy request flag mask. */
     private static final byte DEPLOY_REQUEST = 0b0001;
 
-    /** */
-    private static final byte ASSIGNMENTS_REQUEST = 0b0010;
+    /** Assignment request flag mask. */
+    private static final byte ASSIGNMENT_REQUEST = 0b0010;
 
-    /** */
+    /** Cancel request flag mask. */
     private static final byte CANCEL_REQUEST = 0b0100;
 
     /** Unique custom message ID. */
@@ -63,8 +63,8 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     @Nullable private Map<UUID, Integer> assigns;
 
     /**
-     * @param nodeId Node id.
-     * @param cfg Config.
+     * @param nodeId Deployment initiator id.
+     * @param cfg Service configuration.
      */
     private DynamicServiceChangeRequestMessage(UUID nodeId, ServiceConfiguration cfg) {
         this.nodeId = nodeId;
@@ -72,7 +72,7 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     }
 
     /**
-     * @param nodeId Initiator node id.
+     * @param nodeId Deployment initiator id.
      * @param cfg Service configuration.
      * @return Service deploy request.
      */
@@ -85,13 +85,13 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     }
 
     /**
-     * @param nodeId Initiator node id.
+     * @param nodeId Deployment initiator id.
      * @param cfg Service configuration.
      * @param assigns Service assignments.
      * @param topVer Topology version.
      * @return Service assignments request.
      */
-    public static DynamicServiceChangeRequestMessage assignmentsRequest(
+    public static DynamicServiceChangeRequestMessage assignmentRequest(
         UUID nodeId,
         ServiceConfiguration cfg,
         Map<UUID, Integer> assigns,
@@ -106,7 +106,7 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     }
 
     /**
-     * @param nodeId Deployment initiator node id.
+     * @param nodeId Deployment initiator id.
      * @param cfg Service configuration.
      * @return Service cancel request.
      */
@@ -155,6 +155,7 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
 
     /**
      * @param assigns Service assignments.
+     * @param topVer Topology version.
      */
     void assignments(Map<UUID, Integer> assigns, long topVer) {
         this.assigns = assigns == null ? Collections.EMPTY_MAP : assigns;
@@ -179,14 +180,14 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
      * Mark that request type as assignment.
      */
     void markAssignments() {
-        flags |= ASSIGNMENTS_REQUEST;
+        flags |= ASSIGNMENT_REQUEST;
     }
 
     /**
      * @return Whenever the message is service assignment request.
      */
     boolean isAssignments() {
-        return (flags & ASSIGNMENTS_REQUEST) != 0;
+        return (flags & ASSIGNMENT_REQUEST) != 0;
     }
 
     /**
