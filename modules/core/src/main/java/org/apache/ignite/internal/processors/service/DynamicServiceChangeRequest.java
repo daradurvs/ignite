@@ -53,7 +53,7 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
     /** Deployment initiator id. */
     private final UUID nodeId;
 
-    /** */
+    /** Service configuration. */
     private final ServiceConfiguration cfg;
 
     /** Topology version. */
@@ -154,7 +154,7 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
     }
 
     /**
-     * @param assigns Sets assignments.
+     * @param assigns Service assignments.
      */
     void assignments(Map<UUID, Integer> assigns, long topVer) {
         this.assigns = assigns == null ? Collections.EMPTY_MAP : assigns;
@@ -169,7 +169,7 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
     }
 
     /**
-     * @return
+     * @return Whenever the message is service deploy request.
      */
     boolean isDeploy() {
         return (flags & DEPLOY_REQUEST) != 0;
@@ -183,7 +183,7 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
     }
 
     /**
-     * @return
+     * @return Whenever the message is service assignment request.
      */
     boolean isAssignments() {
         return (flags & ASSIGNMENTS_REQUEST) != 0;
@@ -197,7 +197,7 @@ public class DynamicServiceChangeRequest implements DiscoveryCustomMessage {
     }
 
     /**
-     * @return
+     * @return Whenever the message is service cancel request.
      */
     boolean isCancel() {
         return (flags & CANCEL_REQUEST) != 0;
