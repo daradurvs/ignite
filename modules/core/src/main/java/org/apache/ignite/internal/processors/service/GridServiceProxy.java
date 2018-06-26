@@ -171,7 +171,7 @@ public class GridServiceProxy<T> implements Serializable {
                     node = nodeForService(name, sticky);
 
                     if (node == null)
-                        throw new IgniteException("Failed to find deployed service: " + name);
+                        throw new IgniteException("Failed to find deployed service: " + name + " client mode: " + ctx.clientNode() );
 
                     // If service is deployed locally, then execute locally.
                     if (node.isLocal()) {

@@ -33,6 +33,12 @@ public class ServiceDeploymentResultMessage implements Message {
     /** Notify deployment initiator flag mask. */
     private static final byte NOTIFY_INITIATOR = 0b0001;
 
+    /** Deploy result flag mask. */
+    private static final byte DEPLOY_RESULT = 0b0010;
+
+    /** Undeploy result flag mask. */
+    private static final byte UNDEPLOY_RESULT = 0b0100;
+
     /** Flags. */
     private byte flags;
 
@@ -41,6 +47,9 @@ public class ServiceDeploymentResultMessage implements Message {
 
     /** Serialized deployment error. */
     @Nullable private byte[] errBytes;
+
+    /** Assigns. */
+    public byte[] assigns;
 
     /**
      * Default constructor.
@@ -52,8 +61,32 @@ public class ServiceDeploymentResultMessage implements Message {
     /**
      * @param name Service name.
      */
-    public ServiceDeploymentResultMessage(String name) {
+    private ServiceDeploymentResultMessage(String name) {
         this.name = name;
+    }
+
+    /**
+     * @param name Service name.
+     * @return Service deployment result message.
+     */
+    public static ServiceDeploymentResultMessage deployResult(String name) {
+        ServiceDeploymentResultMessage msg = new ServiceDeploymentResultMessage(name);
+
+        msg.markDeploy();
+
+        return msg;
+    }
+
+    /**
+     * @param name Service name.
+     * @return Service undeployment result message.
+     */
+    public static ServiceDeploymentResultMessage undeployResult(String name) {
+        ServiceDeploymentResultMessage msg = new ServiceDeploymentResultMessage(name);
+
+        msg.markUndeploy();
+
+        return msg;
     }
 
     /**
@@ -68,6 +101,34 @@ public class ServiceDeploymentResultMessage implements Message {
      */
     public boolean notifyInitiator() {
         return (flags & NOTIFY_INITIATOR) != 0;
+    }
+
+    /**
+     * Mark that message type as deploy result.
+     */
+    void markDeploy() {
+        flags |= DEPLOY_RESULT;
+    }
+
+    /**
+     * @return Whenever the message is service deploy result.
+     */
+    boolean isDeploy() {
+        return (flags & DEPLOY_RESULT) != 0;
+    }
+
+    /**
+     * Mark that message type as deploy result.
+     */
+    void markUndeploy() {
+        flags |= UNDEPLOY_RESULT;
+    }
+
+    /**
+     * @return Whenever the message is service deploy result.
+     */
+    boolean isUndeploy() {
+        return (flags & UNDEPLOY_RESULT) != 0;
     }
 
     /**
@@ -134,6 +195,12 @@ public class ServiceDeploymentResultMessage implements Message {
                     return false;
 
                 writer.incrementState();
+
+            case 3:
+                if (!writer.writeByteArray("assigns", assigns))
+                    return false;
+
+                writer.incrementState();
         }
 
         return true;
@@ -170,6 +237,14 @@ public class ServiceDeploymentResultMessage implements Message {
                     return false;
 
                 reader.incrementState();
+
+            case 3:
+                assigns = reader.readByteArray("assigns");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
         }
 
         return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
@@ -182,7 +257,7 @@ public class ServiceDeploymentResultMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 3;
+        return 4;
     }
 
     /** {@inheritDoc} */

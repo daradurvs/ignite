@@ -108,7 +108,7 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
             return;
 
         synchronized (futs) {
-            ServiceAssignmentsFuture fut = futs.get(ctx.localNodeId());
+            ServiceAssignmentsFuture fut = futs.remove(ctx.localNodeId());
 
             if (fut != null) {
                 Collection<byte[]> arrs = ((ServiceAssignmentsResponseMessage)msg).assignments();

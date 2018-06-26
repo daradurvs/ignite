@@ -20,7 +20,6 @@ package org.apache.ignite.internal.processors.service;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -32,25 +31,31 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     /** */
     private final ServiceConfiguration cfg;
 
-    /** */
-    public final AtomicInteger cntr;
+    /** Deployment initiator id. */
+    public UUID nodeId;
 
     /** */
     public final Map<UUID, byte[]> errors;
+
+    /** */
+    Map<UUID, Integer> assigns;
 
     /**
      * @param cfg Configuration.
      */
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
-        this(cfg, 0);
+        this(cfg, null, new HashMap<>());
     }
 
     /**
      * @param cfg Configuration.
+     * @param nodeId Deployment initiator nodeId;
+     * @param assigns Service assignments.
      */
-    public GridServiceDeploymentFuture(ServiceConfiguration cfg, int nodes) {
+    public GridServiceDeploymentFuture(ServiceConfiguration cfg, UUID nodeId, Map<UUID, Integer> assigns) {
         this.cfg = cfg;
-        this.cntr = new AtomicInteger(nodes);
+        this.nodeId = nodeId;
+        this.assigns = new HashMap<>(assigns);
         this.errors = new HashMap<>();
     }
 

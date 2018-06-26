@@ -44,6 +44,9 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     /** Cancel request flag mask. */
     private static final byte CANCEL_REQUEST = 0b0100;
 
+    /** Cancel request flag mask. */
+    private static final byte UNDEPLOY_REQUEST = 0b1000;
+
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
@@ -59,8 +62,21 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     /** Topology version. */
     private long topVer;
 
+    /** Service name to cancel. */
+    private String name;
+
     /** Assignments. */
     @Nullable private Map<UUID, Integer> assigns;
+
+    /**
+     * @param name Service name.
+     */
+    private DynamicServiceChangeRequestMessage(UUID nodeId, String name) {
+        this.nodeId = nodeId;
+        this.cfg = null;
+
+        this.name = name;
+    }
 
     /**
      * @param nodeId Deployment initiator id.
@@ -106,14 +122,27 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
     }
 
     /**
-     * @param nodeId Deployment initiator id.
-     * @param cfg Service configuration.
+     * @param nodeId Cancel initiator id.
+     * @param name Service name.
      * @return Service cancel request.
      */
-    public static DynamicServiceChangeRequestMessage cancelRequest(UUID nodeId, ServiceConfiguration cfg) {
-        DynamicServiceChangeRequestMessage req = new DynamicServiceChangeRequestMessage(nodeId, cfg);
+    public static DynamicServiceChangeRequestMessage cancelRequest(UUID nodeId, String name) {
+        DynamicServiceChangeRequestMessage req = new DynamicServiceChangeRequestMessage(nodeId, name);
 
         req.markCancel();
+
+        return req;
+    }
+
+    /**
+     * @param nodeId Deployment initiator id.
+     * @param cfg Service configuration.
+     * @return Service undeploy request.
+     */
+    public static DynamicServiceChangeRequestMessage undeployRequest(UUID nodeId, ServiceConfiguration cfg) {
+        DynamicServiceChangeRequestMessage req = new DynamicServiceChangeRequestMessage(nodeId, cfg);
+
+        req.markUndeploy();
 
         return req;
     }
@@ -136,6 +165,9 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
      * @return Service name.
      */
     public String name() {
+        if (cfg == null)
+            return name;
+
         return cfg.getName();
     }
 
@@ -204,6 +236,20 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
         return (flags & CANCEL_REQUEST) != 0;
     }
 
+    /**
+     * Mark that request type as undeploy.
+     */
+    void markUndeploy() {
+        flags |= UNDEPLOY_REQUEST;
+    }
+
+    /**
+     * @return Whenever the message is service undeploy request.
+     */
+    boolean isUndeploy() {
+        return (flags & UNDEPLOY_REQUEST) != 0;
+    }
+
     /** {@inheritDoc} */
     @Override public IgniteUuid id() {
         return id;
@@ -222,7 +268,7 @@ public class DynamicServiceChangeRequestMessage implements DiscoveryCustomMessag
 
     /** {@inheritDoc} */
     @Override public boolean stopProcess() {
-        return !isDeploy();
+        return !isDeploy() && !isCancel();
     }
 
     /** {@inheritDoc} */
