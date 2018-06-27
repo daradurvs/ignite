@@ -151,7 +151,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final Map<String, GridServiceAssignments> svcAssigns = new ConcurrentHashMap<>();
 
     /** */
-    private final ClientServiceDescriptorsHandler clntSvcAssignsHnd = new ClientServiceDescriptorsHandler(ctx);
+    private final ClientsServiceAssignmentsProvider clntSvcAssignsProvider = new ClientsServiceAssignmentsProvider(ctx);
 
     /**
      * @param ctx Kernal context.
@@ -204,7 +204,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             ctx.discovery().setCustomEventListener(DynamicServiceChangeRequestMessage.class, discoLsnr);
         }
         else
-            ctx.io().addMessageListener(TOPIC_SERVICES, clntSvcAssignsHnd);
+            ctx.io().addMessageListener(TOPIC_SERVICES, clntSvcAssignsProvider);
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -703,7 +703,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         List<String> svcNames;
 
         if (ctx.clientNode())
-            svcNames = clntSvcAssignsHnd.serviceAssignments().stream()
+            svcNames = clntSvcAssignsProvider.serviceAssignments().stream()
                 .map(GridServiceAssignments::name)
                 .collect(Collectors.toList());
         else
@@ -819,7 +819,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         synchronized (depFuts) {
             if (ctx.clientNode())
-                assign = clntSvcAssignsHnd.serviceAssignment(name);
+                assign = clntSvcAssignsProvider.serviceAssignment(name);
             else
                 assign = svcAssigns.get(name);
         }
@@ -840,7 +840,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Collection<GridServiceAssignments> assigns;
 
         if (ctx.clientNode())
-            assigns = clntSvcAssignsHnd.serviceAssignments();
+            assigns = clntSvcAssignsProvider.serviceAssignments();
         else
             assigns = svcAssigns.entrySet().stream().map(Map.Entry::getValue).collect(Collectors.toList());
 

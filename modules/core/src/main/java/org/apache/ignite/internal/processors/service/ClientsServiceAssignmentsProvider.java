@@ -38,7 +38,7 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
 /**
  *
  */
-public class ClientServiceDescriptorsHandler implements GridMessageListener {
+public class ClientsServiceAssignmentsProvider implements GridMessageListener {
     /** Kernal context. */
     @GridToStringExclude
     private final GridKernalContext ctx;
@@ -50,7 +50,7 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
     /**
      * @param ctx Kernal context.
      */
-    public ClientServiceDescriptorsHandler(GridKernalContext ctx) {
+    public ClientsServiceAssignmentsProvider(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
     }
@@ -109,7 +109,6 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
         if (!(msg instanceof ServiceAssignmentsResponseMessage))
             return;
 
-//        synchronized (futs) {
             ServiceAssignmentsFuture fut = futs.remove(ctx.localNodeId());
 
             if (fut != null) {
@@ -131,7 +130,6 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
                 fut.assigns = assigns;
 
                 fut.onDone();
-//            }
         }
     }
 
