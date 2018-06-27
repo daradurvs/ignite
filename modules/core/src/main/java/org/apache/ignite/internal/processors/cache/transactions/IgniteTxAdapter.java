@@ -65,8 +65,8 @@ import org.apache.ignite.internal.processors.cache.version.GridCacheLazyPlainVer
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersionConflictContext;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersionedEntryEx;
-import org.apache.ignite.internal.transactions.IgniteTxRollbackCheckedException;
 import org.apache.ignite.internal.processors.cluster.BaselineTopology;
+import org.apache.ignite.internal.transactions.IgniteTxRollbackCheckedException;
 import org.apache.ignite.internal.transactions.IgniteTxTimeoutCheckedException;
 import org.apache.ignite.internal.util.GridSetWrapper;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
@@ -166,8 +166,8 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
     protected boolean needRetVal;
 
     /**
-     * End version (a.k.a. <tt>'tnc'</tt> or <tt>'transaction number counter'</tt>)
-     * assigned to this transaction at the end of write phase.
+     * End version (a.k.a. <tt>'tnc'</tt> or <tt>'transaction number counter'</tt>) assigned to this transaction at the
+     * end of write phase.
      */
     @GridToStringInclude
     protected GridCacheVersion endVer;
@@ -216,9 +216,8 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
     private Map<Integer, Set<Integer>> invalidParts;
 
     /**
-     * Transaction state. Note that state is not protected, as we want to
-     * always use {@link #state()} and {@link #state(TransactionState)}
-     * methods.
+     * Transaction state. Note that state is not protected, as we want to always use {@link #state()} and {@link
+     * #state(TransactionState)} methods.
      */
     @GridToStringInclude
     private volatile TransactionState state = ACTIVE;
@@ -999,10 +998,8 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
     }
 
     /**
-     *
      * @param state State to set.
      * @param timedOut Timeout flag.
-     *
      * @return {@code True} if state changed.
      */
     protected final boolean state(TransactionState state, boolean timedOut) {
@@ -1067,7 +1064,7 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
                 }
 
                 case MARKED_ROLLBACK: {
-                    valid = prev == ACTIVE  || prev == PREPARING || prev == PREPARED || prev == SUSPENDED;
+                    valid = prev == ACTIVE || prev == PREPARING || prev == PREPARED || prev == SUSPENDED;
 
                     break;
                 }
@@ -1242,7 +1239,8 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
      * @param commit Commit flag.
      * @throws IgniteCheckedException In case of error.
      */
-    protected void sessionEnd(final Collection<CacheStoreManager> stores, boolean commit) throws IgniteCheckedException {
+    protected void sessionEnd(final Collection<CacheStoreManager> stores,
+        boolean commit) throws IgniteCheckedException {
         Iterator<CacheStoreManager> it = stores.iterator();
 
         Set<CacheStore> visited = new GridSetWrapper<>(new IdentityHashMap<CacheStore, Object>());
@@ -1255,9 +1253,8 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
     }
 
     /**
-     * Performs batch database operations. This commit must be called
-     * before cache update. This way if there is a DB failure,
-     * cache transaction can still be rolled back.
+     * Performs batch database operations. This commit must be called before cache update. This way if there is a DB
+     * failure, cache transaction can still be rolled back.
      *
      * @param writeEntries Transaction write set.
      * @throws IgniteCheckedException If batch update failed.
@@ -1713,7 +1710,7 @@ public abstract class IgniteTxAdapter extends GridMetadataAwareAdapter implement
 
         // Try to take either entry-recorded primary node ID,
         // or transaction node ID from near-local transactions.
-        UUID nodeId = e.nodeId() == null ? local() ? this.nodeId :  null : e.nodeId();
+        UUID nodeId = e.nodeId() == null ? local() ? this.nodeId : null : e.nodeId();
 
         if (nodeId != null && nodeId.equals(cctx.localNodeId()))
             return true;

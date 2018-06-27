@@ -17,47 +17,37 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.services.ServiceConfiguration;
 
 /**
  * Service deployment future.
  */
-public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
+public class GridServiceUndeploymentFuture extends GridFutureAdapter<Object> {
     /** */
-    private final ServiceConfiguration cfg;
+    private final String name;
 
     /** Deployment initiator id. */
-    public UUID nodeId;
+    UUID nodeId;
 
     /** */
-    public final Map<UUID, byte[]> errors;
-
-    /** */
-//    Map<UUID, Integer> assigns;
     Set<UUID> assigns;
 
     /**
-     * @param cfg Configuration.
+     * @param name Service name.
      */
-    public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
-        this.cfg = cfg;
-        this.errors = new HashMap<>();
-        this.nodeId = null;
-        this.assigns = null;
+    public GridServiceUndeploymentFuture(String name) {
+        this.name = name;
     }
 
     /**
-     * @return Service configuration.
+     * @return Service name.
      */
-    public ServiceConfiguration configuration() {
-        return cfg;
+    public String getName() {
+        return name;
     }
 
     /** {@inheritDoc} */
@@ -68,18 +58,18 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
         if (o == null || getClass() != o.getClass())
             return false;
 
-        GridServiceDeploymentFuture fut = (GridServiceDeploymentFuture)o;
+        GridServiceUndeploymentFuture fur = (GridServiceUndeploymentFuture)o;
 
-        return cfg.equalsIgnoreNodeFilter(fut.cfg);
+        return Objects.equals(name, fur.name);
     }
 
     /** {@inheritDoc} */
     @Override public int hashCode() {
-        return Objects.hash(cfg);
+        return Objects.hash(name);
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(GridServiceDeploymentFuture.class, this);
+        return S.toString(GridServiceUndeploymentFuture.class, this);
     }
 }

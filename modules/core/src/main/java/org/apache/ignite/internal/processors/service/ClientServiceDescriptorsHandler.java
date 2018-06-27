@@ -78,24 +78,26 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
      * @return Collection of service assignments.
      */
     public synchronized Collection<GridServiceAssignments> serviceAssignments() {
-        ServiceAssignmentsFuture fut = futs.get(ctx.localNodeId());
-
         try {
-            if (fut == null) {
-                fut = new ServiceAssignmentsFuture();
+            synchronized (futs) {
+                ServiceAssignmentsFuture fut = futs.get(ctx.localNodeId());
 
-                futs.put(ctx.localNodeId(), fut);
+                if (fut == null) {
+                    fut = new ServiceAssignmentsFuture();
 
-                ServiceAssignmentsRequestMessage req = new ServiceAssignmentsRequestMessage();
+                    futs.put(ctx.localNodeId(), fut);
 
-                ClusterNode cdr = U.oldest(ctx.discovery().nodes(ctx.discovery().topologyVersion()), null);
+                    ServiceAssignmentsRequestMessage req = new ServiceAssignmentsRequestMessage();
 
-                ctx.io().sendToGridTopic(cdr, TOPIC_SERVICES, req, SERVICE_POOL);
+                    ClusterNode cdr = U.oldest(ctx.discovery().nodes(ctx.discovery().topologyVersion()), null);
+
+                    ctx.io().sendToGridTopic(cdr, TOPIC_SERVICES, req, SERVICE_POOL);
+                }
+
+                fut.get();
+
+                return fut.assigns;
             }
-
-            fut.get();
-
-            return fut.assigns;
         }
         catch (IgniteCheckedException e) {
             throw U.convertException(e);
@@ -107,7 +109,7 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
         if (!(msg instanceof ServiceAssignmentsResponseMessage))
             return;
 
-        synchronized (futs) {
+//        synchronized (futs) {
             ServiceAssignmentsFuture fut = futs.remove(ctx.localNodeId());
 
             if (fut != null) {
@@ -129,7 +131,7 @@ public class ClientServiceDescriptorsHandler implements GridMessageListener {
                 fut.assigns = assigns;
 
                 fut.onDone();
-            }
+//            }
         }
     }
 
