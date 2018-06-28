@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,48 +60,67 @@ public class ClientsServiceAssignmentsProvider implements GridMessageListener {
     private final Map<UUID, ServiceAssignmentsFuture> futs = new ConcurrentHashMap<>(1);
 
     /**
-     * TODO: request only one assign.
-     *
      * @param name Service name.
+     * @param timeout If greater than 0 limits task execution time.
      * @return Service assignment.
      */
-    public synchronized GridServiceAssignments serviceAssignment(String name) {
-        Collection<GridServiceAssignments> assigns = serviceAssignments();
+    public GridServiceAssignments serviceAssignment(String name, long timeout) {
+        Collection<GridServiceAssignments> assigns = serviceAssignments(Collections.singleton(name), timeout);
 
-        for (GridServiceAssignments assign : assigns)
-            if (assign.name().equals(name))
-                return assign;
+        assert assigns.size() <= 1;
+
+        if (!assigns.isEmpty())
+            return assigns.iterator().next();
 
         return null;
     }
 
     /**
-     * @return Collection of service assignments.
+     * @param timeout If greater than 0 limits task execution time.
+     * @return Collection of services assignments.
      */
-    public synchronized Collection<GridServiceAssignments> serviceAssignments() {
-        try {
-            synchronized (futs) {
-                ServiceAssignmentsFuture fut = futs.get(ctx.localNodeId());
+    public synchronized Collection<GridServiceAssignments> serviceAssignments(long timeout) {
+        return serviceAssignments(null, timeout);
+    }
 
-                if (fut == null) {
-                    fut = new ServiceAssignmentsFuture();
+    /**
+     * @param names Services names.
+     * @param timeout If greater than 0 limits task execution time.
+     * @return Collection of services assignments.
+     */
+    public synchronized Collection<GridServiceAssignments> serviceAssignments(Collection<String> names, long timeout) {
+        synchronized (futs) {
+            ServiceAssignmentsFuture fut = futs.get(ctx.localNodeId());
 
-                    futs.put(ctx.localNodeId(), fut);
+            if (fut == null) {
+                fut = new ServiceAssignmentsFuture();
 
+                futs.put(ctx.localNodeId(), fut);
+
+                try {
                     ServiceAssignmentsRequestMessage req = new ServiceAssignmentsRequestMessage();
+
+                    req.names(names);
 
                     ClusterNode cdr = U.oldest(ctx.discovery().nodes(ctx.discovery().topologyVersion()), null);
 
                     ctx.io().sendToGridTopic(cdr, TOPIC_SERVICES, req, SERVICE_POOL);
+
+                    if (timeout > 0)
+                        fut.get(timeout);
+                    else
+                        fut.get();
                 }
+                catch (IgniteCheckedException e) {
+                    fut.onDone(e);
 
-                fut.get();
+                    futs.remove(ctx.localNodeId(), fut);
 
-                return fut.assigns;
+                    throw U.convertException(e);
+                }
             }
-        }
-        catch (IgniteCheckedException e) {
-            throw U.convertException(e);
+
+            return fut.assigns;
         }
     }
 
@@ -109,27 +129,27 @@ public class ClientsServiceAssignmentsProvider implements GridMessageListener {
         if (!(msg instanceof ServiceAssignmentsResponseMessage))
             return;
 
-            ServiceAssignmentsFuture fut = futs.remove(ctx.localNodeId());
+        ServiceAssignmentsFuture fut = futs.remove(ctx.localNodeId());
 
-            if (fut != null) {
-                Collection<byte[]> arrs = ((ServiceAssignmentsResponseMessage)msg).assignments();
+        if (fut != null) {
+            Collection<byte[]> arrs = ((ServiceAssignmentsResponseMessage)msg).assignments();
 
-                List<GridServiceAssignments> assigns = new ArrayList<>();
+            List<GridServiceAssignments> assigns = new ArrayList<>();
 
-                for (byte[] arr : arrs) {
-                    try {
-                        GridServiceAssignments assign = U.unmarshal(ctx, arr, null);
+            for (byte[] arr : arrs) {
+                try {
+                    GridServiceAssignments assign = U.unmarshal(ctx, arr, null);
 
-                        assigns.add(assign);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Error during GridServiceAssignment unmarshalling.", e);
-                    }
+                    assigns.add(assign);
                 }
+                catch (IgniteCheckedException e) {
+                    log.error("Error during GridServiceAssignment unmarshalling.", e);
+                }
+            }
 
-                fut.assigns = assigns;
+            fut.assigns = assigns;
 
-                fut.onDone();
+            fut.onDone();
         }
     }
 

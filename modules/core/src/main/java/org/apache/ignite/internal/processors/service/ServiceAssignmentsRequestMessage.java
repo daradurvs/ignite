@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
 import java.util.Collection;
-import java.util.List;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
@@ -30,7 +29,7 @@ import org.apache.ignite.plugin.extensions.communication.MessageWriter;
  */
 public class ServiceAssignmentsRequestMessage implements Message {
     /** Services names. */
-    private List<String> names;
+    private Collection<String> names;
 
     /**
      * @return Services names.
@@ -42,7 +41,7 @@ public class ServiceAssignmentsRequestMessage implements Message {
     /**
      * @param names Services names.
      */
-    public void names(List<String> names) {
+    public void names(Collection<String> names) {
         this.names = names;
     }
 

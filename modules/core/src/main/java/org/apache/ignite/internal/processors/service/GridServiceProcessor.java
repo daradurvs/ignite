@@ -77,6 +77,7 @@ import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
+import org.apache.ignite.plugin.security.SecurityException;
 import org.apache.ignite.plugin.security.SecurityPermission;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -152,6 +153,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** */
     private final ClientsServiceAssignmentsProvider clntSvcAssignsProvider = new ClientsServiceAssignmentsProvider(ctx);
+
+    /** Clients assignments requests wait timeout. */
+    private final long clientWaitTimeout = 30_000;
 
     /**
      * @param ctx Kernal context.
@@ -635,7 +639,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             GridServiceAssignments oldAssign;
 
             if (ctx.clientNode())
-                oldAssign = clntSvcAssignsProvider.serviceAssignment(name);
+                oldAssign = clntSvcAssignsProvider.serviceAssignment(name, clientWaitTimeout);
             else
                 oldAssign = svcAssigns.get(name);
 
@@ -702,7 +706,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         List<String> svcNames;
 
         if (ctx.clientNode())
-            svcNames = clntSvcAssignsProvider.serviceAssignments().stream()
+            svcNames = clntSvcAssignsProvider.serviceAssignments(clientWaitTimeout).stream()
                 .map(GridServiceAssignments::name)
                 .collect(Collectors.toList());
         else
@@ -786,45 +790,61 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private CancelResult sendToCancel(String name) throws IgniteCheckedException {
         try {
             ctx.security().authorize(name, SecurityPermission.SERVICE_CANCEL, null);
+        }
+        catch (SecurityException e) {
+            return new CancelResult(new GridFinishedFuture<>(e), false);
+        }
 
-            GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
+        GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
 
-            GridServiceUndeploymentFuture old = undepFuts.putIfAbsent(name, fut);
+        GridServiceUndeploymentFuture old = undepFuts.putIfAbsent(name, fut);
 
-            if (old != null) // Sent already
-                return new CancelResult(old, false);
+        if (old != null) // Sent already
+            return new CancelResult(old, false);
 
-            if (!ctx.clientNode())
-                log.debug(name + " contains " + svcAssigns.containsKey(name));
-
+        try {
             DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.cancelRequest(ctx.localNodeId(), name);
 
             ctx.discovery().sendCustomEvent(msg);
-//            }
+
+            if (log.isDebugEnabled()) {
+                log.debug("Service has been sent to cancel: [" + name
+                    + "], canceling initiator id: [" + ctx.localNodeId()
+                    + "], client mode: [" + ctx.clientNode() + ']');
+            }
+
             // TODO: handle rollback
             return new CancelResult(fut, false);
         }
-        catch (Exception e) {
-            return new CancelResult(new GridFinishedFuture<>(e), false);
+        catch (IgniteCheckedException e) {
+            undepFuts.remove(name, fut);
+
+            fut.onDone(e);
+
+            throw e;
         }
     }
 
     /**
      * @param name Service name.
+     * @param timeout If greater than 0 limits task execution time. Cannot be negative.
      * @return Service topology.
+     * @throws IgniteCheckedException On error.
      */
     public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
         GridServiceAssignments assign;
 
-        synchronized (depFuts) {
-            if (ctx.clientNode())
-                assign = clntSvcAssignsProvider.serviceAssignment(name);
-            else
-                assign = svcAssigns.get(name);
-        }
+        if (ctx.clientNode())
+            assign = clntSvcAssignsProvider.serviceAssignment(name, timeout);
+        else
+            assign = svcAssigns.get(name);
 
         if (assign == null) {
-            log.error("***** Assignment == null, client mode " + ctx.clientNode());
+            if (log.isDebugEnabled()) {
+                log.debug("Service assignment was not found : [" + name
+                    + "], requester id: [" + ctx.localNodeId()
+                    + "], client mode: [" + ctx.clientNode() + ']');
+            }
 
             return null;
         }
@@ -839,7 +859,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Collection<GridServiceAssignments> assigns;
 
         if (ctx.clientNode())
-            assigns = clntSvcAssignsProvider.serviceAssignments();
+            assigns = clntSvcAssignsProvider.serviceAssignments(clientWaitTimeout);
         else
             assigns = svcAssigns.entrySet().stream().map(Map.Entry::getValue).collect(Collectors.toList());
 
@@ -1885,31 +1905,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 try {
                     if (msg instanceof ServiceAssignmentsRequestMessage) {
-                        Collection<String> names = ((ServiceAssignmentsRequestMessage)msg).names();
+                        ServiceAssignmentsRequestMessage req = (ServiceAssignmentsRequestMessage)msg;
 
-                        List<GridServiceAssignments> filteredAssigns = svcAssigns.entrySet().stream()
-                            .filter(e -> names == null || names.isEmpty() || names.contains(e.getKey()))
-                            .map(Map.Entry::getValue)
-                            .collect(Collectors.toList());
-
-                        List<byte[]> assigns = new ArrayList<>();
-
-                        for (GridServiceAssignments assign : filteredAssigns) {
-                            try {
-                                byte[] arr = U.marshal(ctx, assign);
-
-                                assigns.add(arr);
-                            }
-                            catch (IgniteCheckedException e) {
-                                log.error("Error during GridServiceAssignment marshalling: " + assign.name(), e);
-                            }
-                        }
-
-                        ServiceAssignmentsResponseMessage resMsg = new ServiceAssignmentsResponseMessage();
-
-                        resMsg.assignments(assigns);
-
-                        ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, resMsg, SERVICE_POOL);
+                        onAssignmentsRequests(req.names(), nodeId);
 
                         return;
                     }
@@ -1919,11 +1917,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     ServiceDeploymentResultMessage resMsg = (ServiceDeploymentResultMessage)msg;
 
                     if (resMsg.notifyInitiator()) {
-//                        depExe.execute(new Runnable() {
-//                            @Override public void run() {
                         onResponse(resMsg);
-//                            }
-//                        });
 
                         return;
                     }
@@ -1938,10 +1932,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                             // Only assigned nodes id are important to check
                             if (fut != null) {
-                                // Handle undeploy during reassignment
-//                                if (!fut.assigns.isEmpty() && !fut.assigns.contains(nodeId))
-//                                    return;
-
                                 // Coordinator should collect deployment results from assigned nodes.
                                 fut.assigns.remove(nodeId);
 
@@ -1981,9 +1971,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             GridServiceUndeploymentFuture fut = undepFuts.get(name);
 
                             if (fut != null) {
-//                                if (!fut.assigns.isEmpty() && !fut.assigns.contains(nodeId))
-//                                    return;
-
                                 fut.assigns.remove(nodeId);
 
                                 if (fut.assigns.isEmpty()) {
@@ -1992,7 +1979,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                     fut.onDone();
 
                                     // Notify initiator
-//                                    if (!isLocalNodeCoordinator()) {
                                     if (!ctx.localNodeId().equals(fut.nodeId)) {
                                         ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.undeployResult(name);
 
@@ -2013,6 +1999,36 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 busyLock.leaveBusy();
             }
         }
+    }
+
+    /**
+     * @param names Services names.
+     * @param nodeId Requester if.
+     */
+    private void onAssignmentsRequests(Collection<String> names, UUID nodeId) throws IgniteCheckedException {
+        List<GridServiceAssignments> filteredAssigns = svcAssigns.entrySet().stream()
+            .filter(e -> names == null || names.isEmpty() || names.contains(e.getKey()))
+            .map(Map.Entry::getValue)
+            .collect(Collectors.toList());
+
+        List<byte[]> assigns = new ArrayList<>();
+
+        for (GridServiceAssignments assign : filteredAssigns) {
+            try {
+                byte[] arr = U.marshal(ctx, assign);
+
+                assigns.add(arr);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Error during GridServiceAssignment marshalling: " + assign.name(), e);
+            }
+        }
+
+        ServiceAssignmentsResponseMessage resMsg = new ServiceAssignmentsResponseMessage();
+
+        resMsg.assignments(assigns);
+
+        ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, resMsg, SERVICE_POOL);
     }
 
     /**
