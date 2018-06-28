@@ -1899,176 +1899,168 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private class ServiceDeploymentResultListener implements GridMessageListener {
         /** {@inheritDoc} */
         @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
-            if (busyLock == null || !busyLock.enterBusy())
-                return;
-
             try {
-                try {
-                    if (msg instanceof ServiceAssignmentsRequestMessage) {
-                        ServiceAssignmentsRequestMessage req = (ServiceAssignmentsRequestMessage)msg;
+                if (msg instanceof ServiceAssignmentsRequestMessage) {
+                    ServiceAssignmentsRequestMessage req = (ServiceAssignmentsRequestMessage)msg;
 
-                        onAssignmentsRequests(req.names(), nodeId);
+                    onServiceAssignmentsRequest(req.names(), nodeId);
 
-                        return;
-                    }
+                    return;
+                }
 
-                    assert msg instanceof ServiceDeploymentResultMessage;
+                assert msg instanceof ServiceDeploymentResultMessage;
 
-                    ServiceDeploymentResultMessage resMsg = (ServiceDeploymentResultMessage)msg;
+                ServiceDeploymentResultMessage resMsg = (ServiceDeploymentResultMessage)msg;
 
-                    if (resMsg.notifyInitiator()) {
-                        onResponse(resMsg);
+                if (resMsg.notifyInitiator()) {
+                    onDeploymentResult(resMsg);
 
-                        return;
-                    }
+                    return;
+                }
 
-                    assert isLocalNodeCoordinator();
+                assert isLocalNodeCoordinator();
 
-                    String name = resMsg.name();
+                String name = resMsg.name();
 
-                    if (resMsg.isDeploy()) {
-                        synchronized (depFuts) {
-                            GridServiceDeploymentFuture fut = depFuts.get(name);
+                if (resMsg.isDeploy()) {
+                    synchronized (depFuts) {
+                        GridServiceDeploymentFuture fut = depFuts.get(name);
 
-                            // Only assigned nodes id are important to check
-                            if (fut != null) {
-                                // Coordinator should collect deployment results from assigned nodes.
-                                fut.assigns.remove(nodeId);
+                        // Only assigned nodes id are important to check
+                        if (fut != null) {
+                            // Coordinator should collect deployment results from assigned nodes.
+                            fut.assigns.remove(nodeId);
 
-                                if (resMsg.hasError())
-                                    fut.errors.put(nodeId, resMsg.errorBytes());
+                            if (resMsg.hasError())
+                                fut.errors.put(nodeId, resMsg.errorBytes());
 
-                                if (fut.assigns.isEmpty()) {
-                                    depFuts.remove(name);
+                            if (fut.assigns.isEmpty()) {
+                                depFuts.remove(name);
 
-                                    if (!resMsg.hasError())
-                                        fut.onDone();
-                                    else {
-                                        byte[] errBytes = fut.errors.entrySet().iterator().next().getValue();
-
-                                        Throwable t = U.unmarshal(ctx, errBytes, null);
-
-                                        fut.onDone(new ServiceDeploymentException(t, Collections.singleton(fut.configuration())));
-                                    }
-
-                                    // Notify initiator
-                                    if (!ctx.localNodeId().equals(fut.nodeId)) {
-                                        ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.deployResult(name);
-
-                                        resInitiatorMsg.markNotifyInitiator();
-
-                                        if (!fut.errors.isEmpty())
-                                            resInitiatorMsg.errorBytes(fut.errors.entrySet().iterator().next().getValue());
-
-                                        ctx.io().sendToGridTopic(fut.nodeId, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    else if (resMsg.isUndeploy()) {
-                        synchronized (undepFuts) {
-                            GridServiceUndeploymentFuture fut = undepFuts.get(name);
-
-                            if (fut != null) {
-                                fut.assigns.remove(nodeId);
-
-                                if (fut.assigns.isEmpty()) {
-                                    undepFuts.remove(name);
-
+                                if (!resMsg.hasError())
                                     fut.onDone();
+                                else {
+                                    byte[] errBytes = fut.errors.entrySet().iterator().next().getValue();
 
-                                    // Notify initiator
-                                    if (!ctx.localNodeId().equals(fut.nodeId)) {
-                                        ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.undeployResult(name);
+                                    Throwable t = U.unmarshal(ctx, errBytes, null);
 
-                                        resInitiatorMsg.markNotifyInitiator();
+                                    fut.onDone(new ServiceDeploymentException(t, Collections.singleton(fut.configuration())));
+                                }
 
-                                        ctx.io().sendToGridTopic(fut.nodeId, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
-                                    }
+                                // Notify initiator
+                                if (!ctx.localNodeId().equals(fut.nodeId)) {
+                                    ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.deployResult(name);
+
+                                    resInitiatorMsg.markNotifyInitiator();
+
+                                    if (!fut.errors.isEmpty())
+                                        resInitiatorMsg.errorBytes(fut.errors.entrySet().iterator().next().getValue());
+
+                                    ctx.io().sendToGridTopic(fut.nodeId, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
                                 }
                             }
                         }
                     }
                 }
-                catch (IgniteCheckedException e) {
-                    throw U.convertException(e);
+                else if (resMsg.isUndeploy()) {
+                    synchronized (undepFuts) {
+                        GridServiceUndeploymentFuture fut = undepFuts.get(name);
+
+                        if (fut != null) {
+                            fut.assigns.remove(nodeId);
+
+                            if (fut.assigns.isEmpty()) {
+                                undepFuts.remove(name);
+
+                                fut.onDone();
+
+                                // Notify initiator
+                                if (!ctx.localNodeId().equals(fut.nodeId)) {
+                                    ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.undeployResult(name);
+
+                                    resInitiatorMsg.markNotifyInitiator();
+
+                                    ctx.io().sendToGridTopic(fut.nodeId, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-            finally {
-                busyLock.leaveBusy();
-            }
-        }
-    }
-
-    /**
-     * @param names Services names.
-     * @param nodeId Requester if.
-     */
-    private void onAssignmentsRequests(Collection<String> names, UUID nodeId) throws IgniteCheckedException {
-        List<GridServiceAssignments> filteredAssigns = svcAssigns.entrySet().stream()
-            .filter(e -> names == null || names.isEmpty() || names.contains(e.getKey()))
-            .map(Map.Entry::getValue)
-            .collect(Collectors.toList());
-
-        List<byte[]> assigns = new ArrayList<>();
-
-        for (GridServiceAssignments assign : filteredAssigns) {
-            try {
-                byte[] arr = U.marshal(ctx, assign);
-
-                assigns.add(arr);
             }
             catch (IgniteCheckedException e) {
-                log.error("Error during GridServiceAssignment marshalling: " + assign.name(), e);
+                throw U.convertException(e);
             }
         }
 
-        ServiceAssignmentsResponseMessage resMsg = new ServiceAssignmentsResponseMessage();
+        /**
+         * @param names Services names.
+         * @param nodeId Requester id.
+         */
+        private void onServiceAssignmentsRequest(Collection<String> names, UUID nodeId) throws IgniteCheckedException {
+            List<GridServiceAssignments> filteredAssigns = svcAssigns.entrySet().stream()
+                .filter(e -> names == null || names.isEmpty() || names.contains(e.getKey()))
+                .map(Map.Entry::getValue)
+                .collect(Collectors.toList());
 
-        resMsg.assignments(assigns);
+            List<byte[]> assigns = new ArrayList<>();
 
-        ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, resMsg, SERVICE_POOL);
-    }
+            for (GridServiceAssignments assign : filteredAssigns) {
+                try {
+                    byte[] arr = U.marshal(ctx, assign);
 
-    /**
-     * @param resMsg Service deployment result message.
-     */
-    private void onResponse(ServiceDeploymentResultMessage resMsg) {
-        assert resMsg.notifyInitiator();
+                    assigns.add(arr);
+                }
+                catch (IgniteCheckedException e) {
+                    log.error("Error during GridServiceAssignment marshalling: " + assign.name(), e);
+                }
+            }
 
-        String name = resMsg.name();
+            ServiceAssignmentsResponseMessage resMsg = new ServiceAssignmentsResponseMessage();
 
-        if (resMsg.isDeploy()) {
-            synchronized (depFuts) {
-                GridServiceDeploymentFuture fut = depFuts.remove(name);
+            resMsg.assignments(assigns);
 
-                if (fut != null) {
-                    if (!resMsg.hasError())
-                        fut.onDone();
-                    else {
-                        Throwable t = null;
-                        try {
-                            t = U.unmarshal(ctx, resMsg.errorBytes(), null);
+            ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, resMsg, SERVICE_POOL);
+        }
+
+        /**
+         * @param resMsg Service deployment result message.
+         */
+        private void onDeploymentResult(ServiceDeploymentResultMessage resMsg) {
+            assert resMsg.notifyInitiator();
+
+            String name = resMsg.name();
+
+            if (resMsg.isDeploy()) {
+                synchronized (depFuts) {
+                    GridServiceDeploymentFuture fut = depFuts.remove(name);
+
+                    if (fut != null) {
+                        if (!resMsg.hasError())
+                            fut.onDone();
+                        else {
+                            Throwable t = null;
+                            try {
+                                t = U.unmarshal(ctx, resMsg.errorBytes(), null);
+                            }
+                            catch (IgniteCheckedException e) {
+                                log.error("Failed to unmarshal exception.", e);
+                            }
+
+                            fut.onDone(new ServiceDeploymentException(t, Collections.singleton(fut.configuration())));
                         }
-                        catch (IgniteCheckedException e) {
-                            log.error("Failed to unmarshal exception.", e);
-                        }
-
-                        fut.onDone(new ServiceDeploymentException(t, Collections.singleton(fut.configuration())));
                     }
                 }
             }
-        }
-        else if (resMsg.isUndeploy()) {
-            synchronized (undepFuts) {
-                GridServiceUndeploymentFuture fut = undepFuts.remove(name);
+            else if (resMsg.isUndeploy()) {
+                synchronized (undepFuts) {
+                    GridServiceUndeploymentFuture fut = undepFuts.remove(name);
 
-                if (fut != null)
-                    fut.onDone();
+                    if (fut != null)
+                        fut.onDone();
+                }
             }
+            else
+                throw new IllegalStateException();
         }
-        else
-            throw new IllegalStateException();
     }
 }
