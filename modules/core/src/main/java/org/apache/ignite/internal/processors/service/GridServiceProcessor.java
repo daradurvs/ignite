@@ -529,8 +529,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * TODO: service deploy
-     *
      * @param cfgs Service configurations.
      * @param dfltNodeFilter Default NodeFilter.
      * @return Future for deployment.
@@ -616,59 +614,60 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void sendToDeploy(GridServiceDeploymentCompoundFuture res, ServiceConfiguration cfg)
         throws IgniteCheckedException {
-        log.info("sendToDeploy, client mode: " + ctx.clientNode());
-
-        log.info(cfg.toString());
-
         String name = cfg.getName();
 
-        synchronized (depFuts) {
-            GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
+        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
 
-            GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
+        GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
 
-            try {
-                if (old != null) {
-                    if (!old.configuration().equalsIgnoreNodeFilter(cfg))
-                        throw new IgniteCheckedException("Failed to deploy service (service already exists with different " +
-                            "configuration) [deployed=" + old.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
-                    else {
-                        res.add(old, false);
+        try {
+            if (old != null) {
+                if (!old.configuration().equalsIgnoreNodeFilter(cfg))
+                    throw new IgniteCheckedException("Failed to deploy service (service already exists with different " +
+                        "configuration) [deployed=" + old.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
+                else {
+                    res.add(old, false);
 
-                        return;
-                    }
+                    return;
                 }
+            }
 
-                if (!ctx.clientNode()) {
-                    GridServiceAssignments oldAssign = svcAssigns.get(name);
+            GridServiceAssignments oldAssign;
 
-                    if (oldAssign != null) {
-                        if (!oldAssign.configuration().equalsIgnoreNodeFilter(cfg)) {
-                            throw new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                                "different configuration) [deployed=" + oldAssign.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
-                        }
-                        else
-                            res.add(fut, false);
-                    }
-                    else
-                        res.add(fut, true);
+            if (ctx.clientNode())
+                oldAssign = clntSvcAssignsProvider.serviceAssignment(name);
+            else
+                oldAssign = svcAssigns.get(name);
+
+            if (oldAssign != null) {
+                if (!oldAssign.configuration().equalsIgnoreNodeFilter(cfg)) {
+                    throw new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                        "different configuration) [deployed=" + oldAssign.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
                 }
                 else
                     res.add(fut, false);
-
-                DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.deployRequest(ctx.localNodeId(), cfg);
-
-                ctx.discovery().sendCustomEvent(msg);
             }
-            catch (IgniteCheckedException e) {
-                fut.onDone(e);
+            else
+                res.add(fut, true);
 
-                res.add(fut, false);
+            DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.deployRequest(ctx.localNodeId(), cfg);
 
-                depFuts.remove(name, fut);
+            ctx.discovery().sendCustomEvent(msg);
 
-                throw e;
+            if (log.isDebugEnabled()) {
+                log.debug("Service has been sent to deploy: [" + cfg
+                    + "], deployment initiator id: [" + ctx.localNodeId()
+                    + "], client mode: [" + ctx.clientNode() + ']');
             }
+        }
+        catch (IgniteCheckedException e) {
+            fut.onDone(e);
+
+            res.add(fut, false);
+
+            depFuts.remove(name, fut);
+
+            throw e;
         }
     }
 
