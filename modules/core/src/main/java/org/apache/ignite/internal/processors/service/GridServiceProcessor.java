@@ -1894,7 +1894,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Services meassages communication listener.
+     * Services lifecycles messages communication listener.
      */
     private class ServiceDeploymentResultListener implements GridMessageListener {
         /** {@inheritDoc} */
@@ -1926,9 +1926,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     synchronized (depFuts) {
                         GridServiceDeploymentFuture fut = depFuts.get(name);
 
-                        // Only assigned nodes id are important to check
                         if (fut != null) {
-                            // Coordinator should collect deployment results from assigned nodes.
                             fut.assigns.remove(nodeId);
 
                             if (resMsg.hasError())
