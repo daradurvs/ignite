@@ -1174,12 +1174,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 ctx.discovery().sendCustomEvent(msg);
 
-                synchronized (svcAssigns) {
-                    svcAssigns.put(assigns.name(), assigns);
-
-                    onAssignment(assigns);
-                }
-
                 break;
             }
             catch (ClusterTopologyCheckedException e) {
@@ -1619,8 +1613,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /**
      * @param assigns Service assignments.
+     * @param snd Assignment initiator node.
      */
-    private void onAssignment(GridServiceAssignments assigns) {
+    private void onAssignment(GridServiceAssignments assigns, ClusterNode snd) {
         String name = assigns.name();
 
         svcName.set(name);
@@ -1640,10 +1635,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             if (t != null)
                 resMsg.errorBytes(U.marshal(ctx, t));
 
-            // Send result to coordinator
-            ClusterNode oldest = U.oldest(ctx.discovery().nodes(assigns.topologyVersion()), null);
-
-            ctx.io().sendToGridTopic(oldest, TOPIC_SERVICES, resMsg, SERVICE_POOL);
+            ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resMsg, SERVICE_POOL);
         }
         catch (IgniteCheckedException e) {
             throw U.convertException(e);
@@ -1671,14 +1663,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (old != null) {
                     // In case coordinator is initiator.
                     old.nodeId = snd.id();
-//                    old.assigns = new HashMap<>(assigns.assigns());
                     old.assigns = new HashSet<>(nodes);
                 }
                 else {
                     GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
 
                     fut.nodeId = snd.id();
-//                    fut.assigns = new HashMap<>(assigns.assigns());
                     fut.assigns = new HashSet<>(nodes);
 
                     undepFuts.put(name, fut);
@@ -1715,9 +1705,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         try {
             ServiceDeploymentResultMessage msg = ServiceDeploymentResultMessage.undeployResult(name);
-
-            // Send result to coordinator
-//                ClusterNode oldest = U.oldest(ctx.discovery().nodes(assigns.topologyVersion()), null);
 
             ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, msg, SERVICE_POOL);
         }
@@ -1859,9 +1846,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             onDeployment(msg.configuration(), msg.nodeId(), topVer);
                         }
                         else if (msg.isAssignments()) {
-                            if (snd.isLocal())
-                                return;
-
                             synchronized (svcAssigns) {
                                 GridServiceAssignments assigns = new GridServiceAssignments(msg.configuration(),
                                     msg.nodeId(), msg.topologyVersion());
@@ -1870,7 +1854,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                                 svcAssigns.put(assigns.name(), assigns);
 
-                                onAssignment(assigns);
+                                onAssignment(assigns, snd);
                             }
                         }
                         else if (msg.isCancel()) {
@@ -1907,6 +1891,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     return;
                 }
+
+                if (!(msg instanceof ServiceDeploymentResultMessage))
+                    return;
 
                 assert msg instanceof ServiceDeploymentResultMessage;
 
