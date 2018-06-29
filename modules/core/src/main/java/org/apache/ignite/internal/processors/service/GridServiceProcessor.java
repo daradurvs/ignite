@@ -1655,6 +1655,32 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         GridServiceAssignments assigns = svcAssigns.get(name);
 
+        if (assigns == null) {
+            if (log.isDebugEnabled())
+                log.warning("Request to undeploy of non deployed service has been received, name: [" + name +
+                    "], initiator: [id=" + snd.id() + ", client mode=" + snd.isClient() + ']');
+
+            GridServiceUndeploymentFuture fut = undepFuts.remove(name);
+
+            if (!ctx.localNodeId().equals(snd.id())) {
+                ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.undeployResult(name);
+
+                resInitiatorMsg.markNotifyInitiator();
+
+                try {
+                    ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                }
+                catch (IgniteCheckedException e) {
+                    throw U.convertException(e);
+                }
+            }
+
+            if (fut != null)
+                fut.onDone();
+
+            return;
+        }
+
         try {
             synchronized (undepFuts) {
                 GridServiceUndeploymentFuture old = undepFuts.get(name);
@@ -1681,8 +1707,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.undeployRequest(snd.id(), assigns.configuration());
 
             ctx.discovery().sendCustomEvent(msg);
-
-            // TODO notify initiator in case of service is not found (clients nodes).
         }
         catch (Exception e) {
             GridFutureAdapter f = undepFuts.get(name);
