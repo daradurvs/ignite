@@ -239,6 +239,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (!ctx.clientNode())
             ctx.event().removeDiscoveryEventListener(topLsnr);
+        else
+            ctx.io().removeMessageListener(TOPIC_SERVICES, clntSvcAssignsProvider);
 
         ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -1834,21 +1836,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** */
     private boolean isLocalNodeCoordinator() {
-        return isLocalNodeCoordinator(ctx.discovery().topologyVersionEx());
+        return coordinator().isLocal();
     }
 
-    /**
-     * @param topVer Topology version.
-     */
-    private boolean isLocalNodeCoordinator(AffinityTopologyVersion topVer) {
-        return coordinator(topVer).isLocal();
-    }
-
-    /**
-     * @param topVer Topology version.
-     */
-    private ClusterNode coordinator(AffinityTopologyVersion topVer) {
-        return U.oldest(ctx.discovery().nodes(topVer), null);
+    /** */
+    private ClusterNode coordinator() {
+        return U.oldest(ctx.discovery().aliveServerNodes(), null);
     }
 
     /**
@@ -1860,9 +1853,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             DynamicServiceChangeRequestMessage msg) {
             assert !ctx.clientNode();
 
-            if (ctx.discovery().topologyVersion() != topVer.topologyVersion())
-                return;
-
             GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
 
             if (busyLock == null || !busyLock.enterBusy())
@@ -1872,7 +1862,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 depExe.execute(new DepRunnable() {
                     @Override public void run0() {
                         if (msg.isDeploy()) {
-                            if (!isLocalNodeCoordinator(topVer))
+                            if (!isLocalNodeCoordinator())
                                 return;
 
                             // Process deployment on coordinator only.
@@ -1891,7 +1881,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
                         }
                         else if (msg.isCancel()) {
-                            if (!isLocalNodeCoordinator(topVer))
+                            if (!isLocalNodeCoordinator())
                                 return;
 
                             // Process canceling on coordinator only.
@@ -2011,12 +2001,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     break;
                 }
                 catch (IgniteCheckedException e) {
-                    if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                        if (log.isDebugEnabled())
-                            log.debug("Topology changed while processing message (will retry): " + e.getMessage());
-                    }
-                    else
-                        throw U.convertException(e);
+                    if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
+                        log.debug("Topology changed while processing message: " + e.getMessage());
+
+                    throw U.convertException(e);
                 }
             }
         }
