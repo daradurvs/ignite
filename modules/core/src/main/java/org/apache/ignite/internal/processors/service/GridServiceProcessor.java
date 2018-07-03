@@ -710,6 +710,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     t = new IgniteCheckedException("Failed to deploy service (service already exists with " +
                         "different configuration) [deployed=" + oldAssign.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
                 }
+                else {
+                    // Service has been deployed
+                    ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.deployResult(name);
+
+                    resInitiatorMsg.markNotifyInitiator();
+
+                    try {
+                        ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                    }
+                    catch (IgniteCheckedException e) {
+                        e.printStackTrace();
+                    }
+
+                    return false;
+                }
             }
         }
 
