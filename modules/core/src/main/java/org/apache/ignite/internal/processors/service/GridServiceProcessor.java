@@ -678,6 +678,58 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * @param snd Deployment initiator.
+     * @param cfg Service configuration.
+     * @return {@code true} if service is not exists, otherwise {@code false}.
+     */
+    private boolean checkServiceAbsence(ClusterNode snd, ServiceConfiguration cfg) {
+        assert isLocalNodeCoordinator();
+
+        String name = cfg.getName();
+
+        GridServiceDeploymentFuture old = depFuts.get(name);
+
+        Throwable t = null;
+
+        if (old != null) {
+            if (!old.configuration().equalsIgnoreNodeFilter(cfg))
+                t = new IgniteCheckedException("Failed to deploy service (service already exists with different " +
+                    "configuration) [deployed=" + old.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
+        }
+        else {
+            GridServiceAssignments oldAssign = svcAssigns.get(name);
+
+            if (oldAssign != null) {
+                if (!oldAssign.configuration().equalsIgnoreNodeFilter(cfg)) {
+                    t = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                        "different configuration) [deployed=" + oldAssign.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
+                }
+            }
+        }
+
+        if (t != null) {
+            ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.deployResult(name);
+
+            resInitiatorMsg.markNotifyInitiator();
+
+            try {
+                byte[] errBytes = U.marshal(ctx, t);
+
+                resInitiatorMsg.errorBytes(errBytes);
+
+                ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+            }
+            catch (IgniteCheckedException e) {
+                e.printStackTrace();
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * @param name Service name.
      * @return Future.
      */
@@ -1863,6 +1915,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     @Override public void run0() {
                         if (msg.isDeploy()) {
                             if (!isLocalNodeCoordinator())
+                                return;
+
+                            if (!snd.isLocal() && !checkServiceAbsence(snd, msg.configuration()))
                                 return;
 
                             // Process deployment on coordinator only.
