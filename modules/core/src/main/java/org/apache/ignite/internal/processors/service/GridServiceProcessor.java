@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -695,6 +696,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             if (!old.configuration().equalsIgnoreNodeFilter(cfg))
                 t = new IgniteCheckedException("Failed to deploy service (service already exists with different " +
                     "configuration) [deployed=" + old.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
+            else {
+                old.registerInitiator(snd.id());
+
+                return false;
+            }
         }
         else {
             GridServiceAssignments oldAssign = svcAssigns.get(name);
@@ -1205,21 +1211,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 assert isLocalNodeCoordinator();
 
                 synchronized (depFuts) {
-                    List<UUID> topNodes = ctx.discovery().serverTopologyNodes(assigns.topologyVersion()).stream()
+                    Set<UUID> topNodes = ctx.discovery().serverTopologyNodes(assigns.topologyVersion()).stream()
                         .map(ClusterNode::id)
-                        .collect(Collectors.toList());
+                        .collect(Collectors.toSet());
 
                     GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(assigns.configuration());
 
                     GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
 
                     if (old != null) {
-                        old.nodeId = nodeId;
-                        old.assigns = new HashSet<>(topNodes);
+                        old.registerInitiator(nodeId);
+                        old.participants(topNodes);
                     }
                     else {
-                        fut.nodeId = nodeId;
-                        fut.assigns = new HashSet<>(topNodes);
+                        fut.registerInitiator(nodeId);
+                        fut.participants(topNodes);
                     }
                 }
 
@@ -1993,22 +1999,27 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             GridServiceDeploymentFuture fut = depFuts.get(name);
 
                             if (fut != null) {
-                                fut.assigns.remove(nodeId);
+                                fut.participants().remove(nodeId);
 
                                 if (resMsg.hasError())
-                                    fut.errors.put(nodeId, resMsg.errorBytes());
+                                    fut.errors().put(nodeId, resMsg.errorBytes());
 
-                                if (fut.assigns.isEmpty()) {
-                                    // Notify initiator
-                                    if (!ctx.localNodeId().equals(fut.nodeId)) {
+                                if (fut.participants().isEmpty()) {
+                                    // Notify initiators
+                                    Set<UUID> initiators = fut.initiators();
+
+                                    if (initiators.size() != 1 || !initiators.contains(ctx.localNodeId())) {
                                         ServiceDeploymentResultMessage resInitiatorMsg = ServiceDeploymentResultMessage.deployResult(name);
 
                                         resInitiatorMsg.markNotifyInitiator();
 
-                                        if (!fut.errors.isEmpty())
-                                            resInitiatorMsg.errorBytes(fut.errors.entrySet().iterator().next().getValue());
+                                        if (!fut.errors().isEmpty())
+                                            resInitiatorMsg.errorBytes(fut.errors().entrySet().iterator().next().getValue());
 
-                                        ctx.io().sendToGridTopic(fut.nodeId, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                                        for (UUID uuid : fut.initiators()) {
+                                            if (!uuid.equals(ctx.localNodeId()))
+                                                ctx.io().sendToGridTopic(uuid, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                                        }
                                     }
 
                                     depFuts.remove(name);
@@ -2016,11 +2027,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                     if (!resMsg.hasError())
                                         fut.onDone();
                                     else {
-                                        byte[] errBytes = fut.errors.entrySet().iterator().next().getValue();
+                                        byte[] errBytes = fut.errors().entrySet().iterator().next().getValue();
 
                                         Throwable t = U.unmarshal(ctx, errBytes, null);
 
-                                        fut.errors.put(nodeId, errBytes);
+                                        fut.errors().put(nodeId, errBytes);
 
                                         fut.onDone(new ServiceDeploymentException(t, Collections.singleton(fut.configuration())));
                                     }

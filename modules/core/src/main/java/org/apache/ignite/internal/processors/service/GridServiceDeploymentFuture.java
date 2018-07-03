@@ -17,7 +17,10 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -33,15 +36,14 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     /** */
     private final ServiceConfiguration cfg;
 
-    /** Deployment initiator id. */
-    public UUID nodeId;
+    /** Deployment initiators ids, to notify about deployment results. */
+    private final Set<UUID> initiators;
 
-    /** */
-    public final Map<UUID, byte[]> errors;
+    /** Contains errors during deployment. */
+    private final Map<UUID, byte[]> errors;
 
-    /** */
-//    Map<UUID, Integer> assigns;
-    Set<UUID> assigns;
+    /** Nodes ids which were involved in deployment process, to synchronize deployment across the cluster. */
+    private final Set<UUID> participants;
 
     /**
      * @param cfg Configuration.
@@ -49,8 +51,51 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
         this.cfg = cfg;
         this.errors = new HashMap<>();
-        this.nodeId = null;
-        this.assigns = null;
+        this.initiators = new LinkedHashSet<>();
+        this.participants = new HashSet<>();
+    }
+
+    /**
+     * @param id Deployment initiator id.
+     */
+    public void registerInitiator(UUID id) {
+        initiators.add(id);
+    }
+
+    /**
+     * @return Set of deployment initiators ids.
+     */
+    public Set<UUID> initiators() {
+        return Collections.unmodifiableSet(initiators);
+    }
+
+    /**
+     * @return Nodes ids which were involved in deployment process.
+     */
+    public Set<UUID> participants() {
+        return participants;
+    }
+
+    /**
+     * @param participants Nodes ids which were involved in deployment process.
+     */
+    public void participants(Set<UUID> participants) {
+        this.participants.addAll(participants);
+    }
+
+    /**
+     * @return Errors occurred during deployment process.
+     */
+    public Map<UUID, byte[]> errors() {
+        return errors;
+    }
+
+    /**
+     * @param nodeId Node id where error has been occurred.
+     * @param errBytes Serialized errors bytes.
+     */
+    public void error(UUID nodeId, byte[] errBytes) {
+        errors.put(nodeId, errBytes);
     }
 
     /**
