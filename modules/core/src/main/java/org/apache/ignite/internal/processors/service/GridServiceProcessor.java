@@ -1555,6 +1555,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         return;
 
                     topVer = ((DiscoveryCustomEvent)evt).affinityTopologyVersion();
+
+                    // TODO: unnecessary reassignment happens in case 'minorTopVer' change? Why do we need custom events here?
+                    return;
                 }
                 else
                     topVer = new AffinityTopologyVersion((evt).topologyVersion(), 0);
@@ -1585,21 +1588,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
 
                             for (Map.Entry<String, GridServiceAssignments> entry : svcAssigns.entrySet()) {
-                                GridServiceAssignments dep = entry.getValue();
+                                GridServiceAssignments assigns = entry.getValue();
 
                                 try {
-                                    svcName.set(dep.configuration().getName());
+                                    svcName.set(assigns.configuration().getName());
 
-                                    ctx.cache().context().exchange().affinityReadyFuture(topVer).get();
+//                                    ctx.cache().context().exchange().affinityReadyFuture(topVer).get();
 
-                                    reassign(dep.configuration(), dep.nodeId(), topVer);
+                                    reassign(assigns.configuration(), assigns.nodeId(), topVer);
                                 }
                                 catch (IgniteCheckedException ex) {
                                     if (!(ex instanceof ClusterTopologyCheckedException))
                                         LT.error(log, ex, "Failed to do service reassignment (will retry): " +
-                                            dep.configuration().getName());
+                                            assigns.configuration().getName());
 
-                                    retries.add(dep);
+                                    retries.add(assigns);
                                 }
                             }
 
@@ -1738,11 +1741,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         try {
             synchronized (undepFuts) {
-                GridServiceUndeploymentFuture old = undepFuts.get(name);
-
                 List<UUID> nodes = ctx.discovery().serverTopologyNodes(assigns.topologyVersion()).stream()
                     .map(ClusterNode::id)
                     .collect(Collectors.toList());
+
+                GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
+
+                GridServiceUndeploymentFuture old = undepFuts.putIfAbsent(name, fut);
 
                 if (old != null) {
                     // In case coordinator is initiator.
@@ -1750,12 +1755,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     old.assigns = new HashSet<>(nodes);
                 }
                 else {
-                    GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
-
                     fut.nodeId = snd.id();
                     fut.assigns = new HashSet<>(nodes);
-
-                    undepFuts.put(name, fut);
                 }
             }
 

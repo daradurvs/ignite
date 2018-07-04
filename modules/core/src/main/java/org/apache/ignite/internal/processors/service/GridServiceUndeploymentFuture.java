@@ -58,9 +58,9 @@ public class GridServiceUndeploymentFuture extends GridFutureAdapter<Object> {
         if (o == null || getClass() != o.getClass())
             return false;
 
-        GridServiceUndeploymentFuture fur = (GridServiceUndeploymentFuture)o;
+        GridServiceUndeploymentFuture fut = (GridServiceUndeploymentFuture)o;
 
-        return Objects.equals(name, fur.name);
+        return Objects.equals(name, fut.name);
     }
 
     /** {@inheritDoc} */
