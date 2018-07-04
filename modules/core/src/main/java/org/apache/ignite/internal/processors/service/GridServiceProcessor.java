@@ -78,6 +78,7 @@ import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
+import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.security.SecurityException;
 import org.apache.ignite.plugin.security.SecurityPermission;
 import org.apache.ignite.services.Service;
@@ -718,12 +719,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     resInitiatorMsg.markNotifyInitiator();
 
-                    try {
-                        ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
-                    }
-                    catch (IgniteCheckedException e) {
-                        e.printStackTrace();
-                    }
+                    sendServiceMessage(snd, resInitiatorMsg);
 
                     return false;
                 }
@@ -735,16 +731,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             resInitiatorMsg.markNotifyInitiator();
 
-            try {
-                byte[] errBytes = U.marshal(ctx, t);
+            byte[] errBytes = marshal(t);
 
-                resInitiatorMsg.errorBytes(errBytes);
+            resInitiatorMsg.errorBytes(errBytes);
 
-                ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
-            }
-            catch (IgniteCheckedException e) {
-                e.printStackTrace();
-            }
+            sendServiceMessage(snd, resInitiatorMsg);
 
             return false;
         }
@@ -1706,20 +1697,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             t = th;
         }
 
-        try {
-            ServiceDeploymentResultMessage resMsg = ServiceDeploymentResultMessage.deployResult(name);
+        ServiceDeploymentResultMessage resMsg = ServiceDeploymentResultMessage.deployResult(name);
 
-            if (t != null)
-                resMsg.errorBytes(U.marshal(ctx, t));
+        if (t != null)
+            resMsg.errorBytes(marshal(t));
 
-            ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resMsg, SERVICE_POOL);
-        }
-        catch (IgniteCheckedException e) {
-            if (log.isDebugEnabled())
-                log.error("Failure during service assignment, name: " + name, e);
-
-            throw U.convertException(e);
-        }
+        sendServiceMessage(snd, resMsg);
     }
 
     /**
@@ -1744,12 +1727,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 resInitiatorMsg.markNotifyInitiator();
 
-                try {
-                    ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
-                }
-                catch (IgniteCheckedException e) {
-                    throw U.convertException(e);
-                }
+                sendServiceMessage(snd, resInitiatorMsg);
             }
 
             if (fut != null)
@@ -1807,17 +1785,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             undeploy(name);
         }
 
-        try {
-            ServiceDeploymentResultMessage msg = ServiceDeploymentResultMessage.undeployResult(name);
+        ServiceDeploymentResultMessage msg = ServiceDeploymentResultMessage.undeployResult(name);
 
-            ctx.io().sendToGridTopic(snd, TOPIC_SERVICES, msg, SERVICE_POOL);
-        }
-        catch (IgniteCheckedException e) {
-            if (log.isDebugEnabled())
-                log.error("Failure during service undeploying, name: " + name, e);
-
-            throw U.convertException(e);
-        }
+        sendServiceMessage(snd, msg);
     }
 
     /**
@@ -2035,7 +2005,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                                         for (UUID uuid : fut.initiators()) {
                                             if (!uuid.equals(ctx.localNodeId()))
-                                                ctx.io().sendToGridTopic(uuid, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                                                sendServiceMessage(uuid, resInitiatorMsg);
                                         }
                                     }
 
@@ -2070,7 +2040,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                                         resInitiatorMsg.markNotifyInitiator();
 
-                                        ctx.io().sendToGridTopic(fut.nodeId, TOPIC_SERVICES, resInitiatorMsg, SERVICE_POOL);
+                                        sendServiceMessage(fut.nodeId, resInitiatorMsg);
                                     }
 
                                     undepFuts.remove(name);
@@ -2105,21 +2075,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             List<byte[]> assigns = new ArrayList<>();
 
             for (GridServiceAssignments assign : filteredAssigns) {
-                try {
-                    byte[] arr = U.marshal(ctx, assign);
+                byte[] arr = marshal(assign);
 
-                    assigns.add(arr);
-                }
-                catch (IgniteCheckedException e) {
-                    log.error("Error during GridServiceAssignment marshalling: " + assign.name(), e);
-                }
+                assigns.add(arr);
             }
 
             ServiceAssignmentsResponseMessage resMsg = new ServiceAssignmentsResponseMessage();
 
             resMsg.assignments(assigns);
 
-            ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, resMsg, SERVICE_POOL);
+            sendServiceMessage(nodeId, resMsg);
         }
 
         /**
@@ -2163,6 +2128,53 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
             else
                 throw new IllegalStateException();
+        }
+    }
+
+    /**
+     * Sends message to node over communication spi.
+     *
+     * @param dest Destination node.
+     * @param msg Message to send.
+     */
+    private void sendServiceMessage(ClusterNode dest, Message msg) {
+        sendServiceMessage(dest.id(), msg);
+    }
+
+    /**
+     * Sends message to node over communication spi.
+     *
+     * @param nodeId Destination node id.
+     * @param msg Message to send.
+     */
+    private void sendServiceMessage(UUID nodeId, Message msg) {
+        try {
+            ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, msg, SERVICE_POOL);
+        }
+        catch (IgniteCheckedException e) {
+            if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
+                log.debug("Topology changed while message send: " + e.getMessage());
+
+            log.error("Failure during message send [nodeId=" + nodeId + ", msg=" + msg + ']', e);
+
+            throw U.convertException(e);
+        }
+    }
+
+    /**
+     * Marshales given object using current context.
+     *
+     * @param obj Object to marshal.
+     * @return Marshalled bytes, possible {@code null}.
+     */
+    private byte[] marshal(Object obj) {
+        try {
+            return U.marshal(ctx, obj);
+        }
+        catch (IgniteCheckedException e) {
+            log.error("Error during object marshalling: [obj=" + obj + ']', e);
+
+            return null;
         }
     }
 }
