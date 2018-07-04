@@ -295,6 +295,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         cancelFutures(depFuts, err);
         cancelFutures(undepFuts, err);
 
+        svcAssigns.clear();
+
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
     }
