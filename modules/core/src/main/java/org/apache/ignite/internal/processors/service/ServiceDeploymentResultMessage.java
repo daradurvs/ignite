@@ -48,9 +48,6 @@ public class ServiceDeploymentResultMessage implements Message {
     /** Serialized deployment error. */
     @Nullable private byte[] errBytes;
 
-    /** Assigns. */
-    public byte[] assigns;
-
     /**
      * Default constructor.
      */
@@ -195,12 +192,6 @@ public class ServiceDeploymentResultMessage implements Message {
                     return false;
 
                 writer.incrementState();
-
-            case 3:
-                if (!writer.writeByteArray("assigns", assigns))
-                    return false;
-
-                writer.incrementState();
         }
 
         return true;
@@ -237,14 +228,6 @@ public class ServiceDeploymentResultMessage implements Message {
                     return false;
 
                 reader.incrementState();
-
-            case 3:
-                assigns = reader.readByteArray("assigns");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
         }
 
         return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
@@ -257,7 +240,7 @@ public class ServiceDeploymentResultMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 4;
+        return 3;
     }
 
     /** {@inheritDoc} */
