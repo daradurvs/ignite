@@ -36,28 +36,28 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
 
     /** Configuration. */
     @GridToStringInclude
-    private final GridServiceAssignments assign;
+    private final GridServiceAssignments assigns;
 
     /** Topology snapshot. */
     @GridToStringInclude
     private Map<UUID, Integer> top;
 
     /**
-     * @param assign Deployment.
+     * @param assigns Service assignments.
      */
-    public ServiceDescriptorImpl(GridServiceAssignments assign) {
-        this.assign = assign;
-        this.top = assign.assigns();
+    public ServiceDescriptorImpl(GridServiceAssignments assigns) {
+        this.assigns = assigns;
+        this.top = assigns.assigns();
     }
 
     /** {@inheritDoc} */
     @Override public String name() {
-        return assign.configuration().getName();
+        return assigns.configuration().getName();
     }
 
     /** {@inheritDoc} */
     @Override public Class<? extends Service> serviceClass() {
-        ServiceConfiguration cfg = assign.configuration();
+        ServiceConfiguration cfg = assigns.configuration();
 
         if (cfg instanceof LazyServiceConfiguration) {
             String clsName = ((LazyServiceConfiguration)cfg).serviceClassName();
@@ -70,33 +70,33 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
             }
         }
         else
-            return assign.configuration().getService().getClass();
+            return assigns.configuration().getService().getClass();
     }
 
     /** {@inheritDoc} */
     @Override public int totalCount() {
-        return assign.configuration().getTotalCount();
+        return assigns.configuration().getTotalCount();
     }
 
     /** {@inheritDoc} */
     @Override public int maxPerNodeCount() {
-        return assign.configuration().getMaxPerNodeCount();
+        return assigns.configuration().getMaxPerNodeCount();
     }
 
     /** {@inheritDoc} */
     @Nullable @Override public String cacheName() {
-        return assign.configuration().getCacheName();
+        return assigns.configuration().getCacheName();
     }
 
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
     @Nullable @Override public <K> K affinityKey() {
-        return (K)assign.configuration().getAffinityKey();
+        return (K)assigns.configuration().getAffinityKey();
     }
 
     /** {@inheritDoc} */
     @Override public UUID originNodeId() {
-        return assign.nodeId();
+        return assigns.nodeId();
     }
 
     /** {@inheritDoc} */
