@@ -153,9 +153,12 @@ import org.apache.ignite.internal.processors.query.h2.twostep.messages.GridQuery
 import org.apache.ignite.internal.processors.query.schema.message.SchemaOperationStatusMessage;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRequest;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
+import org.apache.ignite.internal.processors.service.ServiceAssignmentsMap;
 import org.apache.ignite.internal.processors.service.ServiceDeploymentResultMessage;
 import org.apache.ignite.internal.processors.service.ServiceAssignmentsRequestMessage;
 import org.apache.ignite.internal.processors.service.ServiceAssignmentsResponseMessage;
+import org.apache.ignite.internal.processors.service.ServicesFullAssignmentsMessage;
+import org.apache.ignite.internal.processors.service.ServicesSingleAssignmentsMessage;
 import org.apache.ignite.internal.util.GridByteArrayList;
 import org.apache.ignite.internal.util.GridIntList;
 import org.apache.ignite.internal.util.GridLongList;
@@ -945,6 +948,20 @@ public class GridIoMessageFactory implements MessageFactory {
 
                 break;
 
+            case 139:
+                msg = new ServicesSingleAssignmentsMessage();
+
+                break;
+
+            case 140:
+                msg = new ServicesFullAssignmentsMessage();
+
+                break;
+
+            case 141:
+                msg = new ServiceAssignmentsMap();
+
+                break;
             // [-3..119] [124..129] [-23..-27] [-36..-55]- this
             // [120..123] - DR
             // [-4..-22, -30..-35] - SQL
