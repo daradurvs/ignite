@@ -31,11 +31,11 @@ import org.apache.ignite.services.ServiceConfiguration;
 /**
  * Service per-node assignment.
  */
-public class GridServiceAssignments implements Serializable, GridCacheInternal {
+public class GridServiceAssignments implements Serializable {
     /** Serialization version. */
     private static final long serialVersionUID = 0L;
 
-    /** Node ID. */
+    /** Initiator node ID. */
     private final UUID nodeId;
 
     /** Topology version. */

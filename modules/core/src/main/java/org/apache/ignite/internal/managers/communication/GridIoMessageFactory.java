@@ -153,6 +153,9 @@ import org.apache.ignite.internal.processors.query.h2.twostep.messages.GridQuery
 import org.apache.ignite.internal.processors.query.schema.message.SchemaOperationStatusMessage;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRequest;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
+import org.apache.ignite.internal.processors.service.ServiceDeploymentResultMessage;
+import org.apache.ignite.internal.processors.service.ServiceAssignmentsRequestMessage;
+import org.apache.ignite.internal.processors.service.ServiceAssignmentsResponseMessage;
 import org.apache.ignite.internal.util.GridByteArrayList;
 import org.apache.ignite.internal.util.GridIntList;
 import org.apache.ignite.internal.util.GridLongList;
@@ -924,6 +927,21 @@ public class GridIoMessageFactory implements MessageFactory {
 
             case 135:
                 msg = new LatchAckMessage();
+
+                break;
+
+            case 136:
+                msg = new ServiceDeploymentResultMessage();
+
+                break;
+
+            case 137:
+                msg = new ServiceAssignmentsRequestMessage();
+
+                break;
+
+            case 138:
+                msg = new ServiceAssignmentsResponseMessage();
 
                 break;
 

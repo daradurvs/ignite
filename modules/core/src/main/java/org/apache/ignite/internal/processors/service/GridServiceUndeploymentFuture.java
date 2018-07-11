@@ -17,47 +17,59 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import org.apache.ignite.internal.processors.cache.GridCacheUtilityKey;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
 
 /**
- * Service configuration key.
+ * Service deployment future.
  */
-public class GridServiceDeploymentKey extends GridCacheUtilityKey<GridServiceDeploymentKey> {
+public class GridServiceUndeploymentFuture extends GridFutureAdapter<Object> {
     /** */
-    private static final long serialVersionUID = 0L;
-
-    /** Service name. */
     private final String name;
 
-    /**
-     * @param name Service ID.
-     */
-    public GridServiceDeploymentKey(String name) {
-        assert name != null;
+    /** Undeployment initiator id. */
+    UUID nodeId;
 
+    /** */
+    Set<UUID> assigns;
+
+    /**
+     * @param name Service name.
+     */
+    public GridServiceUndeploymentFuture(String name) {
         this.name = name;
     }
 
     /**
      * @return Service name.
      */
-    public String name() {
+    public String getName() {
         return name;
     }
 
     /** {@inheritDoc} */
-    @Override protected boolean equalsx(GridServiceDeploymentKey that) {
-        return name.equals(that.name);
+    @Override public boolean equals(Object o) {
+        if (this == o)
+            return true;
+
+        if (o == null || getClass() != o.getClass())
+            return false;
+
+        GridServiceUndeploymentFuture fut = (GridServiceUndeploymentFuture)o;
+
+        return Objects.equals(name, fut.name);
     }
 
     /** {@inheritDoc} */
     @Override public int hashCode() {
-        return name.hashCode();
+        return Objects.hash(name);
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(GridServiceDeploymentKey.class, this);
+        return S.toString(GridServiceUndeploymentFuture.class, this);
     }
 }

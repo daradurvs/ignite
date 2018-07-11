@@ -36,7 +36,6 @@ import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceContext;
-import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.configvariations.Parameters;
 import org.apache.ignite.testframework.junits.IgniteConfigVariationsAbstractTest;
 
@@ -88,9 +87,6 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
         runInAllDataModes(new ServiceTestRunnable(true, new DeployClosure() {
             @Override public void run(IgniteServices services, String svcName, TestService svc) throws Exception {
                 services.deployNodeSingleton(svcName, (Service)svc);
-
-                // TODO: Waiting for deployment should be removed after IEP-17 completion
-                GridTestUtils.waitForCondition(() -> services.service(svcName) != null, DEPLOYMENT_WAIT_TIMEOUT);
             }
         }));
     }
@@ -104,9 +100,6 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
         runInAllDataModes(new ServiceTestRunnable(false, new DeployClosure() {
             @Override public void run(IgniteServices services, String svcName, TestService svc) throws Exception {
                 services.deployClusterSingleton(svcName, (Service)svc);
-
-                // TODO: Waiting for deployment should be removed after IEP-17 completion
-                GridTestUtils.waitForCondition(() -> services.service(svcName) != null, DEPLOYMENT_WAIT_TIMEOUT);
             }
         }));
     }
@@ -167,9 +160,6 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
                 cfg.setNodeFilter(services.clusterGroup().predicate());
 
                 services.deploy(cfg);
-
-                // TODO: Waiting for deployment should be removed after IEP-17 completion
-                GridTestUtils.waitForCondition(() -> services.service(svcName) != null, DEPLOYMENT_WAIT_TIMEOUT);
             }
         }));
     }
@@ -255,7 +245,7 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
             // Expect correct value after being read back.
             int r = 1000;
 
-            while(r-- > 0)
+            while (r-- > 0)
                 assertEquals(expected, proxy.getValue());
 
             assertEquals("Expected 1 deployed service", 1, services.serviceDescriptors().size());
