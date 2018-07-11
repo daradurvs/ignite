@@ -25,6 +25,7 @@ import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.INT;
+import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
 
 /**
@@ -94,7 +95,7 @@ public class ServicesFullAssignmentsMessage implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeMap("assigns", assigns, STRING, INT))
+                if (!writer.writeMap("assigns", assigns, STRING, MSG))
                     return false;
 
                 writer.incrementState();
@@ -118,7 +119,7 @@ public class ServicesFullAssignmentsMessage implements Message {
 
         switch (reader.state()) {
             case 0:
-                assigns = reader.readMap("assigns", STRING, INT, false);
+                assigns = reader.readMap("assigns", STRING, MSG, false);
 
                 if (!reader.isLastRead())
                     return false;

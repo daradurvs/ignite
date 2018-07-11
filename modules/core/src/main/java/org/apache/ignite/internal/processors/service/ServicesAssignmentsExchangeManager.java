@@ -33,12 +33,12 @@ public class ServicesAssignmentsExchangeManager {
      * @param topVer Topology version.
      * @return Added exchange future.
      */
-    public ServicesAssignmentsExchangeFuture onEvent(AffinityTopologyVersion topVer) {
+    public synchronized ServicesAssignmentsExchangeFuture onEvent(AffinityTopologyVersion topVer) {
         ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture();
 
         Collection<ClusterNode> nodes = ctx.discovery().serverTopologyNodes(topVer.topologyVersion());
 
-        Set<UUID> remaining = nodes.stream().map(ClusterNode::id).collect(Collectors.toSet());
+        Set<UUID> remaining = nodes.stream().filter(e -> !e.isClient()).map(ClusterNode::id).collect(Collectors.toSet());
 
         fut.remaining(remaining);
 
@@ -60,6 +60,13 @@ public class ServicesAssignmentsExchangeManager {
         ServicesAssignmentsExchangeFuture fut = q.peek();
 
         if (fut != null) {
+            while (!fut.remaining().contains(snd)) {
+                fut = q.peek();
+
+                if (fut == null)
+                    return;
+            }
+
             fut.onReceiveSingleMessage(snd, msg);
 
             if (fut.remaining().isEmpty()) {
@@ -76,10 +83,21 @@ public class ServicesAssignmentsExchangeManager {
                     }
                 }
 
-                fut.onDone();
-
-                q.poll();
+//                fut.onDone();
+//
+//                q.poll();
             }
         }
+    }
+
+    /**
+     * @param snd
+     * @param msg
+     */
+    public synchronized void onReceiveFullMessage(final UUID snd, final ServicesFullAssignmentsMessage msg) {
+        ServicesAssignmentsExchangeFuture fut = q.poll();
+
+        if (fut != null)
+            fut.onDone();
     }
 }
