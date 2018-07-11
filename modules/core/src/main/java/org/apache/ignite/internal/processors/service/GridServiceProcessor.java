@@ -140,23 +140,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Topology listener. */
     private DiscoveryEventListener topLsnr = new TopologyListener();
 
-    /** Services messages discovery listener. */
-//    private final ServiceDeploymentListener discoLsnr = new ServiceDeploymentListener();
-
-    /** Services meassages communication listener. */
-//    private final ServiceDeploymentResultListener commLsnr = new ServiceDeploymentResultListener();
-
     /** Services messages communication listener. */
-    private final CommunicationListener commLsnrV2 = new CommunicationListener();
+    private final CommunicationListener commLsnr = new CommunicationListener();
 
     /** Contains all services assignments, not only locally deployed. */
     private final Map<String, GridServiceAssignments> svcAssigns = new ConcurrentHashMap<>();
-
-    /** */
-//    private final ClientsServiceAssignmentsProvider clntSvcAssignsProvider = new ClientsServiceAssignmentsProvider(ctx);
-
-    /** Clients assignments requests wait timeout. */
-    private final long clientWaitTimeout = 30_000;
 
     /**
      * @param ctx Kernal context.
@@ -203,15 +191,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
-        if (!ctx.clientNode()) {
+        if (!ctx.clientNode())
             ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
 
-//            ctx.discovery().setCustomEventListener(DynamicServiceChangeRequestMessage.class, discoLsnr);
-        }
-//        else
-//            ctx.io().addMessageListener(TOPIC_SERVICES, clntSvcAssignsProvider);
-
-        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnrV2);
+        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -240,10 +223,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (!ctx.clientNode())
             ctx.event().removeDiscoveryEventListener(topLsnr);
-//        else
-//            ctx.io().removeMessageListener(TOPIC_SERVICES, clntSvcAssignsProvider);
 
-        ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnrV2);
+        ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnr);
 
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
@@ -643,9 +624,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             GridServiceAssignments oldAssign;
 
-//            if (ctx.clientNode())
-//                oldAssign = clntSvcAssignsProvider.serviceAssignment(name, clientWaitTimeout);
-//            else
             oldAssign = svcAssigns.get(name);
 
             if (oldAssign != null) {
@@ -669,10 +647,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             ServicesDeploymentRequestMessage req = new ServicesDeploymentRequestMessage(ctx.localNodeId(), Collections.singletonList(cfg));
 
             ctx.discovery().sendCustomEvent(req);
-
-//            DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.deployRequest(ctx.localNodeId(), cfg);
-//
-//            ctx.discovery().sendCustomEvent(msg);
 
             if (log.isDebugEnabled()) {
                 log.debug("Service has been sent to deploy: [" + cfg
@@ -781,18 +755,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     @SuppressWarnings("unchecked")
     public IgniteInternalFuture<?> cancelAll() {
-        List<String> svcNames;
-
-//        if (ctx.clientNode())
-//            svcNames = clntSvcAssignsProvider.serviceAssignments(clientWaitTimeout).stream()
-//                .map(GridServiceAssignments::name)
-//                .collect(Collectors.toList());
-//        else
-        svcNames = svcAssigns.entrySet().stream()
-            .map(e -> e.getValue().name())
-            .collect(Collectors.toList());
-
-        return cancelAll(svcNames);
+        return cancelAll(svcAssigns.keySet());
     }
 
     /**
@@ -881,8 +844,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return new CancelResult(old, false);
 
         try {
-//            DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.cancelRequest(ctx.localNodeId(), name);
-
             ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(ctx.localNodeId(), Collections.singleton(name));
 
             ctx.discovery().sendCustomEvent(msg);
@@ -912,12 +873,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException On error.
      */
     public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
-        GridServiceAssignments assign;
-
-//        if (ctx.clientNode())
-//            assign = clntSvcAssignsProvider.serviceAssignment(name, timeout);
-//        else
-        assign = svcAssigns.get(name);
+        GridServiceAssignments assign = svcAssigns.get(name);
 
         if (assign == null) {
             if (log.isDebugEnabled()) {
@@ -936,12 +892,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Collection of service descriptors.
      */
     public Collection<ServiceDescriptor> serviceDescriptors() {
-        Collection<GridServiceAssignments> assigns;
-
-//        if (ctx.clientNode())
-//            assigns = clntSvcAssignsProvider.serviceAssignments(clientWaitTimeout);
-//        else
-        assigns = svcAssigns.entrySet().stream().map(Map.Entry::getValue).collect(Collectors.toList());
+        Collection<GridServiceAssignments> assigns = svcAssigns.entrySet().stream().map(Map.Entry::getValue).collect(Collectors.toList());
 
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
@@ -1758,12 +1709,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
 //                        depExe.execute(new DepRunnable() {
 //                            @Override public void run0() {
-                                try {
-                                    onDeploymentRequest((ServicesDeploymentRequestMessage)msg, topVer);
-                                }
-                                catch (IgniteCheckedException e) {
-                                    e.printStackTrace();
-                                }
+                        try {
+                            onDeploymentRequest((ServicesDeploymentRequestMessage)msg, topVer);
+                        }
+                        catch (IgniteCheckedException e) {
+                            e.printStackTrace();
+                        }
 //                            }
 //                        });
                     }
@@ -1772,7 +1723,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
 //                        depExe.execute(new DepRunnable() {
 //                            @Override public void run0() {
-                                onCancellationRequest((ServicesCancellationRequestMessage)msg, topVer);
+                        onCancellationRequest((ServicesCancellationRequestMessage)msg, topVer);
 //                            }
 //                        });
                     }
