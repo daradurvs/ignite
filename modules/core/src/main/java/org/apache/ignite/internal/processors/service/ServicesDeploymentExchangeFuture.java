@@ -49,9 +49,11 @@ public class ServicesDeploymentExchangeFuture extends ServicesAssignmentsExchang
 
     /** {@inheritDoc} */
     @Override public void init() {
-        try {
-            msg.exchId = exchId;
+        msg.exchId = exchId;
 
+        assert exchId != null;
+
+        try {
             proc.onDeploymentRequest(msg, topVer);
         }
         catch (IgniteCheckedException e) {

@@ -50,6 +50,8 @@ public class ServicesCancellationExchangeFuture extends ServicesAssignmentsExcha
     @Override public void init() {
         msg.exchId = exchId;
 
+        assert exchId != null;
+
         proc.onCancellationRequest(msg, topVer);
     }
 }

@@ -1622,7 +1622,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             ClusterNode crd = ctx.discovery().oldestAliveServerNode(topVer);
 
-            sendServiceMessage(crd, locAssignsMsg);
+            if (crd.isLocal())
+                processSingleAssignment(crd.id(), locAssignsMsg);
+            else
+                sendServiceMessage(crd, locAssignsMsg);
         }
     }
 
@@ -1647,7 +1650,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             ClusterNode crd = ctx.discovery().oldestAliveServerNode(topVer);
 
-            sendServiceMessage(crd, locAssignsMsg);
+            if (crd.isLocal())
+                processSingleAssignment(crd.id(), locAssignsMsg);
+            else
+                sendServiceMessage(crd, locAssignsMsg);
         }
     }
 
@@ -1732,7 +1738,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     topVer = ((DiscoveryCustomEvent)evt).affinityTopologyVersion();
 
-                    synchronized (mux) {
+                    synchronized (this) {
                         if (msg instanceof ServicesDeploymentRequestMessage) {
 
                             if (log.isDebugEnabled())
@@ -2182,28 +2188,30 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private class CommunicationListener implements GridMessageListener {
         /** {@inheritDoc} */
         @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
-            if (msg instanceof ServicesSingleAssignmentsMessage) {
-                if (log.isDebugEnabled())
-                    log.debug("[comm-lsnr-single-msg: " +
-                        " sender: " + nodeId +
-                        " receiver: " + ctx.discovery().localNode() +
-                        " msg: " + msg);
+            Executors.newSingleThreadExecutor().execute(() -> {
+                if (msg instanceof ServicesSingleAssignmentsMessage) {
+                    if (log.isDebugEnabled())
+                        log.debug("[comm-lsnr-single-msg: " +
+                            " sender: " + nodeId +
+                            " receiver: " + ctx.discovery().localNode() +
+                            " msg: " + msg);
 
-                processSingleAssignment(nodeId, (ServicesSingleAssignmentsMessage)msg);
-            }
-            else if (msg instanceof ServicesFullAssignmentsMessage) {
-                if (log.isDebugEnabled())
-                    log.debug("[comm-lsnr-full-msg: " +
-                        " sender: " + nodeId +
-                        " receiver: " + ctx.discovery().localNode() +
-                        " msg: " + msg);
+                    processSingleAssignment(nodeId, (ServicesSingleAssignmentsMessage)msg);
+                }
+                else if (msg instanceof ServicesFullAssignmentsMessage) {
+                    if (log.isDebugEnabled())
+                        log.debug("[comm-lsnr-full-msg: " +
+                            " sender: " + nodeId +
+                            " receiver: " + ctx.discovery().localNode() +
+                            " msg: " + msg);
 
-                processFullAssignment(nodeId, (ServicesFullAssignmentsMessage)msg);
-            }
+                    processFullAssignment(nodeId, (ServicesFullAssignmentsMessage)msg);
+                }
+            });
         }
     }
 
-    private void processSingleAssignment(UUID snd, ServicesSingleAssignmentsMessage msg) {
+    void processSingleAssignment(UUID snd, ServicesSingleAssignmentsMessage msg) {
         synchronized (mux) {
             exchangeMgr.onReceiveSingleMessage(snd, msg);
         }
@@ -2213,10 +2221,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
 //    private final Map<String, ServiceAssignmentsMap> realAssigns = new ConcurrentHashMap<>();
 
-    private void processFullAssignment(UUID snd, ServicesFullAssignmentsMessage msg) {
+    synchronized void processFullAssignment(UUID snd, ServicesFullAssignmentsMessage msg) {
         synchronized (mux) {
-            exchangeMgr.onReceiveFullMessage(msg);
-
             Map<String, ServiceAssignmentsMap> fullAssignsMap = msg.assigns();
 
 //            realAssigns.clear();
@@ -2230,15 +2236,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 //                if (!ctx.clientNode()) {
                 GridServiceAssignments assign = svcAssigns.get(name);
 
-                assert assign != null;
+                if (assign != null) {
 
-                assign.assigns(svcAssignsMap.assigns());
+                    assign.assigns(svcAssignsMap.assigns());
 
-                if (!ctx.clientNode()) {
-                    if (!assign.assigns().containsKey(ctx.localNodeId()))
-                        undeploy(name);
+                    if (!ctx.clientNode()) {
+                        if (!assign.assigns().containsKey(ctx.localNodeId()))
+                            undeploy(name);
+                    }
                 }
-
                 GridServiceDeploymentFuture depFut = depFuts.remove(name);
 
                 if (depFut != null) {
@@ -2267,6 +2273,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 return false;
             });
+
+            exchangeMgr.onReceiveFullMessage(msg);
         }
     }
 

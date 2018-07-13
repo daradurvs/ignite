@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayList;
@@ -13,7 +30,6 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
-import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.Nullable;
@@ -47,7 +63,6 @@ public class ServicesAssignmentsExchangeManager {
         AffinityTopologyVersion topVer) {
         Collection<ClusterNode> nodes = ctx.discovery().nodes(topVer.topologyVersion());
 
-//        Set<UUID> remaining = nodes.stream().filter(e -> !e.isClient()).map(ClusterNode::id).collect(Collectors.toSet());
         Set<UUID> remaining = nodes.stream().map(ClusterNode::id).collect(Collectors.toSet());
 
         fut.remaining(remaining);
@@ -66,57 +81,29 @@ public class ServicesAssignmentsExchangeManager {
      * @param msg
      */
     public synchronized void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
-        synchronized (mux) {
-            ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
+        ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
 
-            if (!fut.exchId.equals(msg.exchId))
-                fut = null;
+        if (fut == null) {
+            pending.add(msg);
 
-            if (fut == null) {
-                for (ServicesAssignmentsExchangeFuture f : exchWorker.q) {
-                    if (f.exchId.equals(msg.exchId)) {
-                        fut = f;
-
-                        break;
-                    }
-                }
-            }
-
-            if (fut == null) {
-                pending.add(msg);
-
-                return;
-            }
-
-            fut.onReceiveSingleMessage(snd, msg, ctx.discovery().node(snd).isClient());
+            return;
         }
+
+        if (fut.exchId.equals(msg.exchId))
+            fut.onReceiveSingleMessage(snd, msg, msg.client);
+        else
+            pending.add(msg);
     }
 
     List<ServicesFullAssignmentsMessage> pendingFull = new ArrayList<>();
 
-    public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
-//        if (ctx.clientNode()) {
-            ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
+    public synchronized void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
+        ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
 
-            if (!fut.exchId.equals(msg.exchId))
-                fut = null;
+        if (!fut.exchId.equals(msg.exchId))
+            throw new IllegalStateException();
 
-            if (fut == null) {
-                for (ServicesAssignmentsExchangeFuture f : exchWorker.q) {
-                    if (f.exchId.equals(msg.exchId)) {
-                        fut = f;
-
-                        break;
-                    }
-                }
-            }
-
-            if (fut != null)
-                fut.onDone();
-            else
-                pendingFull.add(msg);
-
-//        }
+        fut.onDone();
     }
 
     /** */
@@ -142,27 +129,25 @@ public class ServicesAssignmentsExchangeManager {
 
                 fut.init();
 
-//                if (!ctx.clientNode()) {
-                    for (ServicesSingleAssignmentsMessage msg : pending) {
-                        if (fut.exchId.equals(msg.exchId))
-                            fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
-                    }
-//                }
-//                else {
-                    if (pendingFull.stream().anyMatch(msg -> fut.exchId.equals(msg.exchId))) {
-                        fut.onDone();
-
-                        continue;
-                    }
-//                }
-
-                try {
-                    fut.get();
+                for (ServicesSingleAssignmentsMessage msg : pending) {
+                    if (fut.exchId.equals(msg.exchId))
+                        fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
                 }
-                catch (IgniteCheckedException e) {
-                    e.printStackTrace();
 
-                    throw U.convertException(e);
+                while (true) {
+                    try {
+                        for (ServicesSingleAssignmentsMessage msg : pending) {
+                            if (fut.exchId.equals(msg.exchId))
+                                fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
+                        }
+
+                        fut.get(5_000);
+
+                        break;
+                    }
+                    catch (IgniteCheckedException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }

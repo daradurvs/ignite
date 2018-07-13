@@ -70,6 +70,9 @@ public abstract class ServicesAssignmentsExchangeFuture extends GridFutureAdapte
                 ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
 
                 for (UUID node : nodes) {
+                    if (ctx.localNodeId().equals(node))
+                        continue;
+
                     try {
                         ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMapMsg, SERVICE_POOL);
                     }
@@ -78,9 +81,13 @@ public abstract class ServicesAssignmentsExchangeFuture extends GridFutureAdapte
                     }
                 }
 
-                onDone();
+
+                ctx.service().processFullAssignment(ctx.localNodeId(), fullMapMsg);
+
+//                onDone();
             }
-        }
+        } else
+            System.out.println("*********");
     }
 
     public ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
