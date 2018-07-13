@@ -43,6 +43,8 @@ public class ServicesCancellationRequestMessage implements DiscoveryCustomMessag
     /** Services configuration. */
     private final Collection<String> names;
 
+    IgniteUuid exchId;
+
     /**
      * @param nodeId Deployment initiator id.
      * @param names Services configuration.

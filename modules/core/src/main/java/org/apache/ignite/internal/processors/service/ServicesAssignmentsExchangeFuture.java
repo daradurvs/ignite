@@ -23,30 +23,62 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.lang.IgniteUuid;
+
+import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
+import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 
 /**
  *
  */
-public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object> {
+public abstract class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object> {
     /** */
     private final Map<String, Map<UUID, Integer>> fullAssignments = new ConcurrentHashMap<>();
 
     /** Remaining nodes. */
     private Set<UUID> remaining = new HashSet<>();
 
+    Set<UUID> nodes = new HashSet<>();
+
+    public abstract void init();
+
+    IgniteUuid exchId;
+
+    GridKernalContext ctx;
+
     /**
      * @param snd Sender.
      * @param msg Single node services assignments.
      */
-    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
+    public synchronized void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg,
+        boolean client) {
         if (remaining.remove(snd)) {
-            for (Map.Entry<String, Integer> entry : msg.assigns().entrySet()) {
-                String name = entry.getKey();
+            if (!client) {
+                for (Map.Entry<String, Integer> entry : msg.assigns().entrySet()) {
+                    String name = entry.getKey();
 
-                Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, k -> new HashMap<>());
+                    Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, k -> new HashMap<>());
 
-                cur.put(snd, entry.getValue());
+                    cur.put(snd, entry.getValue());
+                }
+            }
+
+            if (remaining.isEmpty()) {
+                ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
+
+                for (UUID node : nodes) {
+                    try {
+                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMapMsg, SERVICE_POOL);
+                    }
+                    catch (IgniteCheckedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                onDone();
             }
         }
     }
@@ -54,6 +86,9 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
     public ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
         // TODO: handle errors
         ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage();
+
+        msg.exchId = exchId;
+        msg.snd = ctx.localNodeId();
 
         Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 

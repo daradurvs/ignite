@@ -19,12 +19,13 @@ package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.UUID;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.INT;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
 
@@ -40,6 +41,10 @@ public class ServicesFullAssignmentsMessage implements Message {
 
     /** Deployment errors. */
     private Map<String, byte[]> errors;
+
+    IgniteUuid exchId;
+
+    UUID snd;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -105,6 +110,16 @@ public class ServicesFullAssignmentsMessage implements Message {
                     return false;
 
                 writer.incrementState();
+            case 2:
+                if (!writer.writeIgniteUuid("exchId", exchId))
+                    return false;
+
+                writer.incrementState();
+            case 3:
+                if (!writer.writeUuid("snd", snd))
+                    return false;
+
+                writer.incrementState();
         }
 
         return true;
@@ -133,6 +148,20 @@ public class ServicesFullAssignmentsMessage implements Message {
                     return false;
 
                 reader.incrementState();
+            case 2:
+                exchId = reader.readIgniteUuid("exchId");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
+            case 3:
+                snd = reader.readUuid("snd");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
         }
 
         return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
@@ -145,7 +174,7 @@ public class ServicesFullAssignmentsMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 1;
+        return 4;
     }
 
     /** {@inheritDoc} */

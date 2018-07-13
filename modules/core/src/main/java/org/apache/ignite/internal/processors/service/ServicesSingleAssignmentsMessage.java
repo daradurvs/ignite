@@ -19,6 +19,8 @@ package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.UUID;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
@@ -39,6 +41,12 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
     /** Deployment errors. */
     private Map<String, byte[]> errors;
+
+    IgniteUuid exchId;
+
+    UUID snd;
+
+    boolean client;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -104,6 +112,22 @@ public class ServicesSingleAssignmentsMessage implements Message {
                     return false;
 
                 writer.incrementState();
+
+            case 2:
+                if (!writer.writeIgniteUuid("exchId", exchId))
+                    return false;
+
+                writer.incrementState();
+            case 3:
+                if (!writer.writeUuid("snd", snd))
+                    return false;
+
+                writer.incrementState();
+            case 4:
+                if (!writer.writeBoolean("client", client))
+                    return false;
+
+                writer.incrementState();
         }
 
         return true;
@@ -132,6 +156,25 @@ public class ServicesSingleAssignmentsMessage implements Message {
                     return false;
 
                 reader.incrementState();
+
+            case 2:
+                exchId = reader.readIgniteUuid("exchId");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
+            case 3:
+                snd = reader.readUuid("snd");
+
+                if (!reader.isLastRead())
+                    return false;
+            case 4:
+                client = reader.readBoolean("client");
+
+                if (!reader.isLastRead())
+                    return false;
+
         }
 
         return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
@@ -144,7 +187,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 1;
+        return 5;
     }
 
     /** {@inheritDoc} */

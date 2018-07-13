@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
@@ -44,6 +45,9 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
 
     /** Nodes ids which were involved in deployment process, to synchronize deployment across the cluster. */
     private final Set<UUID> participants;
+
+    /** */
+    IgniteUuid exchId = null;
 
     /**
      * @param cfg Configuration.

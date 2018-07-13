@@ -43,6 +43,8 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
     /** Services configuration. */
     private final Collection<ServiceConfiguration> cfgs;
 
+    IgniteUuid exchId;
+
     /**
      * @param nodeId Deployment initiator id.
      * @param cfgs Services configuration.
