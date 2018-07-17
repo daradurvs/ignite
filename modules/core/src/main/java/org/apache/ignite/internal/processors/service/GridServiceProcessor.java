@@ -1422,55 +1422,57 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     private void onAssignmentsRequest(ServicesAssignmentDiscoMessage msg) {
-        Collection<GridServiceAssignments> assigns = msg.assignments();
+        synchronized (mux) {
+            Collection<GridServiceAssignments> assigns = msg.assignments();
 
-        Map<String, byte[]> errors = new HashMap<>();
+            Map<String, byte[]> errors = new HashMap<>();
 
-        for (GridServiceAssignments assign : assigns) {
-            svcAssigns.put(assign.name(), assign);
+            for (GridServiceAssignments assign : assigns) {
+                svcAssigns.putIfAbsent(assign.name(), assign);
 
-            try {
-                redeploy(assign);
+                try {
+                    redeploy(assign);
+                }
+                catch (Error | RuntimeException th) {
+                    errors.put(assign.name(), marshal(th));
+                }
             }
-            catch (Error | RuntimeException th) {
-                errors.put(assign.name(), marshal(th));
+
+            ServicesSingleAssignmentsMessage locAssignsMsg = new ServicesSingleAssignmentsMessage();
+
+            locAssignsMsg.snd = ctx.localNodeId();
+            locAssignsMsg.client = ctx.clientNode();
+            locAssignsMsg.exchId = msg.exchId;
+
+            Map<String, Integer> locAssings;
+
+            if (ctx.clientNode())
+                locAssings = Collections.EMPTY_MAP;
+            else {
+                locAssings = new HashMap<>();
+
+                locSvcs.forEach((name, ctxs) -> {
+                    if (!ctxs.isEmpty())
+                        locAssings.put(name, ctxs.size());
+                });
             }
+
+            locAssignsMsg.assigns(locAssings);
+
+            if (!errors.isEmpty())
+                locAssignsMsg.errors(errors);
+
+            ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
+
+            if (log.isDebugEnabled()) {
+                log.debug("Send single assignments message: [locId=" + ctx.localNodeId() +
+                    "; client=" + ctx.clientNode() +
+                    "; destId=" + crd.id() +
+                    "; locAssigns=" + locAssignsMsg.assigns() + ']');
+            }
+
+            sendServiceMessage(crd, locAssignsMsg);
         }
-
-        ServicesSingleAssignmentsMessage locAssignsMsg = new ServicesSingleAssignmentsMessage();
-
-        locAssignsMsg.snd = ctx.localNodeId();
-        locAssignsMsg.client = ctx.clientNode();
-        locAssignsMsg.exchId = msg.exchId;
-
-        Map<String, Integer> locAssings;
-
-        if (ctx.clientNode())
-            locAssings = Collections.EMPTY_MAP;
-        else {
-            locAssings = new HashMap<>();
-
-            locSvcs.forEach((name, ctxs) -> {
-                if (!ctxs.isEmpty())
-                    locAssings.put(name, ctxs.size());
-            });
-        }
-
-        locAssignsMsg.assigns(locAssings);
-
-        if (!errors.isEmpty())
-            locAssignsMsg.errors(errors);
-
-        ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
-
-        if (log.isDebugEnabled()) {
-            log.debug("Send single assignments message: [locId=" + ctx.localNodeId() +
-                "; client=" + ctx.clientNode() +
-                "; destId=" + crd.id() +
-                "; locAssigns=" + locAssignsMsg.assigns() + ']');
-        }
-
-        sendServiceMessage(crd, locAssignsMsg);
     }
 
     /**
