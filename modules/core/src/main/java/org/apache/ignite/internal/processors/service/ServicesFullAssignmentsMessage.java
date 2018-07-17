@@ -110,11 +110,13 @@ public class ServicesFullAssignmentsMessage implements Message {
                     return false;
 
                 writer.incrementState();
+
             case 2:
                 if (!writer.writeIgniteUuid("exchId", exchId))
                     return false;
 
                 writer.incrementState();
+
             case 3:
                 if (!writer.writeUuid("snd", snd))
                     return false;
@@ -148,6 +150,7 @@ public class ServicesFullAssignmentsMessage implements Message {
                     return false;
 
                 reader.incrementState();
+
             case 2:
                 exchId = reader.readIgniteUuid("exchId");
 
@@ -155,6 +158,7 @@ public class ServicesFullAssignmentsMessage implements Message {
                     return false;
 
                 reader.incrementState();
+
             case 3:
                 snd = reader.readUuid("snd");
 

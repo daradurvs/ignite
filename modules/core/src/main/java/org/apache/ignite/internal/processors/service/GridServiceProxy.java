@@ -201,6 +201,8 @@ public class GridServiceProxy<T> implements Serializable {
                 catch (GridServiceNotFoundException | ClusterTopologyCheckedException e) {
                     if (log.isDebugEnabled())
                         log.debug("Service was not found or topology changed (will retry): " + e.getMessage());
+
+                    throw e;
                 }
                 catch (RuntimeException | Error e) {
                     throw e;

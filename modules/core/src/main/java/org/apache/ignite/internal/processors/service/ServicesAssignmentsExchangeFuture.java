@@ -17,14 +17,22 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteLogger;
+import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.events.DiscoveryCustomEvent;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.lang.IgniteUuid;
 
@@ -34,20 +42,67 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
 /**
  *
  */
-public abstract class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object> {
+public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object> {
     /** */
-    private final Map<String, Map<UUID, Integer>> fullAssignments = new ConcurrentHashMap<>();
+    private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMessages = new ConcurrentHashMap<>();
+
+    private final GridKernalContext ctx;
+
+    private final IgniteLogger log;
+
+    private final DiscoveryEvent evt;
+
+    private final IgniteUuid exchId;
 
     /** Remaining nodes. */
-    private Set<UUID> remaining = new HashSet<>();
+    private final Set<UUID> remaining;
 
-    Set<UUID> nodes = new HashSet<>();
+    private final Set<UUID> nodes;
 
-    public abstract void init();
+    public ServicesAssignmentsExchangeFuture(IgniteUuid exchId, GridKernalContext ctx, DiscoveryEvent evt) {
+        this.exchId = exchId;
+        this.ctx = ctx;
+        this.evt = evt;
+        this.log = ctx.log(getClass());
 
-    IgniteUuid exchId;
+        Set<UUID> ids = ctx.discovery().nodes(evt.topologyVersion()).stream().map(ClusterNode::id).collect(Collectors.toSet());
 
-    GridKernalContext ctx;
+        this.remaining = new HashSet<>(ids);
+        this.nodes = new HashSet<>(ids);
+    }
+
+    public void init() {
+        if (log.isDebugEnabled())
+            log.debug("Started init method: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
+
+        DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+        try {
+            if (msg instanceof ServicesCancellationRequestMessage) {
+                Executors.newSingleThreadExecutor().execute(() -> {
+                    ctx.service().onCancellationRequest((ServicesCancellationRequestMessage)msg);
+                });
+            }
+            else if (msg instanceof ServicesDeploymentRequestMessage) {
+                Executors.newSingleThreadExecutor().execute(() -> {
+                    try {
+                        ctx.service().onDeploymentRequest((ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error("Error #onDeploymentRequest", e);
+                    }
+                });
+            }
+            else
+                throw new IllegalStateException("Unexpected message type: " + msg);
+        }
+        catch (Exception e) {
+            log.error("Exception occurred inside init method: " + e);
+        }
+
+        if (log.isDebugEnabled())
+            log.debug("Finished init method: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
+    }
 
     /**
      * @param snd Sender.
@@ -55,76 +110,70 @@ public abstract class ServicesAssignmentsExchangeFuture extends GridFutureAdapte
      */
     public synchronized void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg,
         boolean client) {
+        assert exchId.equals(msg.exchId) : "Wrong message exchId!";
+
         if (remaining.remove(snd)) {
-            if (!client) {
-                for (Map.Entry<String, Integer> entry : msg.assigns().entrySet()) {
-                    String name = entry.getKey();
-
-                    Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, k -> new HashMap<>());
-
-                    cur.put(snd, entry.getValue());
-                }
-            }
+            if (!client)
+                singleAssignsMessages.put(snd, msg);
 
             if (remaining.isEmpty()) {
                 ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
 
-                for (UUID node : nodes) {
-                    if (ctx.localNodeId().equals(node))
-                        continue;
+                if (((DiscoveryCustomEvent)evt).customMessage() instanceof ServicesDeploymentRequestMessage)
+                    if (fullMapMsg.assigns().isEmpty())
+                        log.info("****");
 
+                for (UUID node : nodes) {
                     try {
                         ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMapMsg, SERVICE_POOL);
                     }
                     catch (IgniteCheckedException e) {
-                        e.printStackTrace();
+                        log.error("Failed to send services full assignments to node: " + node, e);
                     }
                 }
-
-
-                ctx.service().processFullAssignment(ctx.localNodeId(), fullMapMsg);
-
-//                onDone();
             }
-        } else
-            System.out.println("*********");
+        }
+        else
+            System.out.println("Unexpected message: " + msg);
     }
 
-    public ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
+    public synchronized ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
         // TODO: handle errors
-        ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage();
+        ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
 
-        msg.exchId = exchId;
-        msg.snd = ctx.localNodeId();
+        fullMsg.exchId = exchId;
+        fullMsg.snd = ctx.localNodeId();
 
         Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+
+        Map<String, Map<UUID, Integer>> fullAssignments = new ConcurrentHashMap<>();
+
+        singleAssignsMessages.forEach((uuid, singleMsg) -> {
+            singleMsg.assigns().forEach((name, num) -> {
+                if (num != 0) {
+                    Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, m -> new HashMap<>());
+
+                    cur.put(uuid, num);
+                }
+            });
+        });
 
         for (Map.Entry<String, Map<UUID, Integer>> entry : fullAssignments.entrySet())
             assigns.put(entry.getKey(), new ServiceAssignmentsMap(entry.getValue()));
 
-        msg.assigns(assigns);
+        fullMsg.assigns(assigns);
 
-        return msg;
+        return fullMsg;
+    }
+
+    public IgniteUuid exchangeId() {
+        return exchId;
     }
 
     /**
      * @return Nodes ids to wait messages.
      */
     public Set<UUID> remaining() {
-        return remaining;
-    }
-
-    /**
-     * @param remaining Nodes ids to wait messages.
-     */
-    public void remaining(Set<UUID> remaining) {
-        this.remaining = remaining;
-    }
-
-    /**
-     * @return Services assignments.
-     */
-    public Map<String, Map<UUID, Integer>> assignments() {
-        return fullAssignments;
+        return Collections.unmodifiableSet(remaining);
     }
 }

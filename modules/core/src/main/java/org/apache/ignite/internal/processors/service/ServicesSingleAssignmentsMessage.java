@@ -118,11 +118,13 @@ public class ServicesSingleAssignmentsMessage implements Message {
                     return false;
 
                 writer.incrementState();
+
             case 3:
                 if (!writer.writeUuid("snd", snd))
                     return false;
 
                 writer.incrementState();
+
             case 4:
                 if (!writer.writeBoolean("client", client))
                     return false;
@@ -164,17 +166,22 @@ public class ServicesSingleAssignmentsMessage implements Message {
                     return false;
 
                 reader.incrementState();
+
             case 3:
                 snd = reader.readUuid("snd");
 
                 if (!reader.isLastRead())
                     return false;
+
+                reader.incrementState();
+
             case 4:
                 client = reader.readBoolean("client");
 
                 if (!reader.isLastRead())
                     return false;
 
+                reader.incrementState();
         }
 
         return reader.afterMessageRead(ServiceDeploymentResultMessage.class);

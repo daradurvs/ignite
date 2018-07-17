@@ -18,15 +18,12 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
-import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
@@ -61,11 +58,6 @@ public class ServicesAssignmentsExchangeManager {
      */
     public synchronized ServicesAssignmentsExchangeFuture onEvent(ServicesAssignmentsExchangeFuture fut,
         AffinityTopologyVersion topVer) {
-        Collection<ClusterNode> nodes = ctx.discovery().nodes(topVer.topologyVersion());
-
-        Set<UUID> remaining = nodes.stream().map(ClusterNode::id).collect(Collectors.toSet());
-
-        fut.remaining(remaining);
 
         exchWorker.q.offer(fut);
 
@@ -74,33 +66,35 @@ public class ServicesAssignmentsExchangeManager {
 
     private final Object mux = new Object();
 
-    List<ServicesSingleAssignmentsMessage> pending = new ArrayList<>();
+    final List<ServicesSingleAssignmentsMessage> pending = new ArrayList<>();
 
     /**
      * @param snd
      * @param msg
      */
-    public synchronized void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
-        ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
+    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
+//        synchronized (pending) {
+            ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
 
-        if (fut == null) {
-            pending.add(msg);
+            if (fut == null) {
+                pending.add(msg);
 
-            return;
-        }
+                return;
+            }
 
-        if (fut.exchId.equals(msg.exchId))
-            fut.onReceiveSingleMessage(snd, msg, msg.client);
-        else
-            pending.add(msg);
+            if (fut.exchangeId().equals(msg.exchId))
+                fut.onReceiveSingleMessage(snd, msg, msg.client);
+            else
+                pending.add(msg);
+//        }
     }
 
     List<ServicesFullAssignmentsMessage> pendingFull = new ArrayList<>();
 
-    public synchronized void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
+    public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
         ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
 
-        if (!fut.exchId.equals(msg.exchId))
+        if (!fut.exchangeId().equals(msg.exchId))
             throw new IllegalStateException();
 
         fut.onDone();
@@ -129,16 +123,18 @@ public class ServicesAssignmentsExchangeManager {
 
                 fut.init();
 
-                for (ServicesSingleAssignmentsMessage msg : pending) {
-                    if (fut.exchId.equals(msg.exchId))
-                        fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
-                }
-
                 while (true) {
                     try {
-                        for (ServicesSingleAssignmentsMessage msg : pending) {
-                            if (fut.exchId.equals(msg.exchId))
+                        Iterator<ServicesSingleAssignmentsMessage> it = pending.iterator();
+
+                        while (it.hasNext()) {
+                            ServicesSingleAssignmentsMessage msg = it.next();
+
+                            if (fut.exchangeId().equals(msg.exchId)) {
                                 fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
+
+                                it.remove();
+                            }
                         }
 
                         fut.get(5_000);
@@ -146,7 +142,7 @@ public class ServicesAssignmentsExchangeManager {
                         break;
                     }
                     catch (IgniteCheckedException e) {
-                        e.printStackTrace();
+                        log.error("Exception while waiting for exchange future complete.", e);
                     }
                 }
             }

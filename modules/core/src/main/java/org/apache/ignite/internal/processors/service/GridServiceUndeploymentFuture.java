@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 
 /**
  * Service deployment future.
@@ -35,6 +36,8 @@ public class GridServiceUndeploymentFuture extends GridFutureAdapter<Object> {
 
     /** */
     Set<UUID> assigns;
+
+    IgniteUuid exchId;
 
     /**
      * @param name Service name.
