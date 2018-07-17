@@ -38,6 +38,9 @@ public class ServicesAssignmentsExchangeManager {
     /** */
     private final ServicesMapExchangeWorker exchWorker;
 
+    /** */
+    private final List<ServicesSingleAssignmentsMessage> pending = new ArrayList<>();
+
     /**
      * @param ctx Grid kernal context.
      */
@@ -63,10 +66,6 @@ public class ServicesAssignmentsExchangeManager {
 
         return fut;
     }
-
-    private final Object mux = new Object();
-
-    final List<ServicesSingleAssignmentsMessage> pending = new ArrayList<>();
 
     /**
      * @param snd

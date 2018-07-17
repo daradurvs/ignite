@@ -117,4 +117,11 @@ public class ServiceAssignmentsMap implements Message {
     @Override public void onAckReceived() {
         // No-op.
     }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        return "ServiceAssignmentsMap{" +
+            "assigns=" + assigns +
+            '}';
+    }
 }

@@ -1781,7 +1781,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             " sender: " + nodeId +
                             " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
 
-                    processFullAssignment(nodeId, (ServicesFullAssignmentsMessage)msg);
+                    depExe.execute(() -> {
+                        processFullAssignment(nodeId, (ServicesFullAssignmentsMessage)msg);
+                    });
                 }
             }
             finally {
@@ -1791,12 +1793,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     synchronized void processFullAssignment(UUID snd, ServicesFullAssignmentsMessage msg) {
-//        if (busyLock == null || !busyLock.enterBusy())
-//            return;
-//        try {
-
         synchronized (mux) {
-            Map<String, ServiceAssignmentsMap> fullAssignsMap = msg.assigns();
+            Map<String, ServiceAssignmentsMap> fullAssignsMap = new HashMap<>(msg.assigns());
 
             log.info("*****received-full-map" + fullAssignsMap);
 
@@ -1858,10 +1856,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             exchangeMgr.onReceiveFullMessage(msg);
         }
-//        }
-//        finally {
-//            busyLock.leaveBusy();
-//        }
     }
 
     /**
