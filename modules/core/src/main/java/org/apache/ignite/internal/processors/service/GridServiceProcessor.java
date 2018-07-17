@@ -1088,13 +1088,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             else
                 nodes = null;
 
-            nodes.sort(Comparator.comparing(ClusterNode::order));
-
             try {
                 String name = cfg.getName();
 
-//                GridServiceAssignments oldAssigns = svcAssigns.get(name);
-                GridServiceAssignments oldAssigns = null;
+                GridServiceAssignments oldAssigns = svcAssigns.get(name);
 
                 Map<UUID, Integer> cnts = new HashMap<>();
 
@@ -1171,7 +1168,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
 
                                 // Randomize.
-//                                Collections.shuffle(entries);
+                                Collections.shuffle(entries);
 
                                 for (Map.Entry<UUID, Integer> e : entries) {
                                     e.setValue(e.getValue() + 1);
@@ -1617,23 +1614,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     if (expNum == null)
                         expNum = 0;
 
-                    synchronized (locSvcs) {
-                        Collection ctxs = locSvcs.get(assigns.name());
+//                    synchronized (locSvcs) {
+                    Collection ctxs = locSvcs.get(assigns.name());
 
-                        if (ctxs == null && expNum > 0 || (ctxs != null && expNum != ctxs.size())) {
-                            try {
-                                locAssigns.put(assigns.name(), expNum);
+                    if (ctxs == null && expNum > 0 || (ctxs != null && expNum != ctxs.size())) {
+                        try {
+                            locAssigns.put(assigns.name(), expNum);
 
-                                svcName.set(assigns.name());
+                            svcName.set(assigns.name());
 
-                                redeploy(assigns);
+                            redeploy(assigns);
 
-                                assert expNum == locSvcs.get(assigns.name()).size();
-                            }
-                            catch (Error | RuntimeException th) {
-                                errors.put(assigns.name(), marshal(th));
-                            }
+                            assert expNum == locSvcs.get(assigns.name()).size();
                         }
+                        catch (Error | RuntimeException th) {
+                            errors.put(assigns.name(), marshal(th));
+                        }
+//                        }
                     }
                 }
 
@@ -1754,6 +1751,70 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
+    private void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        Collection<ServiceConfiguration> cfgs = req.configurations();
+
+        Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
+
+        for (ServiceConfiguration cfg : cfgs) {
+            GridServiceAssignments svcAssigns = reassign0(cfg, snd, topVer);
+
+            assigns.add(svcAssigns);
+        }
+
+        ServicesAssignmentDiscoMessage assignsMsg = new ServicesAssignmentDiscoMessage(snd, assigns);
+
+        assignsMsg.exchId = req.id();
+
+        ctx.discovery().sendCustomEvent(assignsMsg);
+    }
+
+    private void onAssignmentsRequest(ServicesAssignmentDiscoMessage msg) {
+        Collection<GridServiceAssignments> assigns = msg.assignments();
+
+        Map<String, byte[]> errors = new HashMap<>();
+
+        for (GridServiceAssignments assign : assigns) {
+            svcAssigns.put(assign.name(), assign);
+
+            try {
+                redeploy(assign);
+            }
+            catch (Error | RuntimeException th) {
+                errors.put(assign.name(), marshal(th));
+            }
+        }
+
+        ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
+
+        ServicesSingleAssignmentsMessage singleMapMsg = new ServicesSingleAssignmentsMessage();
+
+        singleMapMsg.snd = ctx.localNodeId();
+        singleMapMsg.client = ctx.clientNode();
+        singleMapMsg.exchId = msg.exchId;
+
+        Map<String, Integer> locAssings;
+
+        if (ctx.clientNode())
+            locAssings = Collections.EMPTY_MAP;
+        else {
+            locAssings = new HashMap<>();
+
+            locSvcs.forEach((name, ctxs) -> {
+                if (!ctxs.isEmpty())
+                    locAssings.put(name, ctxs.size());
+            });
+        }
+
+        singleMapMsg.assigns(locAssings);
+
+        if (!errors.isEmpty())
+            singleMapMsg.errors(errors);
+
+        sendServiceMessage(crd, singleMapMsg);
+    }
+
     /**
      * Topology listener.
      */
@@ -1782,9 +1843,26 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     topVer = ((DiscoveryCustomEvent)evt).affinityTopologyVersion();
 
+                    if (msg instanceof ServicesDeploymentRequestMessage) {
+                        if (!isLocalNodeCoordinator())
+                            return;
+
+                        try {
+                            ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
+
+                            exchangeMgr.onEvent(fut, topVer); // New exchange needed
+
+                            onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                        }
+                        catch (IgniteCheckedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    else if (msg instanceof ServicesAssignmentDiscoMessage)
+                        onAssignmentsRequest((ServicesAssignmentDiscoMessage)msg);
+
 //                    synchronized (this) {
-                    if (msg instanceof ServicesDeploymentRequestMessage ||
-                        msg instanceof ServicesCancellationRequestMessage) {
+                    if (msg instanceof ServicesCancellationRequestMessage) {
 
                         if (log.isDebugEnabled())
                             log.debug("[TopLsnr: " +

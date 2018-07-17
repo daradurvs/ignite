@@ -24,13 +24,12 @@ import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.services.ServiceConfiguration;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Services deployment request discovery message.
  */
-public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage {
+public class ServicesAssignmentDiscoMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -41,24 +40,24 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
     private final UUID nodeId;
 
     /** Services configuration. */
-    private final Collection<ServiceConfiguration> cfgs;
+    private final Collection<GridServiceAssignments> assigns;
 
     IgniteUuid exchId;
 
     /**
      * @param nodeId Deployment initiator id.
-     * @param cfgs Services configuration.
+     * @param assigns Services configuration.
      */
-    public ServicesDeploymentRequestMessage(UUID nodeId, Collection<ServiceConfiguration> cfgs) {
+    public ServicesAssignmentDiscoMessage(UUID nodeId, Collection<GridServiceAssignments> assigns) {
         this.nodeId = nodeId;
-        this.cfgs = cfgs;
+        this.assigns = assigns;
     }
 
     /**
      * @return Services configuration.
      */
-    public Collection<ServiceConfiguration> configurations() {
-        return cfgs;
+    public Collection<GridServiceAssignments> assignments() {
+        return assigns;
     }
 
     /**

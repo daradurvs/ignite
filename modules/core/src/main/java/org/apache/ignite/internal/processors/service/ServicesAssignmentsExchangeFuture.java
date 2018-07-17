@@ -84,14 +84,14 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
                 });
             }
             else if (msg instanceof ServicesDeploymentRequestMessage) {
-                Executors.newSingleThreadExecutor().execute(() -> {
-                    try {
-                        ctx.service().onDeploymentRequest((ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Error #onDeploymentRequest", e);
-                    }
-                });
+//                Executors.newSingleThreadExecutor().execute(() -> {
+//                    try {
+//                        ctx.service().onDeploymentRequest((ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+//                    }
+//                    catch (IgniteCheckedException e) {
+//                        log.error("Error #onDeploymentRequest", e);
+//                    }
+//                });
             }
             else
                 throw new IllegalStateException("Unexpected message type: " + msg);
