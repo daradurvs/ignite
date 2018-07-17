@@ -24,7 +24,6 @@ import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.services.ServiceConfiguration;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,8 +41,6 @@ public class ServicesCancellationRequestMessage implements DiscoveryCustomMessag
 
     /** Services configuration. */
     private final Collection<String> names;
-
-    IgniteUuid exchId;
 
     /**
      * @param nodeId Deployment initiator id.
@@ -86,7 +83,7 @@ public class ServicesCancellationRequestMessage implements DiscoveryCustomMessag
 
     /** {@inheritDoc} */
     @Override public boolean stopProcess() {
-        return false;
+        return true;
     }
 
     /** {@inheritDoc} */

@@ -73,7 +73,7 @@ public class ServicesAssignmentsExchangeManager {
      * @param msg
      */
     public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
-//        synchronized (pending) {
+        synchronized (pending) {
             ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
 
             if (fut == null) {
@@ -86,7 +86,7 @@ public class ServicesAssignmentsExchangeManager {
                 fut.onReceiveSingleMessage(snd, msg, msg.client);
             else
                 pending.add(msg);
-//        }
+        }
     }
 
     List<ServicesFullAssignmentsMessage> pendingFull = new ArrayList<>();
@@ -125,15 +125,17 @@ public class ServicesAssignmentsExchangeManager {
 
                 while (true) {
                     try {
-                        Iterator<ServicesSingleAssignmentsMessage> it = pending.iterator();
+                        synchronized (pending) {
+                            Iterator<ServicesSingleAssignmentsMessage> it = pending.iterator();
 
-                        while (it.hasNext()) {
-                            ServicesSingleAssignmentsMessage msg = it.next();
+                            while (it.hasNext()) {
+                                ServicesSingleAssignmentsMessage msg = it.next();
 
-                            if (fut.exchangeId().equals(msg.exchId)) {
-                                fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
+                                if (fut.exchangeId().equals(msg.exchId)) {
+                                    fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
 
-                                it.remove();
+                                    it.remove();
+                                }
                             }
                         }
 

@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,7 +25,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
@@ -59,6 +59,8 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
 
     private final Set<UUID> nodes;
 
+    Map<String, GridServiceAssignments> svcAssigns;
+
     public ServicesAssignmentsExchangeFuture(IgniteUuid exchId, GridKernalContext ctx, DiscoveryEvent evt) {
         this.exchId = exchId;
         this.ctx = ctx;
@@ -79,9 +81,31 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
 
         try {
             if (msg instanceof ServicesCancellationRequestMessage) {
-                Executors.newSingleThreadExecutor().execute(() -> {
-                    ctx.service().onCancellationRequest((ServicesCancellationRequestMessage)msg);
+                ServicesCancellationRequestMessage msg0 = (ServicesCancellationRequestMessage)msg;
+                Collection<String> names = msg0.names();
+
+                ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
+
+                fullMsg.exchId = exchId;
+                fullMsg.snd = ctx.localNodeId();
+
+                Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+
+                svcAssigns.forEach((name, svcMap) -> {
+                    if (!names.contains(name))
+                        assigns.put(name, new ServiceAssignmentsMap(svcMap.assigns()));
                 });
+
+                fullMsg.assigns(assigns);
+
+                for (UUID node : nodes) {
+                    try {
+                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMsg, SERVICE_POOL);
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error("Failed to send services full assignments to node: " + node, e);
+                    }
+                }
             }
             else if (msg instanceof ServicesDeploymentRequestMessage) {
 //                Executors.newSingleThreadExecutor().execute(() -> {

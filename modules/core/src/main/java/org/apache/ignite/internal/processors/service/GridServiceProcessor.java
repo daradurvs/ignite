@@ -36,7 +36,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterGroup;
@@ -984,7 +983,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    private GridServiceAssignments reassign0(ServiceConfiguration cfg, UUID nodeId,
+    /**
+     * Reassigns service to nodes.
+     *
+     * @param cfg Service configuration.
+     * @param nodeId Deployment initiator id.
+     * @param topVer Topology version.
+     * @throws IgniteCheckedException If failed.
+     */
+    private GridServiceAssignments reassign(ServiceConfiguration cfg, UUID nodeId,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         Object nodeFilter = cfg.getNodeFilter();
 
@@ -1115,181 +1122,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 assigns.assigns(cnts);
 
                 return assigns;
-            }
-            catch (ClusterTopologyCheckedException e) {
-                if (log.isDebugEnabled())
-                    log.debug("Topology changed while reassigning (will retry): " + e.getMessage());
-
-                U.sleep(10);
-            }
-        }
-    }
-
-    /**
-     * Reassigns service to nodes.
-     *
-     * @param cfg Service configuration.
-     * @param nodeId Deployment initiator id.
-     * @param topVer Topology version.
-     * @throws IgniteCheckedException If failed.
-     */
-    private void reassign(ServiceConfiguration cfg, UUID nodeId,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
-        Object nodeFilter = cfg.getNodeFilter();
-
-        if (nodeFilter != null)
-            ctx.resource().injectGeneric(nodeFilter);
-
-        int totalCnt = cfg.getTotalCount();
-        int maxPerNodeCnt = cfg.getMaxPerNodeCount();
-        String cacheName = cfg.getCacheName();
-        Object affKey = cfg.getAffinityKey();
-
-        while (true) {
-            GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
-
-            Collection<ClusterNode> nodes;
-
-            // Call node filter outside of transaction.
-            if (affKey == null) {
-                nodes = ctx.discovery().nodes(topVer);
-
-                if (assigns.nodeFilter() != null) {
-                    Collection<ClusterNode> nodes0 = new ArrayList<>();
-
-                    for (ClusterNode node : nodes) {
-                        if (assigns.nodeFilter().apply(node))
-                            nodes0.add(node);
-                    }
-
-                    nodes = nodes0;
-                }
-            }
-            else
-                nodes = null;
-
-            try {
-                String name = cfg.getName();
-
-                GridServiceAssignments oldAssigns = svcAssigns.get(name);
-
-                Map<UUID, Integer> cnts = new HashMap<>();
-
-                if (affKey != null) {
-                    ClusterNode n = ctx.affinity().mapKeyToNode(cacheName, affKey, topVer);
-
-                    if (n != null) {
-                        int cnt = maxPerNodeCnt == 0 ? totalCnt == 0 ? 1 : totalCnt : maxPerNodeCnt;
-
-                        cnts.put(n.id(), cnt);
-                    }
-                }
-                else {
-                    if (!nodes.isEmpty()) {
-                        int size = nodes.size();
-
-                        int perNodeCnt = totalCnt != 0 ? totalCnt / size : maxPerNodeCnt;
-                        int remainder = totalCnt != 0 ? totalCnt % size : 0;
-
-                        if (perNodeCnt >= maxPerNodeCnt && maxPerNodeCnt != 0) {
-                            perNodeCnt = maxPerNodeCnt;
-                            remainder = 0;
-                        }
-
-                        for (ClusterNode n : nodes)
-                            cnts.put(n.id(), perNodeCnt);
-
-                        assert perNodeCnt >= 0;
-                        assert remainder >= 0;
-
-                        if (remainder > 0) {
-                            int cnt = perNodeCnt + 1;
-
-                            if (oldAssigns != null) {
-                                Collection<UUID> used = new HashSet<>();
-
-                                // Avoid redundant moving of services.
-                                for (Map.Entry<UUID, Integer> e : oldAssigns.assigns().entrySet()) {
-                                    // Do not assign services to left nodes.
-                                    if (ctx.discovery().node(e.getKey()) == null)
-                                        continue;
-
-                                    // If old count and new count match, then reuse the assignment.
-                                    if (e.getValue() == cnt) {
-                                        cnts.put(e.getKey(), cnt);
-
-                                        used.add(e.getKey());
-
-                                        if (--remainder == 0)
-                                            break;
-                                    }
-                                }
-
-                                if (remainder > 0) {
-                                    List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
-
-                                    // Randomize.
-                                    Collections.shuffle(entries);
-
-                                    for (Map.Entry<UUID, Integer> e : entries) {
-                                        // Assign only the ones that have not been reused from previous assignments.
-                                        if (!used.contains(e.getKey())) {
-                                            if (e.getValue() < maxPerNodeCnt || maxPerNodeCnt == 0) {
-                                                e.setValue(e.getValue() + 1);
-
-                                                if (--remainder == 0)
-                                                    break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else {
-                                List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
-
-                                // Randomize.
-                                Collections.shuffle(entries);
-
-                                for (Map.Entry<UUID, Integer> e : entries) {
-                                    e.setValue(e.getValue() + 1);
-
-                                    if (--remainder == 0)
-                                        break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                assigns.assigns(cnts);
-
-                assert isLocalNodeCoordinator();
-
-                synchronized (depFuts) {
-                    Set<UUID> topNodes = ctx.discovery().serverTopologyNodes(assigns.topologyVersion()).stream()
-                        .map(ClusterNode::id)
-                        .collect(Collectors.toSet());
-
-                    GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(assigns.configuration());
-
-                    GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
-
-                    if (old != null) {
-                        old.registerInitiator(nodeId);
-                        old.participants(topNodes);
-                    }
-                    else {
-                        fut.registerInitiator(nodeId);
-                        fut.participants(topNodes);
-                    }
-                }
-
-                DynamicServiceChangeRequestMessage msg = DynamicServiceChangeRequestMessage.assignmentRequest(nodeId, cfg,
-                    assigns.assigns(), topVer.topologyVersion());
-
-                ctx.discovery().sendCustomEvent(msg);
-
-                break;
             }
             catch (ClusterTopologyCheckedException e) {
                 if (log.isDebugEnabled())
@@ -1514,89 +1346,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    void onDeploymentRequest(ServicesDeploymentRequestMessage msg,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
-        synchronized (mux) {
-            ServicesSingleAssignmentsMessage locAssignsMsg = new ServicesSingleAssignmentsMessage();
-
-            locAssignsMsg.snd = ctx.localNodeId();
-            locAssignsMsg.client = ctx.clientNode();
-            locAssignsMsg.exchId = msg.id();
-
-//            if (!ctx.clientNode()) {
-            Collection<ServiceConfiguration> cfgs = msg.configurations();
-
-            Map<String, byte[]> errors = new HashMap<>();
-
-            UUID nodeId = msg.nodeId();
-
-            Map<String, Integer> locAssigns = new HashMap<>();
-
-            for (ServiceConfiguration cfg : cfgs) {
-                GridServiceAssignments assigns = reassign0(cfg, nodeId, topVer);
-
-                log.info("*****" + assigns.assigns());
-
-                svcAssigns.put(assigns.name(), assigns);
-
-                if (!ctx.clientNode()) {
-                    Integer expNum = assigns.assigns().get(ctx.localNodeId());
-
-                    if (expNum == null)
-                        expNum = 0;
-
-//                    synchronized (locSvcs) {
-                    Collection ctxs = locSvcs.get(assigns.name());
-
-                    if (ctxs == null && expNum > 0 || (ctxs != null && expNum != ctxs.size())) {
-                        try {
-                            locAssigns.put(assigns.name(), expNum);
-
-                            svcName.set(assigns.name());
-
-                            redeploy(assigns);
-
-                            assert expNum == locSvcs.get(assigns.name()).size();
-                        }
-                        catch (Error | RuntimeException th) {
-                            errors.put(assigns.name(), marshal(th));
-                        }
-//                        }
-                    }
-                }
-
-                if (!errors.isEmpty())
-                    locAssignsMsg.errors(errors);
-
-//                    locSvcs.forEach((name, ctxs) -> {
-//                        if (!ctxs.isEmpty())
-//                            locAssigns.put(name, ctxs.size());
-//                    });
-
-                locAssignsMsg.assigns(locAssigns);
-            }
-//            }
-//            else
-//                locAssignsMsg.assigns(Collections.EMPTY_MAP);
-
-            ClusterNode crd = ctx.discovery().oldestAliveServerNode(topVer);
-
-            if (log.isDebugEnabled()) {
-                log.debug("Send single assignments message: [locId=" + ctx.localNodeId() +
-                    "; client=" + ctx.clientNode() +
-                    "; destId=" + crd.id() +
-                    "; locAssigns=" + locAssignsMsg.assigns() + ']');
-            }
-
-//            if (crd.isLocal())
-//                Executors.newSingleThreadExecutor().execute(() -> {
-//                    processSingleAssignment(crd.id(), locAssignsMsg);
-//                });
-//            else
-            sendServiceMessage(crd, locAssignsMsg);
-        }
-    }
-
     /**
      * Deployment callback.
      *
@@ -1657,7 +1406,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
 
         for (ServiceConfiguration cfg : cfgs) {
-            GridServiceAssignments svcAssigns = reassign0(cfg, snd, topVer);
+            GridServiceAssignments svcAssigns = reassign(cfg, snd, topVer);
+
+            if (log.isDebugEnabled())
+                log.debug("Calculated assignment: " + svcAssigns.assigns());
 
             assigns.add(svcAssigns);
         }
@@ -1685,13 +1437,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         }
 
-        ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
+        ServicesSingleAssignmentsMessage locAssignsMsg = new ServicesSingleAssignmentsMessage();
 
-        ServicesSingleAssignmentsMessage singleMapMsg = new ServicesSingleAssignmentsMessage();
-
-        singleMapMsg.snd = ctx.localNodeId();
-        singleMapMsg.client = ctx.clientNode();
-        singleMapMsg.exchId = msg.exchId;
+        locAssignsMsg.snd = ctx.localNodeId();
+        locAssignsMsg.client = ctx.clientNode();
+        locAssignsMsg.exchId = msg.exchId;
 
         Map<String, Integer> locAssings;
 
@@ -1706,37 +1456,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             });
         }
 
-        singleMapMsg.assigns(locAssings);
+        locAssignsMsg.assigns(locAssings);
 
         if (!errors.isEmpty())
-            singleMapMsg.errors(errors);
+            locAssignsMsg.errors(errors);
 
-        sendServiceMessage(crd, singleMapMsg);
-    }
+        ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
 
-    void onCancellationRequest(ServicesCancellationRequestMessage msg) {
-        synchronized (mux) {
-            Collection<String> names = msg.names();
-
-            Map<String, Integer> locAssigns = new HashMap<>(locSvcs.size());
-
-            for (Map.Entry<String, Collection<ServiceContextImpl>> entry : locSvcs.entrySet()) {
-                String name = entry.getKey();
-
-                if (!names.contains(name))
-                    locAssigns.put(name, entry.getValue().size());
-            }
-
-            ServicesSingleAssignmentsMessage locAssignsMsg = new ServicesSingleAssignmentsMessage(locAssigns);
-
-            locAssignsMsg.snd = ctx.localNodeId();
-            locAssignsMsg.client = ctx.clientNode();
-            locAssignsMsg.exchId = msg.id();
-
-            ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
-
-            sendServiceMessage(crd, locAssignsMsg);
+        if (log.isDebugEnabled()) {
+            log.debug("Send single assignments message: [locId=" + ctx.localNodeId() +
+                "; client=" + ctx.clientNode() +
+                "; destId=" + crd.id() +
+                "; locAssigns=" + locAssignsMsg.assigns() + ']');
         }
+
+        sendServiceMessage(crd, locAssignsMsg);
     }
 
     /**
@@ -1782,6 +1516,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         });
                     }
                     else if (msg instanceof ServicesCancellationRequestMessage) {
+                        if (!isLocalNodeCoordinator())
+                            return;
 
                         if (log.isDebugEnabled())
                             log.debug("[TopLsnr: " +
@@ -1789,6 +1525,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 " sender: " + evt.eventNode());
 
                         ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
+
+                        fut.svcAssigns = svcAssigns;
 
                         exchangeMgr.onEvent(fut, topVer); // New exchange needed
                     }
