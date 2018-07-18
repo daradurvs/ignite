@@ -100,7 +100,7 @@ public class ServiceAssignmentsMap implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
+        return reader.afterMessageRead(ServiceAssignmentsMap.class);
     }
 
     /** {@inheritDoc} */

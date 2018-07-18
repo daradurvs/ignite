@@ -168,7 +168,7 @@ public class ServicesFullAssignmentsMessage implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
+        return reader.afterMessageRead(ServicesFullAssignmentsMessage.class);
     }
 
     /** {@inheritDoc} */

@@ -25,7 +25,7 @@ import org.apache.ignite.IgniteClientDisconnectedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteServices;
 import org.apache.ignite.internal.processors.service.DummyService;
-import org.apache.ignite.internal.processors.service.ServiceDeploymentResultMessage;
+import org.apache.ignite.internal.processors.service.ServicesFullAssignmentsMessage;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceContext;
@@ -136,7 +136,7 @@ public class IgniteClientReconnectServicesTest extends IgniteClientReconnectAbst
 
         BlockTcpCommunicationSpi commSpi = commSpi(srv);
 
-        commSpi.blockMessage(ServiceDeploymentResultMessage.class);
+        commSpi.blockMessage(ServicesFullAssignmentsMessage.class);
 
         final IgniteInternalFuture<Object> fut = GridTestUtils.runAsync(new Callable<Object>() {
             @Override public Object call() throws Exception {

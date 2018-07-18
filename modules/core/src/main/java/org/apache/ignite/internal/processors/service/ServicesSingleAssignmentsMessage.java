@@ -191,7 +191,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServiceDeploymentResultMessage.class);
+        return reader.afterMessageRead(ServicesSingleAssignmentsMessage.class);
     }
 
     /** {@inheritDoc} */
