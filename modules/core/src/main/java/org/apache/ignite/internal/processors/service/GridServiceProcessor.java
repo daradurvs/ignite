@@ -1430,15 +1430,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             Map<String, byte[]> errors = new HashMap<>();
 
-            Map<String, Integer> locAssings = new HashMap<>();
+            Map<String, Integer> locAssings;
 
             synchronized (mux) {
-                for (GridServiceAssignments assign : assigns) {
-                    String svcName = assign.name();
+                if (!ctx.clientNode()) {
+                    locAssings = new HashMap<>();
 
-                    svcAssigns.putIfAbsent(svcName, assign);
+                    for (GridServiceAssignments assign : assigns) {
+                        String svcName = assign.name();
 
-                    if (!ctx.clientNode()) {
+                        svcAssigns.putIfAbsent(svcName, assign);
+
                         Integer expNum = assign.assigns().get(ctx.localNodeId());
 
                         boolean needRedeploy = false;
@@ -1458,13 +1460,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
                         }
                     }
-                }
 
-                if (!ctx.clientNode()) {
                     locSvcs.forEach((name, ctxs) -> {
                         if (!ctxs.isEmpty())
                             locAssings.put(name, ctxs.size());
                     });
+                }
+                else {
+                    assigns.forEach(assign -> svcAssigns.putIfAbsent(assign.name(), assign));
+
+                    locAssings = Collections.emptyMap();
                 }
             }
 
