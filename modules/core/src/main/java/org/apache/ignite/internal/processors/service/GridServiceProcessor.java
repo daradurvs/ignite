@@ -518,7 +518,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param cfgs Service configurations.
+     * @param cfgs Services configurations.
      * @param dfltNodeFilter Default NodeFilter.
      * @return Future for deployment.
      */
@@ -539,34 +539,78 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         while (true) {
             res = new GridServiceDeploymentCompoundFuture();
 
-            try {
-                for (ServiceConfiguration cfg : cfgsCp) {
-                    try {
-                        sendToDeploy(res, cfg);
+            synchronized (mux) {
+                try {
+                    List<ServiceConfiguration> cfgsToDeploy = new ArrayList<>(cfgsCp.size());
+
+                    for (ServiceConfiguration cfg : cfgsCp) {
+                        String name = cfg.getName();
+
+                        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
+
+                        GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
+
+                        ServiceConfiguration oldDifCfg = null;
+
+                        if (old != null) {
+                            if (!old.configuration().equalsIgnoreNodeFilter(cfg))
+                                oldDifCfg = old.configuration();
+                            else {
+                                res.add(old, false); // Has been sent to deploy earlier.
+
+                                continue;
+                            }
+                        }
+
+                        if (oldDifCfg == null) {
+                            GridServiceAssignments assign = svcAssigns.get(name);
+
+                            if (assign != null && !assign.configuration().equalsIgnoreNodeFilter(cfg))
+                                oldDifCfg = assign.configuration();
+                        }
+
+                        if (oldDifCfg != null) {
+                            res.add(old, false);
+
+                            fut.onDone(new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                                "different configuration) [deployed=" + oldDifCfg + ", new=" + cfg + ']'));
+                        }
+                        else {
+                            res.add(fut, true);
+
+                            cfgsToDeploy.add(cfg);
+                        }
                     }
-                    catch (IgniteCheckedException e) {
-                        if (X.hasCause(e, ClusterTopologyCheckedException.class))
-                            throw e; // Retry.
-                        else
-                            U.error(log, e.getMessage());
+
+                    if (!cfgsToDeploy.isEmpty()) {
+                        ServicesDeploymentRequestMessage req = new ServicesDeploymentRequestMessage(ctx.localNodeId(), cfgsToDeploy);
+
+                        ctx.discovery().sendCustomEvent(req);
+
+                        if (log.isDebugEnabled()) {
+                            log.debug("Services sent to deploy: " +
+                                "[locId:" + ctx.localNodeId() +
+                                ", client:=" + ctx.clientNode() +
+                                ", cfgs=" + cfgsToDeploy + ']');
+                        }
                     }
+
+                    break;
                 }
+                catch (IgniteException | IgniteCheckedException e) {
+                    for (String name : res.servicesToRollback())
+                        depFuts.remove(name).onDone(e);
 
-                break;
-            }
-            catch (IgniteException | IgniteCheckedException e) {
-                for (String name : res.servicesToRollback())
-                    depFuts.remove(name).onDone(e);
+                    if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
+                        if (log.isDebugEnabled())
+                            log.debug("Topology changed while deploying services (will retry): " + e.getMessage());
+                    }
+                    else {
+                        res.onDone(new IgniteCheckedException(
+                            new ServiceDeploymentException("Failed to deploy provided services.", e, cfgs)));
 
-                if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                    if (log.isDebugEnabled())
-                        log.debug("Topology changed while deploying services (will retry): " + e.getMessage());
-                }
-                else {
-                    res.onDone(new IgniteCheckedException(
-                        new ServiceDeploymentException("Failed to deploy provided services.", e, cfgs)));
-
-                    return res;
+                        return res;
+                    }
                 }
             }
         }
@@ -588,77 +632,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (failedFuts != null) {
             for (GridServiceDeploymentFuture fut : failedFuts)
-                res.add(fut, false);
+                res.add(fut);
         }
 
         res.markInitialized();
 
         return res;
-    }
-
-    /**
-     * @param res Resulting compound future.
-     * @param cfg Service configuration.
-     * @throws IgniteCheckedException If operation failed.
-     */
-    private void sendToDeploy(GridServiceDeploymentCompoundFuture res, ServiceConfiguration cfg)
-        throws IgniteCheckedException {
-        String name = cfg.getName();
-
-        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
-
-        GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
-
-        try {
-            synchronized (mux) {
-                if (old != null) {
-                    if (!old.configuration().equalsIgnoreNodeFilter(cfg))
-                        throw new IgniteCheckedException("Failed to deploy service (service already exists with different " +
-                            "configuration) [deployed=" + old.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
-                    else {
-                        res.add(old, false);
-
-                        return;
-                    }
-                }
-
-                GridServiceAssignments oldAssign;
-
-                oldAssign = svcAssigns.get(name);
-
-                if (oldAssign != null) {
-                    if (!oldAssign.configuration().equalsIgnoreNodeFilter(cfg)) {
-                        throw new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                            "different configuration) [deployed=" + oldAssign.configuration() + ", new=" + cfg + ']' + " client mode: " + ctx.clientNode());
-                    }
-                    else
-                        res.add(fut, false);
-                }
-                else
-                    res.add(fut, true);
-            }
-            ServicesDeploymentRequestMessage req = new ServicesDeploymentRequestMessage(ctx.localNodeId(), Collections.singletonList(cfg));
-
-            fut.exchId = req.id();
-
-            ctx.discovery().sendCustomEvent(req);
-
-            if (log.isDebugEnabled()) {
-                log.debug("Service has been sent to deploy: [" + cfg
-                    + "], deployment initiator id: [" + ctx.localNodeId()
-                    + "], client mode: [" + ctx.clientNode() + ']');
-            }
-//            }
-        }
-        catch (IgniteCheckedException e) {
-            fut.onDone(e);
-
-            res.add(fut, false);
-
-            depFuts.remove(name, fut);
-
-            throw e;
-        }
     }
 
     /**
@@ -1519,16 +1498,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (!isLocalNodeCoordinator())
                             return;
 
-//                        try {
                         ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
 
                         exchangeMgr.onEvent(fut, topVer); // New exchange needed
-
-//                            onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-//                        }
-//                        catch (IgniteCheckedException e) {
-//                            e.printStackTrace();
-//                        }
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
                         depExe.execute(() -> {
@@ -1867,7 +1839,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     String svcName = e.getKey();
                     GridServiceUndeploymentFuture fut = e.getValue();
 
-                    if (!svcsNames.contains(svcName) && fut.exchId.equals(msg.exchId)) {
+                    if (!svcsNames.contains(svcName)) {
                         fut.onDone();
 
                         return true;
