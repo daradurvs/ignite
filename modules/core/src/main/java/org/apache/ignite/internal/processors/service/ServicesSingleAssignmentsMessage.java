@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.service;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
@@ -52,6 +53,12 @@ public class ServicesSingleAssignmentsMessage implements Message {
      * Empty constructor for marshalling purposes.
      */
     public ServicesSingleAssignmentsMessage() {
+    }
+
+    public ServicesSingleAssignmentsMessage(UUID snd, boolean client, IgniteUuid exchId) {
+        this.snd = snd;
+        this.client = client;
+        this.exchId = exchId;
     }
 
     /**
@@ -200,5 +207,10 @@ public class ServicesSingleAssignmentsMessage implements Message {
     /** {@inheritDoc} */
     @Override public void onAckReceived() {
         // No-op.
+    }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        return S.toString(ServicesSingleAssignmentsMessage.class, this);
     }
 }

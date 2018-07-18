@@ -29,7 +29,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Services deployment request discovery message.
  */
-public class ServicesAssignmentDiscoMessage implements DiscoveryCustomMessage {
+public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -48,7 +48,7 @@ public class ServicesAssignmentDiscoMessage implements DiscoveryCustomMessage {
      * @param nodeId Deployment initiator id.
      * @param assigns Services configuration.
      */
-    public ServicesAssignmentDiscoMessage(UUID nodeId, Collection<GridServiceAssignments> assigns) {
+    public ServicesAssignmentsRequestMessage(UUID nodeId, Collection<GridServiceAssignments> assigns) {
         this.nodeId = nodeId;
         this.assigns = assigns;
     }

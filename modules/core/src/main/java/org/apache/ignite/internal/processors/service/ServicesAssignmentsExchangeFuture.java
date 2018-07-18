@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
@@ -108,6 +109,15 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
                 }
             }
             else if (msg instanceof ServicesDeploymentRequestMessage) {
+                Executors.newSingleThreadExecutor().execute(() -> {
+                        try {
+                            ctx.service().onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                        }
+                        catch (IgniteCheckedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                );
 //                Executors.newSingleThreadExecutor().execute(() -> {
 //                    try {
 //                        ctx.service().onDeploymentRequest((ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
