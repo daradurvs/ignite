@@ -1802,7 +1802,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
 
                     depExe.execute(() -> {
-                        processFullAssignment(nodeId, (ServicesFullAssignmentsMessage)msg);
+                        processFullAssignment((ServicesFullAssignmentsMessage)msg);
                     });
                 }
             }
@@ -1812,67 +1812,85 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    synchronized void processFullAssignment(UUID snd, ServicesFullAssignmentsMessage msg) {
-        synchronized (mux) {
+    /**
+     * @param msg Services full assignments message.
+     */
+    private void processFullAssignment(ServicesFullAssignmentsMessage msg) {
+        try {
             Map<String, ServiceAssignmentsMap> fullAssignsMap = new HashMap<>(msg.assigns());
 
-            log.info("*****received-full-map" + fullAssignsMap);
+            synchronized (mux) {
+                fullAssignsMap.forEach((name, svcAssignsMap) -> {
+                    GridServiceAssignments svsAssign = svcAssigns.get(name);
 
-            for (Map.Entry<String, ServiceAssignmentsMap> entry : fullAssignsMap.entrySet()) {
-                String name = entry.getKey();
-                ServiceAssignmentsMap svcAssignsMap = entry.getValue();
+                    if (svsAssign != null) {
+                        svsAssign.assigns(svcAssignsMap.assigns());
 
-                GridServiceAssignments assign = svcAssigns.get(name);
+                        if (!ctx.clientNode()) {
+                            Integer expNum = svsAssign.assigns().get(ctx.localNodeId());
 
-//                 TODO
-                if (assign != null)
-                    assign.assigns(svcAssignsMap.assigns());
+                            if (expNum == null || expNum == 0)
+                                undeploy(name);
+                            else {
+                                Collection ctxs = locSvcs.get(name);
 
-                if (!ctx.clientNode()) {
-                    if (!svcAssignsMap.assigns().containsKey(ctx.localNodeId()))
-                        undeploy(name);
+                                if (ctxs != null && expNum < ctxs.size())
+                                    redeploy(svsAssign);
+                            }
+                        }
+                    }
+                    else if (log.isDebugEnabled()) {
+                        log.debug("Unexpected state: service assignments are contained in full map, " +
+                            "but is not contained in the local storage.");
+                    }
+
+                    GridServiceDeploymentFuture depFut = depFuts.remove(name);
+
+                    if (depFut != null) {
+                        // TODO: handle errors
+                        depFut.onDone();
+                    }
+                });
+
+                Set<String> svcsNames = fullAssignsMap.keySet();
+
+                Set<String> locSvcsNames = new HashSet<>(locSvcs.keySet());
+
+                for (String svcName : locSvcsNames) {
+                    if (!svcsNames.contains(svcName))
+                        undeploy(svcName);
                 }
 
-                GridServiceDeploymentFuture depFut = depFuts.remove(name);
+                svcAssigns.entrySet().removeIf(assign -> !svcsNames.contains(assign.getKey()));
 
-                if (depFut != null) {
-                    // TODO: handle errors
-                    depFut.onDone();
-                }
-            }
+                undepFuts.entrySet().removeIf(e -> {
+                    String svcName = e.getKey();
+                    GridServiceUndeploymentFuture fut = e.getValue();
 
-            Set<String> svcsList = fullAssignsMap.keySet();
+                    if (!svcsNames.contains(svcName) && fut.exchId.equals(msg.exchId)) {
+                        fut.onDone();
 
-            Set<String> locSvcsNames = new HashSet<>(locSvcs.keySet());
+                        return true;
+                    }
 
-            for (String svcName : locSvcsNames) {
-                if (!svcsList.contains(svcName))
-                    undeploy(svcName);
-            }
+                    return false;
+                });
 
-            svcAssigns.entrySet().removeIf(e -> !svcsList.contains(e.getKey()));
+                if (log.isDebugEnabled() && (!depFuts.isEmpty() || !undepFuts.isEmpty())) {
+                    log.debug("Deteced incomplete futures, after full map processing: " + fullAssignsMap);
 
-            undepFuts.entrySet().removeIf(e -> {
-                GridServiceUndeploymentFuture fut = e.getValue();
+                    if (!depFuts.isEmpty())
+                        log.debug("Deployment futures: " + depFuts);
 
-                if (!svcsList.contains(e.getKey()) && fut.exchId.equals(msg.exchId)) {
-                    e.getValue().onDone();
-
-                    return true;
+                    if (!undepFuts.isEmpty())
+                        log.debug("Undeployment futures: " + undepFuts);
                 }
 
-                return false;
-            });
-
-            if (!depFuts.isEmpty() || !undepFuts.isEmpty()) {
-                log.warning("*****map: " + fullAssignsMap);
-
-                log.warning("*****dep: " + depFuts);
-
-                log.warning("*****undep: " + undepFuts);
+                exchangeMgr.onReceiveFullMessage(msg);
             }
-
-            exchangeMgr.onReceiveFullMessage(msg);
+        }
+        catch (Exception e) {
+            log.error("Exception in #processFullAssignment", e);
         }
     }
 

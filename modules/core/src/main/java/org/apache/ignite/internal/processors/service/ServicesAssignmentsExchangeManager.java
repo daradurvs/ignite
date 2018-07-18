@@ -93,10 +93,13 @@ public class ServicesAssignmentsExchangeManager {
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
         ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
 
-        if (!fut.exchangeId().equals(msg.exchId))
-            throw new IllegalStateException();
+        // TODO
+        if (fut != null) {
+            if (!fut.exchangeId().equals(msg.exchId))
+                throw new IllegalStateException();
 
-        fut.onDone();
+            fut.onDone();
+        }
     }
 
     /** */
