@@ -570,7 +570,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         }
 
                         if (oldDifCfg != null) {
-                            res.add(old, false);
+                            res.add(fut, false);
 
                             fut.onDone(new IgniteCheckedException("Failed to deploy service (service already exists with " +
                                 "different configuration) [deployed=" + oldDifCfg + ", new=" + cfg + ']'));
@@ -641,26 +641,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param name Service name.
+     * @param name Service name to cancel.
      * @return Future.
      */
     public IgniteInternalFuture<?> cancel(String name) {
-        while (true) {
-            try {
-                return sendToCancel(name).fut;
-            }
-            catch (IgniteException | IgniteCheckedException e) {
-                if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                    if (log.isDebugEnabled())
-                        log.debug("Topology changed while cancelling service (will retry): " + e.getMessage());
-                }
-                else {
-                    U.error(log, "Failed to undeploy service: " + name, e);
-
-                    return new GridFinishedFuture<>(e);
-                }
-            }
-        }
+        return cancelAll(Collections.singleton(name));
     }
 
     /**
@@ -672,113 +657,92 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param svcNames Name of service to deploy.
+     * @param svcNames Names of services to cancel.
      * @return Future.
      */
     @SuppressWarnings("unchecked")
     public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
-        List<String> svcNamesCp = new ArrayList<>(svcNames);
-
-        Collections.sort(svcNamesCp);
-
         GridCompoundFuture res;
 
         while (true) {
-            res = null;
+            res = new GridCompoundFuture<>();
 
-            List<String> toRollback = new ArrayList<>();
+            synchronized (mux) {
+                List<String> toRollback = new ArrayList<>();
 
-            try {
-                for (String name : svcNamesCp) {
-                    if (res == null)
-                        res = new GridCompoundFuture<>();
+                List<String> svcsNamesToCancel = new ArrayList<>(svcNames.size());
 
-                    try {
-                        CancelResult cr = sendToCancel(name);
-
-                        if (cr.rollback)
-                            toRollback.add(name);
-
-                        res.add(cr.fut);
-                    }
-                    catch (IgniteException | IgniteCheckedException e) {
-                        if (X.hasCause(e, ClusterTopologyCheckedException.class))
-                            throw e; // Retry.
-                        else {
-                            U.error(log, "Failed to undeploy service: " + name, e);
-
+                try {
+                    for (String name : svcNames) {
+                        try {
+                            ctx.security().authorize(name, SecurityPermission.SERVICE_CANCEL, null);
+                        }
+                        catch (SecurityException e) {
                             res.add(new GridFinishedFuture<>(e));
+
+                            continue;
+                        }
+
+                        GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
+
+                        GridServiceUndeploymentFuture old = undepFuts.putIfAbsent(name, fut);
+
+                        if (old != null) { // Has been sent to undeploy earlier.
+                            res.add(old);
+
+                            continue;
+                        }
+
+                        res.add(fut);
+
+                        if (!svcAssigns.containsKey(name)) {
+                            fut.onDone();
+
+                            continue;
+                        }
+
+                        toRollback.add(name);
+
+                        svcsNamesToCancel.add(name);
+                    }
+
+                    if (!svcsNamesToCancel.isEmpty()) {
+                        ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(ctx.localNodeId(), svcsNamesToCancel);
+
+                        ctx.discovery().sendCustomEvent(msg);
+
+                        if (log.isDebugEnabled()) {
+                            log.debug("Services sent to cancel: " +
+                                "[locId:" + ctx.localNodeId() +
+                                ", client:=" + ctx.clientNode() +
+                                ", names=" + svcsNamesToCancel + ']');
                         }
                     }
+
+                    break;
                 }
+                catch (IgniteException | IgniteCheckedException e) {
+                    for (String name : toRollback)
+                        undepFuts.remove(name).onDone(e);
 
-                break;
-            }
-            catch (IgniteException | IgniteCheckedException e) {
-                for (String name : toRollback)
-                    undepFuts.remove(name).onDone(e);
+                    if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
+                        if (log.isDebugEnabled())
+                            log.debug("Topology changed while cancelling services (will retry): " + e.getMessage());
+                    }
+                    else {
+                        U.error(log, "Failed to undeploy services: " + svcNames, e);
 
-                if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                    if (log.isDebugEnabled())
-                        log.debug("Topology changed while cancelling service (will retry): " + e.getMessage());
+                        res.onDone(e);
+
+                        return res;
+                    }
                 }
-                else
-                    return new GridFinishedFuture<>(e);
             }
         }
 
-        if (res != null) {
-            res.markInitialized();
+        res.markInitialized();
 
-            return res;
-        }
-        else
-            return new GridFinishedFuture<>();
-    }
-
-    /**
-     * @param name Name of service to remove from internal cache.
-     * @return Cancellation future and a flag whether it should be completed and removed on error.
-     * @throws IgniteCheckedException If operation failed.
-     */
-    private CancelResult sendToCancel(String name) throws IgniteCheckedException {
-        try {
-            ctx.security().authorize(name, SecurityPermission.SERVICE_CANCEL, null);
-        }
-        catch (SecurityException e) {
-            return new CancelResult(new GridFinishedFuture<>(e), false);
-        }
-
-        synchronized (mux) {
-            GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
-
-            GridServiceUndeploymentFuture old = undepFuts.putIfAbsent(name, fut);
-
-            if (old != null) // Sent already
-                return new CancelResult(old, false);
-
-            try {
-                ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(ctx.localNodeId(), Collections.singleton(name));
-
-                ctx.discovery().sendCustomEvent(msg);
-
-                if (log.isDebugEnabled()) {
-                    log.debug("Service has been sent to cancel: [" + name
-                        + "], canceling initiator id: [" + ctx.localNodeId()
-                        + "], client mode: [" + ctx.clientNode() + ']');
-                }
-
-                // TODO: handle rollback
-                return new CancelResult(fut, false);
-            }
-            catch (IgniteCheckedException e) {
-                undepFuts.remove(name, fut);
-
-                fut.onDone(e);
-
-                throw e;
-            }
-        }
+        return res;
     }
 
     /**
