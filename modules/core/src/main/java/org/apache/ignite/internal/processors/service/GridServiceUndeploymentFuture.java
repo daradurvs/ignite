@@ -31,14 +31,6 @@ public class GridServiceUndeploymentFuture extends GridFutureAdapter<Object> {
     /** */
     private final String name;
 
-    /** Undeployment initiator id. */
-    UUID nodeId;
-
-    /** */
-    Set<UUID> assigns;
-
-    IgniteUuid exchId;
-
     /**
      * @param name Service name.
      */

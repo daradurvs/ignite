@@ -292,7 +292,7 @@ public class GridServiceProxy<T> implements Serializable {
         if (hasLocNode && ctx.service().service(name) != null)
             return ctx.discovery().localNode();
 
-        Map<UUID, Integer> snapshot = ctx.service().serviceTopology(name, waitTimeout);
+        Map<UUID, Integer> snapshot = ctx.service().serviceTopology(name);
 
         if (snapshot == null || snapshot.isEmpty())
             return null;

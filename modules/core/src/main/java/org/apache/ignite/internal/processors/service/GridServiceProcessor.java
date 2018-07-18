@@ -760,8 +760,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(ctx.localNodeId(), Collections.singleton(name));
 
-                fut.exchId = msg.id();
-
                 ctx.discovery().sendCustomEvent(msg);
 
                 if (log.isDebugEnabled()) {
@@ -785,19 +783,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /**
      * @param name Service name.
-     * @param timeout If greater than 0 limits task execution time. Cannot be negative.
      * @return Service topology.
-     * @throws IgniteCheckedException On error.
      */
-    public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
+    public Map<UUID, Integer> serviceTopology(String name) {
         synchronized (mux) {
             GridServiceAssignments assign = svcAssigns.get(name);
 
             if (assign == null) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Service assignment was not found : [" + name
-                        + "], requester id: [" + ctx.localNodeId()
-                        + "], client mode: [" + ctx.clientNode() + ']');
+                    log.debug("Service assignment was not found : [" + name +
+                        ", locId=" + ctx.localNodeId() +
+                        ", client=" + ctx.clientNode() + ']');
                 }
 
                 return null;
@@ -985,14 +981,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         while (true) {
             GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
 
-            List<ClusterNode> nodes;
+            Collection<ClusterNode> nodes;
 
             // Call node filter outside of transaction.
             if (affKey == null) {
-                nodes = new ArrayList<>(ctx.discovery().nodes(topVer));
+                nodes = ctx.discovery().nodes(topVer);
 
                 if (assigns.nodeFilter() != null) {
-                    List<ClusterNode> nodes0 = new ArrayList<>();
+                    Collection<ClusterNode> nodes0 = new ArrayList<>();
 
                     for (ClusterNode node : nodes) {
                         if (assigns.nodeFilter().apply(node))
