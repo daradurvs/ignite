@@ -20,10 +20,15 @@ package org.apache.ignite.internal.processors.service;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.ignite.internal.managers.discovery.DiscoCache;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
+import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
@@ -32,9 +37,12 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 /**
  *
  */
-public class ServicesFullAssignmentsMessage implements Message {
+public class ServicesFullAssignmentsMessage implements Message, DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
+
+    /** Unique custom message ID. */
+    private final IgniteUuid id = IgniteUuid.randomUuid();
 
     /** Cluster services assignments. */
     private Map<String, ServiceAssignmentsMap> assigns;
@@ -184,5 +192,33 @@ public class ServicesFullAssignmentsMessage implements Message {
     /** {@inheritDoc} */
     @Override public void onAckReceived() {
         // No-op.
+    }
+
+    /** {@inheritDoc} */
+    @Override public IgniteUuid id() {
+        return id;
+    }
+
+    /** {@inheritDoc} */
+    @Nullable @Override public DiscoveryCustomMessage ackMessage() {
+        // No-op.
+        return null;
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean isMutable() {
+        return false;
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean stopProcess() {
+        return false;
+    }
+
+    /** {@inheritDoc} */
+    @Override public DiscoCache createDiscoCache(GridDiscoveryManager mgr, AffinityTopologyVersion topVer,
+        DiscoCache discoCache) {
+        // No-op.
+        return null;
     }
 }

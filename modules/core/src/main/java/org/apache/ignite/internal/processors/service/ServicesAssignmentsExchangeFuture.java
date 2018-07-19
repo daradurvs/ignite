@@ -99,14 +99,21 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
 
                 fullMsg.assigns(assigns);
 
-                for (UUID node : nodes) {
-                    try {
-                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMsg, SERVICE_POOL);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Failed to send services full assignments to node: " + node, e);
-                    }
+                try {
+                    ctx.discovery().sendCustomEvent(fullMsg);
                 }
+                catch (IgniteCheckedException e) {
+                    e.printStackTrace();
+                }
+
+//                for (UUID node : nodes) {
+//                    try {
+//                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMsg, SERVICE_POOL);
+//                    }
+//                    catch (IgniteCheckedException e) {
+//                        log.error("Failed to send services full assignments to node: " + node, e);
+//                    }
+//                }
             }
             else if (msg instanceof ServicesDeploymentRequestMessage) {
                 Executors.newSingleThreadExecutor().execute(() -> {
@@ -157,14 +164,21 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
                     if (fullMapMsg.assigns().isEmpty())
                         log.info("****");
 
-                for (UUID node : nodes) {
-                    try {
-                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMapMsg, SERVICE_POOL);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Failed to send services full assignments to node: " + node, e);
-                    }
+                try {
+                    ctx.discovery().sendCustomEvent(fullMapMsg);
                 }
+                catch (IgniteCheckedException e) {
+                    e.printStackTrace();
+                }
+
+//                for (UUID node : nodes) {
+//                    try {
+//                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMapMsg, SERVICE_POOL);
+//                    }
+//                    catch (IgniteCheckedException e) {
+//                        log.error("Failed to send services full assignments to node: " + node, e);
+//                    }
+//                }
             }
         }
         else

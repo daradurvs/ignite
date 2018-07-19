@@ -1473,14 +1473,24 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         if (log.isDebugEnabled())
                             log.debug("[TopLsnr: " +
-                                " receiver: " + ctx.discovery().localNode() +
-                                " sender: " + evt.eventNode());
+                                " receiver: " + ctx.localNodeId() +
+                                " sender: " + evt.eventNode().id());
 
                         ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
 
                         fut.svcAssigns = svcAssigns;
 
                         exchangeMgr.onEvent(fut, topVer); // New exchange needed
+                    }
+                    else if (msg instanceof ServicesFullAssignmentsMessage) {
+                        if (log.isDebugEnabled())
+                            log.debug("[TopLsnr: " +
+                                " sender: " + evt.eventNode().id() +
+                                " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
+
+                        depExe.execute(() -> {
+                            processFullAssignment((ServicesFullAssignmentsMessage)msg);
+                        });
                     }
                 }
 
@@ -1727,16 +1737,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     exchangeMgr.onReceiveSingleMessage(nodeId, (ServicesSingleAssignmentsMessage)msg);
                 }
-                else if (msg instanceof ServicesFullAssignmentsMessage) {
-                    if (log.isDebugEnabled())
-                        log.debug("[comm-lsnr-full-msg: " +
-                            " sender: " + nodeId +
-                            " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
-
-                    depExe.execute(() -> {
-                        processFullAssignment((ServicesFullAssignmentsMessage)msg);
-                    });
-                }
+//                else if (msg instanceof ServicesFullAssignmentsMessage) {
+//                    if (log.isDebugEnabled())
+//                        log.debug("[comm-lsnr-full-msg: " +
+//                            " sender: " + nodeId +
+//                            " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
+//
+//                    depExe.execute(() -> {
+//                        processFullAssignment((ServicesFullAssignmentsMessage)msg);
+//                    });
+//                }
             }
             finally {
                 busyLock.leaveBusy();
