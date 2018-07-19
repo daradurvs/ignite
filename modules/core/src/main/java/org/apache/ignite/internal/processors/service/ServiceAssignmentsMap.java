@@ -32,6 +32,9 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
  * Single service assignments.
  */
 public class ServiceAssignmentsMap implements Message {
+    /** Service name. */
+    private String name;
+
     /** Service assignments. */
     private Map<UUID, Integer> assigns;
 
@@ -42,9 +45,11 @@ public class ServiceAssignmentsMap implements Message {
     }
 
     /**
+     * @param name Service name.
      * @param assigns Service assignments.
      */
-    public ServiceAssignmentsMap(Map<UUID, Integer> assigns) {
+    public ServiceAssignmentsMap(String name, Map<UUID, Integer> assigns) {
+        this.name = name;
         this.assigns = assigns;
     }
 
@@ -75,6 +80,12 @@ public class ServiceAssignmentsMap implements Message {
 
         switch (writer.state()) {
             case 0:
+                if (!writer.writeString("name", name))
+                    return false;
+
+                writer.incrementState();
+
+            case 1:
                 if (!writer.writeMap("assigns", assigns, UUID, INT))
                     return false;
 
@@ -93,6 +104,14 @@ public class ServiceAssignmentsMap implements Message {
 
         switch (reader.state()) {
             case 0:
+                name = reader.readString("name");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
+
+            case 1:
                 assigns = reader.readMap("assigns", UUID, INT, false);
 
                 if (!reader.isLastRead())

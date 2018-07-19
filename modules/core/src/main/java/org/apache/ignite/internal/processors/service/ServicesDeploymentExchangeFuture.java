@@ -155,7 +155,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
         svcsAssigns.forEach((name, svcMap) -> {
             if (!names.contains(name))
-                assigns.put(name, new ServiceAssignmentsMap(svcMap.assigns()));
+                assigns.put(name, new ServiceAssignmentsMap(name, svcMap.assigns()));
         });
 
         ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
@@ -203,8 +203,9 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 });
             });
 
-            for (Map.Entry<String, Map<UUID, Integer>> entry : fullAssigns.entrySet())
-                assigns.put(entry.getKey(), new ServiceAssignmentsMap(entry.getValue()));
+            fullAssigns.forEach((name, svcAssigns) -> {
+                assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns));
+            });
 
             // TODO: handle errors
 
