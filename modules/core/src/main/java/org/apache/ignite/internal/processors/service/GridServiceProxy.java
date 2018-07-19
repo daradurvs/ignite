@@ -67,6 +67,9 @@ public class GridServiceProxy<T> implements Serializable {
     /** */
     private static final IgniteProductVersion SVC_POOL_SINCE_VER = IgniteProductVersion.fromString("1.8.5");
 
+    /** Service acquire attempts number. */
+    private static final int ATTEMPTS = 10;
+
     /** Grid logger. */
     @GridToStringExclude
     private final IgniteLogger log;
@@ -110,8 +113,7 @@ public class GridServiceProxy<T> implements Serializable {
         Class<? super T> svc,
         boolean sticky,
         long timeout,
-        GridKernalContext ctx)
-    {
+        GridKernalContext ctx) {
         assert timeout >= 0 : timeout;
 
         this.prj = prj;
@@ -164,6 +166,8 @@ public class GridServiceProxy<T> implements Serializable {
         try {
             final long startTime = U.currentTimeMillis();
 
+            int attempt = 0;
+
             while (true) {
                 ClusterNode node = null;
 
@@ -171,7 +175,7 @@ public class GridServiceProxy<T> implements Serializable {
                     node = nodeForService(name, sticky);
 
                     if (node == null)
-                        throw new IgniteException("Failed to find deployed service: " + name + " client mode: " + ctx.clientNode() );
+                        throw new IgniteException("Failed to find deployed service: " + name);
 
                     // If service is deployed locally, then execute locally.
                     if (node.isLocal()) {
@@ -183,6 +187,8 @@ public class GridServiceProxy<T> implements Serializable {
                             if (svc != null)
                                 return mtd.invoke(svc, args);
                         }
+                        else if (log.isDebugEnabled())
+                            log.debug("Service was not found on local node (will retry).");
                     }
                     else {
                         if (node.version().compareTo(SVC_POOL_SINCE_VER) >= 0)
@@ -239,7 +245,7 @@ public class GridServiceProxy<T> implements Serializable {
 
                 // Add sleep between retries to avoid busy-wait loops.
                 try {
-                    Thread.sleep(10);
+                    Thread.sleep(100);
                 }
                 catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -249,6 +255,9 @@ public class GridServiceProxy<T> implements Serializable {
 
                 if (waitTimeout > 0 && U.currentTimeMillis() - startTime >= waitTimeout)
                     throw new IgniteException("Service acquire timeout was reached, stopping. [timeout=" + waitTimeout + "]");
+
+                if (++attempt <= ATTEMPTS)
+                    throw new IgniteException("Service acquire attempts number was reached, stopping. [attempts=" + ATTEMPTS + "]");
             }
         }
         finally {
