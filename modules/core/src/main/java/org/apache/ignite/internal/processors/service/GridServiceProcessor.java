@@ -89,6 +89,7 @@ import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
+import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 
 /**
@@ -96,19 +97,14 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
  */
 @SuppressWarnings({"SynchronizationOnLocalVariableOrMethodParameter", "ConstantConditions"})
 public class GridServiceProcessor extends GridProcessorAdapter implements IgniteChangeGlobalStateSupport {
-    /** */
+    /** Services compatibility system property. */
     private final Boolean srvcCompatibilitySysProp;
 
     /** Time to wait before reassignment retries. */
     private static final long RETRY_TIMEOUT = 1000;
 
-    /** */
-    private static final int[] EVTS = {
-        EVT_NODE_JOINED,
-        EVT_NODE_LEFT,
-        EVT_NODE_FAILED,
-        DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT
-    };
+    /** Discovery events to listen. */
+    private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
 
     /** Local service instances. */
     private final Map<String, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
@@ -132,7 +128,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service", oomeHnd);
 
     /** Thread local for service name. */
-    private ThreadLocal<String> svcName = new ThreadLocal<>();
+    private ThreadLocal<String> srvcName = new ThreadLocal<>();
 
     /** Topology listener. */
     private DiscoveryEventListener discoLsnr = new DiscoveryListener();
@@ -141,13 +137,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final CommunicationListener commLsnr = new CommunicationListener();
 
     /** Contains all services assignments, not only locally deployed. */
-    private final Map<String, GridServiceAssignments> svcsAssigns = new ConcurrentHashMap<>();
+    private final Map<String, GridServiceAssignments> srvcsAssigns = new ConcurrentHashMap<>();
 
     /** Services deployment manager. */
     private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManager(ctx);
 
     /** Services assignments function. */
-    private final ServicesAssignmentsFunction assignsFunc = new ServicesAssignmentsFunctionImpl(ctx, svcsAssigns);
+    private final ServicesAssignmentsFunction assignsFunc = new ServicesAssignmentsFunctionImpl(ctx, srvcsAssigns);
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -285,7 +281,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         cancelFutures(depFuts, err);
         cancelFutures(undepFuts, err);
 
-        svcsAssigns.clear();
+        srvcsAssigns.clear();
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
@@ -573,7 +569,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         }
 
                         if (oldDifCfg == null) {
-                            GridServiceAssignments assign = svcsAssigns.get(name);
+                            GridServiceAssignments assign = srvcsAssigns.get(name);
 
                             if (assign != null && !assign.configuration().equalsIgnoreNodeFilter(cfg))
                                 oldDifCfg = assign.configuration();
@@ -663,7 +659,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     @SuppressWarnings("unchecked")
     public IgniteInternalFuture<?> cancelAll() {
-        return cancelAll(svcsAssigns.keySet());
+        return cancelAll(srvcsAssigns.keySet());
     }
 
     /**
@@ -705,7 +701,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         res.add(fut);
 
-                        if (!svcsAssigns.containsKey(name)) {
+                        if (!srvcsAssigns.containsKey(name)) {
                             fut.onDone();
 
                             continue;
@@ -761,7 +757,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Map<UUID, Integer> serviceTopology(String name) {
         synchronized (mux) {
-            GridServiceAssignments assign = svcsAssigns.get(name);
+            GridServiceAssignments assign = srvcsAssigns.get(name);
 
             if (assign == null) {
                 if (log.isDebugEnabled()) {
@@ -782,7 +778,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Collection<ServiceDescriptor> serviceDescriptors() {
         synchronized (mux) {
-            Collection<GridServiceAssignments> assigns = svcsAssigns.values();
+            Collection<GridServiceAssignments> assigns = srvcsAssigns.values();
 
             Collection<ServiceDescriptor> descs = new ArrayList<>();
 
@@ -978,7 +974,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 //            try {
 //                String name = cfg.getName();
 //
-//                GridServiceAssignments oldAssigns = svcsAssigns.get(name);
+//                GridServiceAssignments oldAssigns = srvcsAssigns.get(name);
 //
 //                Map<UUID, Integer> cnts = new HashMap<>();
 //
@@ -1366,7 +1362,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     for (GridServiceAssignments assign : assigns) {
                         String svcName = assign.name();
 
-                        svcsAssigns.putIfAbsent(svcName, assign);
+                        srvcsAssigns.putIfAbsent(svcName, assign);
 
                         Integer expNum = assign.assigns().get(ctx.localNodeId());
 
@@ -1394,7 +1390,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     });
                 }
                 else {
-                    assigns.forEach(assign -> svcsAssigns.putIfAbsent(assign.name(), assign));
+                    assigns.forEach(assign -> srvcsAssigns.putIfAbsent(assign.name(), assign));
 
                     locAssings = Collections.emptyMap();
                 }
@@ -1446,7 +1442,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (!isLocalNodeCoordinator())
                             return;
 
-                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(svcsAssigns, assignsFunc, ctx, evt);
+                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(srvcsAssigns, assignsFunc, ctx, evt);
 
                         exchangeMgr.onEvent(fut); // New exchange needed
                     }
@@ -1518,7 +1514,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param name Service name to undeploy.
      */
     private void undeploy(String name) {
-        svcName.set(name);
+        srvcName.set(name);
 
         Collection<ServiceContextImpl> ctxs;
 
@@ -1547,19 +1543,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             // Won't block ServiceProcessor stopping process.
             busyLock.leaveBusy();
 
-            svcName.set(null);
+            srvcName.set(null);
 
             try {
                 run0();
             }
             catch (Throwable t) {
-                log.error("Error when executing service: " + svcName.get(), t);
+                log.error("Error when executing service: " + srvcName.get(), t);
 
                 if (t instanceof Error)
                     throw t;
             }
             finally {
-                svcName.set(null);
+                srvcName.set(null);
             }
         }
 
@@ -1578,7 +1574,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             synchronized (mux) {
                 fullAssignsMap.forEach((name, svcAssignsMap) -> {
-                    GridServiceAssignments svsAssign = svcsAssigns.get(name);
+                    GridServiceAssignments svsAssign = srvcsAssigns.get(name);
 
                     if (svsAssign != null) {
                         svsAssign.assigns(svcAssignsMap.assigns());
@@ -1618,7 +1614,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         undeploy(svcName);
                 }
 
-                svcsAssigns.entrySet().removeIf(assign -> !svcsNames.contains(assign.getKey()));
+                srvcsAssigns.entrySet().removeIf(assign -> !svcsNames.contains(assign.getKey()));
 
                 undepFuts.entrySet().removeIf(e -> {
                     String svcName = e.getKey();
