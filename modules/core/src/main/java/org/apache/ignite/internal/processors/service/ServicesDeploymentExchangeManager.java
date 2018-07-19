@@ -26,53 +26,74 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
-import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
-import org.jetbrains.annotations.Nullable;
 
+/**
+ * Services deployment exchange manager.
+ */
 public class ServicesDeploymentExchangeManager {
     /** */
     private final GridKernalContext ctx;
 
     /** */
-    private final ServicesMapExchangeWorker exchWorker;
+    private final IgniteLogger log;
+
+    /** */
+    private final ServicesDeploymentExchangeWorker exchWorker;
 
     /** */
     private final List<ServicesSingleAssignmentsMessage> pending = new ArrayList<>();
+
+    /** Mutex. */
+    private final Object mux = new Object();
+
+    /** */
+    private volatile boolean isStopped = false;
 
     /**
      * @param ctx Grid kernal context.
      */
     public ServicesDeploymentExchangeManager(GridKernalContext ctx) {
         this.ctx = ctx;
-        this.exchWorker = new ServicesMapExchangeWorker(
-            ctx.igniteInstanceName(),
-            "services-map-exchange",
-            ctx.log(getClass())
-        );
+        this.log = ctx.log(getClass());
 
-        new IgniteThread(exchWorker).start();
+        this.exchWorker = new ServicesDeploymentExchangeWorker();
     }
 
     /**
-     * @param topVer Topology version.
+     * Kernal start handler.
+     */
+    public void onKernalStart() {
+        new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
+    }
+
+    /**
+     * Kernal stop handler.
+     */
+    public void onKernalStop() {
+        exchWorker.onKernalStop();
+
+        pending.clear();
+    }
+
+    /**
      * @return Added exchange future.
      */
-    public synchronized ServicesDeploymentExchangeFuture onEvent(ServicesDeploymentExchangeFuture fut,
-        AffinityTopologyVersion topVer) {
+    public ServicesDeploymentExchangeFuture onEvent(ServicesDeploymentExchangeFuture fut) {
+        synchronized (mux) {
+            exchWorker.q.offer(fut);
 
-        exchWorker.q.offer(fut);
-
-        return fut;
+            return fut;
+        }
     }
 
     /**
-     * @param snd
-     * @param msg
+     * @param snd Sender.
+     * @param msg Services single node assignments message.
      */
     public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
-        synchronized (pending) {
+        synchronized (mux) {
             ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
             if (fut == null) {
@@ -88,8 +109,9 @@ public class ServicesDeploymentExchangeManager {
         }
     }
 
-    List<ServicesFullAssignmentsMessage> pendingFull = new ArrayList<>();
-
+    /**
+     * @param msg Services full assignments message.
+     */
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
         ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
@@ -102,17 +124,20 @@ public class ServicesDeploymentExchangeManager {
         }
     }
 
-    /** */
-    private class ServicesMapExchangeWorker extends GridWorker {
+    /**
+     * Services deployment exchange worker.
+     */
+    private class ServicesDeploymentExchangeWorker extends GridWorker {
         /** */
         private final LinkedBlockingQueue<ServicesDeploymentExchangeFuture> q = new LinkedBlockingQueue<>();
 
+        /** Exchange future in work. */
         volatile ServicesDeploymentExchangeFuture fut = null;
 
         /** {@inheritDoc} */
-        protected ServicesMapExchangeWorker(@Nullable String igniteInstanceName, String name,
-            IgniteLogger log) {
-            super(igniteInstanceName, name, log);
+        protected ServicesDeploymentExchangeWorker() {
+            super(ctx.igniteInstanceName(), "services-deployment-exchanger",
+                ServicesDeploymentExchangeManager.this.log, ctx.workersRegistry());
         }
 
         /** {@inheritDoc} */
@@ -127,7 +152,7 @@ public class ServicesDeploymentExchangeManager {
 
                 while (true) {
                     try {
-                        synchronized (pending) {
+                        synchronized (mux) {
                             Iterator<ServicesSingleAssignmentsMessage> it = pending.iterator();
 
                             while (it.hasNext()) {
@@ -141,14 +166,28 @@ public class ServicesDeploymentExchangeManager {
                             }
                         }
 
-                        fut.get(5_000);
+                        fut.get(ctx.config().getNetworkTimeout() * 3);
 
                         break;
                     }
                     catch (IgniteCheckedException e) {
                         log.error("Exception while waiting for exchange future complete.", e);
+
+                        if (isStopped)
+                            return;
                     }
                 }
+            }
+        }
+
+        /**
+         * Kernal stop handler.
+         */
+        private void onKernalStop() {
+            synchronized (this) {
+                isStopped = true;
+
+                notifyAll();
             }
         }
     }

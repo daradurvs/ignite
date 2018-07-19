@@ -186,6 +186,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon() || !active)
             return;
 
+        exchangeMgr.onKernalStart();
+
         onKernalStart0();
     }
 
@@ -223,6 +225,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
 
         U.shutdownNow(GridServiceProcessor.class, depExe, log);
+
+        exchangeMgr.onKernalStop();
 
         if (!ctx.clientNode())
             ctx.event().removeDiscoveryEventListener(discoLsnr);
@@ -1444,7 +1448,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         fut.svcAssigns = svcAssigns;
 
-                        exchangeMgr.onEvent(fut, topVer); // New exchange needed
+                        exchangeMgr.onEvent(fut); // New exchange needed
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
                         depExe.execute(() -> {
