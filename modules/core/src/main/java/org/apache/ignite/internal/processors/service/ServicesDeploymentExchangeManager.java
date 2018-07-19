@@ -125,7 +125,7 @@ public class ServicesDeploymentExchangeManager {
 
         // TODO
         if (fut != null) {
-            if (!fut.exchangeId().equals(msg.exchId))
+            if (!fut.exchangeId().equals(msg.exchangeId()))
                 throw new IllegalStateException();
 
             fut.onDone();

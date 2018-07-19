@@ -17,54 +17,61 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.plugin.extensions.communication.Message;
-import org.apache.ignite.plugin.extensions.communication.MessageReader;
-import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 import org.jetbrains.annotations.Nullable;
 
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
-
 /**
- *
+ * Services full assignments message.
  */
-public class ServicesFullAssignmentsMessage implements Message, DiscoveryCustomMessage {
+public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
+    /** Sender node id. */
+    private final UUID snd;
+
+    /** Exchange id. */
+    private final IgniteUuid exchId;
+
     /** Cluster services assignments. */
-    private Map<String, ServiceAssignmentsMap> assigns;
+    private final Map<String, ServiceAssignmentsMap> assigns;
 
     /** Deployment errors. */
     private Map<String, byte[]> errors;
 
-    IgniteUuid exchId;
-
-    UUID snd;
-
     /**
-     * Empty constructor for marshalling purposes.
+     * @param snd Sender id.
+     * @param exchId Exchange id.
+     * @param assigns Services assignments.
      */
-    public ServicesFullAssignmentsMessage() {
+    public ServicesFullAssignmentsMessage(UUID snd, IgniteUuid exchId, Map<String, ServiceAssignmentsMap> assigns) {
+        this.snd = snd;
+        this.exchId = exchId;
+        this.assigns = assigns;
     }
 
     /**
-     * @param assigns Local services assignments.
+     * @return Sender id.
      */
-    public ServicesFullAssignmentsMessage(Map<String, ServiceAssignmentsMap> assigns) {
-        this.assigns = assigns;
+    public UUID senderId() {
+        return snd;
+    }
+
+    /**
+     * @return Exchange id.
+     */
+    public IgniteUuid exchangeId() {
+        return exchId;
     }
 
     /**
@@ -75,13 +82,6 @@ public class ServicesFullAssignmentsMessage implements Message, DiscoveryCustomM
     }
 
     /**
-     * @param assigns New local services assignments.
-     */
-    public void assigns(Map<String, ServiceAssignmentsMap> assigns) {
-        this.assigns = assigns;
-    }
-
-    /**
      * @return Deployment errors.
      */
     public Map<String, byte[]> errors() {
@@ -89,109 +89,10 @@ public class ServicesFullAssignmentsMessage implements Message, DiscoveryCustomM
     }
 
     /**
-     * @param errors New deployment errors.
+     * @param errors Deployment errors.
      */
     public void errors(Map<String, byte[]> errors) {
         this.errors = errors;
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean writeTo(ByteBuffer buf, MessageWriter writer) {
-        writer.setBuffer(buf);
-
-        if (!writer.isHeaderWritten()) {
-            if (!writer.writeHeader(directType(), fieldsCount()))
-                return false;
-
-            writer.onHeaderWritten();
-        }
-
-        switch (writer.state()) {
-            case 0:
-                if (!writer.writeMap("assigns", assigns, STRING, MSG))
-                    return false;
-
-                writer.incrementState();
-
-            case 1:
-                if (!writer.writeMap("errors", errors, STRING, BYTE_ARR))
-                    return false;
-
-                writer.incrementState();
-
-            case 2:
-                if (!writer.writeIgniteUuid("exchId", exchId))
-                    return false;
-
-                writer.incrementState();
-
-            case 3:
-                if (!writer.writeUuid("snd", snd))
-                    return false;
-
-                writer.incrementState();
-        }
-
-        return true;
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean readFrom(ByteBuffer buf, MessageReader reader) {
-        reader.setBuffer(buf);
-
-        if (!reader.beforeMessageRead())
-            return false;
-
-        switch (reader.state()) {
-            case 0:
-                assigns = reader.readMap("assigns", STRING, MSG, false);
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 1:
-                errors = reader.readMap("errors", STRING, BYTE_ARR, false);
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 2:
-                exchId = reader.readIgniteUuid("exchId");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 3:
-                snd = reader.readUuid("snd");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-        }
-
-        return reader.afterMessageRead(ServicesFullAssignmentsMessage.class);
-    }
-
-    /** {@inheritDoc} */
-    @Override public short directType() {
-        return 138;
-    }
-
-    /** {@inheritDoc} */
-    @Override public byte fieldsCount() {
-        return 4;
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onAckReceived() {
-        // No-op.
     }
 
     /** {@inheritDoc} */
@@ -220,5 +121,10 @@ public class ServicesFullAssignmentsMessage implements Message, DiscoveryCustomM
         DiscoCache discoCache) {
         // No-op.
         return null;
+    }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        return S.toString(ServicesFullAssignmentsMessage.class, this);
     }
 }

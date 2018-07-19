@@ -138,23 +138,18 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             assigns.add(svcAssigns);
         }
 
-        ServicesAssignmentsRequestMessage assignsMsg = new ServicesAssignmentsRequestMessage(snd, assigns);
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, assigns);
 
-        assignsMsg.exchId = exchId;
+        msg.exchId = exchId;
 
-        ctx.discovery().sendCustomEvent(assignsMsg);
+        ctx.discovery().sendCustomEvent(msg);
     }
 
     /**
-     * @param msg Services cancellation request.
+     * @param req Services cancellation request.
      */
-    private void onCancellationRequest(ServicesCancellationRequestMessage msg) {
-        Collection<String> names = msg.names();
-
-        ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
-
-        fullMsg.exchId = exchId;
-        fullMsg.snd = ctx.localNodeId();
+    private void onCancellationRequest(ServicesCancellationRequestMessage req) {
+        Collection<String> names = req.names();
 
         Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
@@ -163,10 +158,10 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 assigns.put(name, new ServiceAssignmentsMap(svcMap.assigns()));
         });
 
-        fullMsg.assigns(assigns);
+        ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
 
         try {
-            ctx.discovery().sendCustomEvent(fullMsg);
+            ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
             e.printStackTrace();
@@ -194,32 +189,26 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      */
     private ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
         synchronized (mux) {
-            // TODO: handle errors
-            ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
-
-            fullMsg.exchId = exchId;
-            fullMsg.snd = ctx.localNodeId();
-
             Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
-            Map<String, Map<UUID, Integer>> fullAssignments = new ConcurrentHashMap<>();
+            Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
             singleAssignsMessages.forEach((uuid, singleMsg) -> {
                 singleMsg.assigns().forEach((name, num) -> {
                     if (num != 0) {
-                        Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, m -> new HashMap<>());
+                        Map<UUID, Integer> cur = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
 
                         cur.put(uuid, num);
                     }
                 });
             });
 
-            for (Map.Entry<String, Map<UUID, Integer>> entry : fullAssignments.entrySet())
+            for (Map.Entry<String, Map<UUID, Integer>> entry : fullAssigns.entrySet())
                 assigns.put(entry.getKey(), new ServiceAssignmentsMap(entry.getValue()));
 
-            fullMsg.assigns(assigns);
+            // TODO: handle errors
 
-            return fullMsg;
+            return new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
         }
     }
 

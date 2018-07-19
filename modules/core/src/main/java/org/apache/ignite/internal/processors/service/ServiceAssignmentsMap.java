@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.service;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
@@ -28,7 +29,7 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.UUID;
 
 /**
- *
+ * Single service assignments.
  */
 public class ServiceAssignmentsMap implements Message {
     /** Service assignments. */
@@ -120,8 +121,6 @@ public class ServiceAssignmentsMap implements Message {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return "ServiceAssignmentsMap{" +
-            "assigns=" + assigns +
-            '}';
+        return S.toString(ServiceAssignmentsMap.class, this);
     }
 }
