@@ -181,7 +181,7 @@ public class ServicesFullAssignmentsMessage implements Message, DiscoveryCustomM
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 140;
+        return 138;
     }
 
     /** {@inheritDoc} */

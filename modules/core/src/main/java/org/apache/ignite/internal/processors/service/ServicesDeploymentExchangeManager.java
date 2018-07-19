@@ -89,10 +89,9 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * @param snd Sender.
      * @param msg Services single node assignments message.
      */
-    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
+    public void onReceiveSingleMessage(final ServicesSingleAssignmentsMessage msg) {
         synchronized (mux) {
             ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
@@ -102,8 +101,8 @@ public class ServicesDeploymentExchangeManager {
                 return;
             }
 
-            if (fut.exchangeId().equals(msg.exchId))
-                fut.onReceiveSingleMessage(snd, msg, msg.client);
+            if (fut.exchangeId().equals(msg.exchangeId()))
+                fut.onReceiveSingleMessage(msg);
             else
                 pending.add(msg);
         }
@@ -173,8 +172,8 @@ public class ServicesDeploymentExchangeManager {
                             while (it.hasNext()) {
                                 ServicesSingleAssignmentsMessage msg = it.next();
 
-                                if (fut.exchangeId().equals(msg.exchId)) {
-                                    fut.onReceiveSingleMessage(msg.snd, msg, msg.client);
+                                if (fut.exchangeId().equals(msg.exchangeId())) {
+                                    fut.onReceiveSingleMessage(msg);
 
                                     it.remove();
                                 }

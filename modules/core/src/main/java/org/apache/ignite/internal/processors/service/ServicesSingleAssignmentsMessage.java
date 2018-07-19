@@ -31,7 +31,7 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
 
 /**
- * TODO: description
+ * Services single node assignments message.
  */
 public class ServicesSingleAssignmentsMessage implements Message {
     /** */
@@ -43,11 +43,14 @@ public class ServicesSingleAssignmentsMessage implements Message {
     /** Deployment errors. */
     private Map<String, byte[]> errors;
 
-    IgniteUuid exchId;
+    /** Sender id. */
+    private UUID snd;
 
-    UUID snd;
+    /** Sender client mode flag. */
+    private boolean client;
 
-    boolean client;
+    /** Exchange id. */
+    private IgniteUuid exchId;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -55,6 +58,11 @@ public class ServicesSingleAssignmentsMessage implements Message {
     public ServicesSingleAssignmentsMessage() {
     }
 
+    /**
+     * @param snd Sender id.
+     * @param client Sender client mode flag.
+     * @param exchId Exchange id.
+     */
     public ServicesSingleAssignmentsMessage(UUID snd, boolean client, IgniteUuid exchId) {
         this.snd = snd;
         this.client = client;
@@ -62,21 +70,21 @@ public class ServicesSingleAssignmentsMessage implements Message {
     }
 
     /**
-     * @param assigns Local services assignments.
+     * @return Sender id.
      */
-    public ServicesSingleAssignmentsMessage(Map<String, Integer> assigns) {
-        this.assigns = assigns;
+    public UUID senderId() {
+        return snd;
     }
 
     /**
-     * @return Local services assignments.
+     * @return Single node services assignments.
      */
     public Map<String, Integer> assigns() {
         return assigns;
     }
 
     /**
-     * @param assigns New local services assignments.
+     * @param assigns Single node services assignments.
      */
     public void assigns(Map<String, Integer> assigns) {
         this.assigns = assigns;
@@ -90,10 +98,24 @@ public class ServicesSingleAssignmentsMessage implements Message {
     }
 
     /**
-     * @param errors New deployment errors.
+     * @param errors Deployment errors.
      */
     public void errors(Map<String, byte[]> errors) {
         this.errors = errors;
+    }
+
+    /**
+     * @return Sender client mode flag.
+     */
+    public boolean client() {
+        return client;
+    }
+
+    /**
+     * @return Exchange id.
+     */
+    public IgniteUuid exchangeId() {
+        return exchId;
     }
 
     /** {@inheritDoc} */
@@ -121,19 +143,19 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 writer.incrementState();
 
             case 2:
-                if (!writer.writeIgniteUuid("exchId", exchId))
-                    return false;
-
-                writer.incrementState();
-
-            case 3:
                 if (!writer.writeUuid("snd", snd))
                     return false;
 
                 writer.incrementState();
 
-            case 4:
+            case 3:
                 if (!writer.writeBoolean("client", client))
+                    return false;
+
+                writer.incrementState();
+
+            case 4:
+                if (!writer.writeIgniteUuid("exchId", exchId))
                     return false;
 
                 writer.incrementState();
@@ -167,14 +189,6 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
 
             case 2:
-                exchId = reader.readIgniteUuid("exchId");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 3:
                 snd = reader.readUuid("snd");
 
                 if (!reader.isLastRead())
@@ -182,8 +196,16 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
                 reader.incrementState();
 
-            case 4:
+            case 3:
                 client = reader.readBoolean("client");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
+
+            case 4:
+                exchId = reader.readIgniteUuid("exchId");
 
                 if (!reader.isLastRead())
                     return false;
@@ -196,7 +218,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 139;
+        return 137;
     }
 
     /** {@inheritDoc} */

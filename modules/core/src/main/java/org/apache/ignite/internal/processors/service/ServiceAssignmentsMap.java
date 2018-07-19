@@ -105,7 +105,7 @@ public class ServiceAssignmentsMap implements Message {
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 141;
+        return 136;
     }
 
     /** {@inheritDoc} */

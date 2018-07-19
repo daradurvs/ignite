@@ -224,16 +224,15 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     }
 
     /**
-     * @param snd Sender.
      * @param msg Single node services assignments.
      */
-    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg, boolean client) {
+    public void onReceiveSingleMessage(final ServicesSingleAssignmentsMessage msg) {
         synchronized (mux) {
-            assert exchId.equals(msg.exchId) : "Wrong message exchId!";
+            assert exchId.equals(msg.exchangeId()) : "Wrong message exchId!";
 
-            if (remaining.remove(snd)) {
-                if (!client)
-                    singleAssignsMessages.put(snd, msg);
+            if (remaining.remove(msg.senderId())) {
+                if (!msg.client())
+                    singleAssignsMessages.put(msg.senderId(), msg);
 
                 checkRemaining();
             }

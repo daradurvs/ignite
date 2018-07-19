@@ -1469,7 +1469,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return;
                 }
 
-                if (ctx.clientNode() || !isLocalNodeCoordinator())
+                if (!isLocalNodeCoordinator())
                     return;
 
                 if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
@@ -1497,12 +1497,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             try {
                 if (msg instanceof ServicesSingleAssignmentsMessage) {
-                    if (log.isDebugEnabled())
-                        log.debug("[comm-lsnr-single-msg: " +
-                            " sender: " + nodeId +
-                            " assigns: " + ((ServicesSingleAssignmentsMessage)msg).assigns());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Received " + msg.getClass() +
+                            "; locId=" + ctx.localNodeId() +
+                            "; client" + ctx.clientNode() +
+                            "; sender=" + nodeId +
+                            "; msg=" + msg + ']');
+                    }
 
-                    exchangeMgr.onReceiveSingleMessage(nodeId, (ServicesSingleAssignmentsMessage)msg);
+                    exchangeMgr.onReceiveSingleMessage((ServicesSingleAssignmentsMessage)msg);
                 }
             }
             finally {
@@ -1566,16 +1569,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         public abstract void run0();
     }
 
-    /** */
-    private boolean isLocalNodeCoordinator() {
-        return coordinator().isLocal();
-    }
-
-    /** */
-    private ClusterNode coordinator() {
-        return ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
-    }
-
     /**
      * @param msg Services full assignments message.
      */
@@ -1605,7 +1598,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     }
                     else if (log.isDebugEnabled()) {
                         log.debug("Unexpected state: service assignments are contained in full map, " +
-                            "but is not contained in the local storage.");
+                            "but are not contained in the local storage.");
                     }
 
                     GridServiceDeploymentFuture depFut = depFuts.remove(name);
@@ -1641,7 +1634,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 });
 
                 if (log.isDebugEnabled() && (!depFuts.isEmpty() || !undepFuts.isEmpty())) {
-                    log.debug("Deteced incomplete futures, after full map processing: " + fullAssignsMap);
+                    log.debug("Detected incomplete futures, after full map processing: " + fullAssignsMap);
 
                     if (!depFuts.isEmpty())
                         log.debug("Deployment futures: " + depFuts);
@@ -1677,10 +1670,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private void sendServiceMessage(UUID nodeId, Message msg) {
         try {
             if (log.isDebugEnabled()) {
-                log.debug("Send message: [msg=" + msg.getClass().getSimpleName() +
-                    "; locId=" + ctx.localNodeId() +
+                log.debug("Send message: [locId=" + ctx.localNodeId() +
                     "; client=" + ctx.clientNode() +
-                    "; destId=" + nodeId + ']');
+                    "; destId=" + nodeId +
+                    "; msg=" + msg + ']');
             }
 
             ctx.io().sendToGridTopic(nodeId, TOPIC_SERVICES, msg, SERVICE_POOL);
@@ -1689,8 +1682,25 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
                 log.debug("Topology changed while message send: " + e.getMessage());
 
-            log.error("Failure during message send [nodeId=" + nodeId + ", msg=" + msg + ']', e);
+            log.error("Failed to send message over communication spi: [locId=" + ctx.localNodeId() +
+                "; client=" + ctx.clientNode() +
+                "; destId=" + nodeId +
+                "; msg=" + msg + ']', e);
         }
+    }
+
+    /**
+     * @return {@code true} if local node is clusters coordinator, otherwise {@code false}.
+     */
+    private boolean isLocalNodeCoordinator() {
+        return !ctx.clientNode() && coordinator().isLocal();
+    }
+
+    /**
+     * @return Cluster coordinator.
+     */
+    private ClusterNode coordinator() {
+        return ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
     }
 
     /**
@@ -1704,7 +1714,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return U.marshal(ctx, obj);
         }
         catch (IgniteCheckedException e) {
-            log.error("Error during object marshalling: [obj=" + obj + ']', e);
+            log.error("Failed to marshal object: [obj=" + obj + ']', e);
 
             return null;
         }
