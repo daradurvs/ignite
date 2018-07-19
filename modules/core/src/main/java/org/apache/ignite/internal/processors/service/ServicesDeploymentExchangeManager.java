@@ -31,7 +31,7 @@ import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.Nullable;
 
-public class ServicesAssignmentsExchangeManager {
+public class ServicesDeploymentExchangeManager {
     /** */
     private final GridKernalContext ctx;
 
@@ -44,7 +44,7 @@ public class ServicesAssignmentsExchangeManager {
     /**
      * @param ctx Grid kernal context.
      */
-    public ServicesAssignmentsExchangeManager(GridKernalContext ctx) {
+    public ServicesDeploymentExchangeManager(GridKernalContext ctx) {
         this.ctx = ctx;
         this.exchWorker = new ServicesMapExchangeWorker(
             ctx.igniteInstanceName(),

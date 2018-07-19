@@ -128,20 +128,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final UncaughtExceptionHandler oomeHnd = new OomExceptionHandler(ctx);
 
     /** Thread factory. */
-    private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
-        oomeHnd);
+    private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service", oomeHnd);
 
     /** Thread local for service name. */
     private ThreadLocal<String> svcName = new ThreadLocal<>();
 
     /** Topology listener. */
-    private DiscoveryEventListener topLsnr = new TopologyListener();
+    private DiscoveryEventListener discoLsnr = new DiscoveryListener();
 
     /** Services messages communication listener. */
     private final CommunicationListener commLsnr = new CommunicationListener();
 
     /** Contains all services assignments, not only locally deployed. */
     private final Map<String, GridServiceAssignments> svcAssigns = new ConcurrentHashMap<>();
+
+    /** Services deployment manager. */
+    private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManager(ctx);
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -191,7 +193,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
-        ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
+        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -221,7 +223,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         U.shutdownNow(GridServiceProcessor.class, depExe, log);
 
         if (!ctx.clientNode())
-            ctx.event().removeDiscoveryEventListener(topLsnr);
+            ctx.event().removeDiscoveryEventListener(discoLsnr);
 
         ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -1433,9 +1435,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Topology listener.
+     * Discovery events listener.
      */
-    private class TopologyListener implements DiscoveryEventListener {
+    private class DiscoveryListener implements DiscoveryEventListener {
         /** */
         private volatile AffinityTopologyVersion currTopVer = null;
 
@@ -1454,11 +1456,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     topVer = ((DiscoveryCustomEvent)evt).affinityTopologyVersion();
 
-                    if (msg instanceof ServicesDeploymentRequestMessage) {
+                    if (msg instanceof ServicesDeploymentRequestMessage || msg instanceof ServicesCancellationRequestMessage) {
                         if (!isLocalNodeCoordinator())
                             return;
 
                         ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
+
+                        fut.svcAssigns = svcAssigns;
 
                         exchangeMgr.onEvent(fut, topVer); // New exchange needed
                     }
@@ -1466,21 +1470,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         depExe.execute(() -> {
                             onAssignmentsRequest((ServicesAssignmentsRequestMessage)msg);
                         });
-                    }
-                    else if (msg instanceof ServicesCancellationRequestMessage) {
-                        if (!isLocalNodeCoordinator())
-                            return;
-
-                        if (log.isDebugEnabled())
-                            log.debug("[TopLsnr: " +
-                                " receiver: " + ctx.localNodeId() +
-                                " sender: " + evt.eventNode().id());
-
-                        ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
-
-                        fut.svcAssigns = svcAssigns;
-
-                        exchangeMgr.onEvent(fut, topVer); // New exchange needed
                     }
                     else if (msg instanceof ServicesFullAssignmentsMessage) {
                         if (log.isDebugEnabled())
@@ -1620,7 +1609,34 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param name Service name.
+     * Services messages communication listener.
+     */
+    private class CommunicationListener implements GridMessageListener {
+        /** {@inheritDoc} */
+        @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
+            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
+
+            if (busyLock == null || !busyLock.enterBusy())
+                return;
+
+            try {
+                if (msg instanceof ServicesSingleAssignmentsMessage) {
+                    if (log.isDebugEnabled())
+                        log.debug("[comm-lsnr-single-msg: " +
+                            " sender: " + nodeId +
+                            " assigns: " + ((ServicesSingleAssignmentsMessage)msg).assigns());
+
+                    exchangeMgr.onReceiveSingleMessage(nodeId, (ServicesSingleAssignmentsMessage)msg);
+                }
+            }
+            finally {
+                busyLock.leaveBusy();
+            }
+        }
+    }
+
+    /**
+     * @param name Service name to undeploy.
      */
     private void undeploy(String name) {
         svcName.set(name);
@@ -1635,40 +1651,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             synchronized (ctxs) {
                 cancel(ctxs, ctxs.size());
             }
-        }
-
-//        svcAssigns.remove(name);
-
-        // Finish deployment futures if undeployment happened.
-//        GridFutureAdapter<?> fut = depFuts.get(name);
-//
-//        if (fut != null)
-//            fut.onDone();
-//
-//        // Complete undeployment future.
-//        fut = undepFuts.remove(name);
-//
-//        if (fut != null)
-//            fut.onDone();
-    }
-
-    /**
-     *
-     */
-    private static class CancelResult {
-        /** */
-        IgniteInternalFuture<?> fut;
-
-        /** */
-        boolean rollback;
-
-        /**
-         * @param fut Future.
-         * @param rollback {@code True} if service was cancelled during current call.
-         */
-        CancelResult(IgniteInternalFuture<?> fut, boolean rollback) {
-            this.fut = fut;
-            this.rollback = rollback;
         }
     }
 
@@ -1716,42 +1698,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** */
     private ClusterNode coordinator() {
         return U.oldest(ctx.discovery().aliveServerNodes(), null);
-    }
-
-    private final ServicesAssignmentsExchangeManager exchangeMgr = new ServicesAssignmentsExchangeManager(ctx);
-
-    private class CommunicationListener implements GridMessageListener {
-        /** {@inheritDoc} */
-        @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
-            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-            if (busyLock == null || !busyLock.enterBusy())
-                return;
-
-            try {
-                if (msg instanceof ServicesSingleAssignmentsMessage) {
-                    if (log.isDebugEnabled())
-                        log.debug("[comm-lsnr-single-msg: " +
-                            " sender: " + nodeId +
-                            " assigns: " + ((ServicesSingleAssignmentsMessage)msg).assigns());
-
-                    exchangeMgr.onReceiveSingleMessage(nodeId, (ServicesSingleAssignmentsMessage)msg);
-                }
-//                else if (msg instanceof ServicesFullAssignmentsMessage) {
-//                    if (log.isDebugEnabled())
-//                        log.debug("[comm-lsnr-full-msg: " +
-//                            " sender: " + nodeId +
-//                            " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
-//
-//                    depExe.execute(() -> {
-//                        processFullAssignment((ServicesFullAssignmentsMessage)msg);
-//                    });
-//                }
-            }
-            finally {
-                busyLock.leaveBusy();
-            }
-        }
     }
 
     /**
