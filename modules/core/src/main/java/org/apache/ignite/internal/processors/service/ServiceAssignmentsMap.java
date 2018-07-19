@@ -29,7 +29,7 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.UUID;
 
 /**
- * Single service assignments.
+ * Single service assignments unit to send over communication.
  */
 public class ServiceAssignmentsMap implements Message {
     /** Service name. */
