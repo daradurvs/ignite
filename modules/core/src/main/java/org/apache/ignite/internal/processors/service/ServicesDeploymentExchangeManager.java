@@ -59,7 +59,7 @@ public class ServicesDeploymentExchangeManager {
      * @param topVer Topology version.
      * @return Added exchange future.
      */
-    public synchronized ServicesAssignmentsExchangeFuture onEvent(ServicesAssignmentsExchangeFuture fut,
+    public synchronized ServicesDeploymentExchangeFuture onEvent(ServicesDeploymentExchangeFuture fut,
         AffinityTopologyVersion topVer) {
 
         exchWorker.q.offer(fut);
@@ -73,7 +73,7 @@ public class ServicesDeploymentExchangeManager {
      */
     public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg) {
         synchronized (pending) {
-            ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
+            ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
             if (fut == null) {
                 pending.add(msg);
@@ -91,7 +91,7 @@ public class ServicesDeploymentExchangeManager {
     List<ServicesFullAssignmentsMessage> pendingFull = new ArrayList<>();
 
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
-        ServicesAssignmentsExchangeFuture fut = exchWorker.fut;
+        ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
         // TODO
         if (fut != null) {
@@ -105,9 +105,9 @@ public class ServicesDeploymentExchangeManager {
     /** */
     private class ServicesMapExchangeWorker extends GridWorker {
         /** */
-        private final LinkedBlockingQueue<ServicesAssignmentsExchangeFuture> q = new LinkedBlockingQueue<>();
+        private final LinkedBlockingQueue<ServicesDeploymentExchangeFuture> q = new LinkedBlockingQueue<>();
 
-        volatile ServicesAssignmentsExchangeFuture fut = null;
+        volatile ServicesDeploymentExchangeFuture fut = null;
 
         /** {@inheritDoc} */
         protected ServicesMapExchangeWorker(@Nullable String igniteInstanceName, String name,

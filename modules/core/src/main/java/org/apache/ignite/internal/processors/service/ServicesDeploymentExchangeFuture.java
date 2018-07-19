@@ -17,15 +17,14 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
@@ -34,18 +33,19 @@ import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.lang.IgniteUuid;
-
-import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
-import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
+import org.apache.ignite.services.ServiceConfiguration;
 
 /**
  *
  */
-public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object> {
+public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> {
     /** */
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMessages = new ConcurrentHashMap<>();
+
+    private final ServicesAssignmentsFunction assignsFunc;
 
     private final GridKernalContext ctx;
 
@@ -58,20 +58,19 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
     /** Remaining nodes. */
     private final Set<UUID> remaining;
 
-    private final Set<UUID> nodes;
-
     Map<String, GridServiceAssignments> svcAssigns;
 
-    public ServicesAssignmentsExchangeFuture(IgniteUuid exchId, GridKernalContext ctx, DiscoveryEvent evt) {
-        this.exchId = exchId;
+    public ServicesDeploymentExchangeFuture(ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx,
+        DiscoveryEvent evt) {
+        assert evt instanceof DiscoveryCustomEvent;
+
+        this.assignsFunc = assignsFunc;
         this.ctx = ctx;
         this.evt = evt;
+        this.exchId = ((DiscoveryCustomEvent)evt).customMessage().id();
+
         this.log = ctx.log(getClass());
-
-        Set<UUID> ids = ctx.discovery().nodes(evt.topologyVersion()).stream().map(ClusterNode::id).collect(Collectors.toSet());
-
-        this.remaining = new HashSet<>(ids);
-        this.nodes = new HashSet<>(ids);
+        this.remaining = ctx.discovery().nodes(evt.topologyVersion()).stream().map(ClusterNode::id).distinct().collect(Collectors.toSet());
     }
 
     public void init() {
@@ -105,34 +104,18 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
                 catch (IgniteCheckedException e) {
                     e.printStackTrace();
                 }
-
-//                for (UUID node : nodes) {
-//                    try {
-//                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMsg, SERVICE_POOL);
-//                    }
-//                    catch (IgniteCheckedException e) {
-//                        log.error("Failed to send services full assignments to node: " + node, e);
-//                    }
-//                }
             }
             else if (msg instanceof ServicesDeploymentRequestMessage) {
-                Executors.newSingleThreadExecutor().execute(() -> {
-                        try {
-                            ctx.service().onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-                        }
-                        catch (IgniteCheckedException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                );
-//                Executors.newSingleThreadExecutor().execute(() -> {
-//                    try {
-//                        ctx.service().onDeploymentRequest((ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                //                Executors.newSingleThreadExecutor().execute(() -> {
+//                        try {
+//                            ctx.service().onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+//                        }
+//                        catch (IgniteCheckedException e) {
+//                            e.printStackTrace();
+//                        }
 //                    }
-//                    catch (IgniteCheckedException e) {
-//                        log.error("Error #onDeploymentRequest", e);
-//                    }
-//                });
+//                );
             }
             else
                 throw new IllegalStateException("Unexpected message type: " + msg);
@@ -183,6 +166,28 @@ public class ServicesAssignmentsExchangeFuture extends GridFutureAdapter<Object>
         }
         else
             System.out.println("Unexpected message: " + msg);
+    }
+
+    void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        Collection<ServiceConfiguration> cfgs = req.configurations();
+
+        Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
+
+        for (ServiceConfiguration cfg : cfgs) {
+            GridServiceAssignments svcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+
+            if (log.isDebugEnabled())
+                log.debug("Calculated assignment: " + svcAssigns.assigns());
+
+            assigns.add(svcAssigns);
+        }
+
+        ServicesAssignmentsRequestMessage assignsMsg = new ServicesAssignmentsRequestMessage(snd, assigns);
+
+        assignsMsg.exchId = exchId;
+
+        ctx.discovery().sendCustomEvent(assignsMsg);
     }
 
     public synchronized ServicesFullAssignmentsMessage createFullAssignmentsMessage() {

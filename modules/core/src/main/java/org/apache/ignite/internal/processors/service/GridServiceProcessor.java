@@ -65,7 +65,6 @@ import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.A;
-import org.apache.ignite.internal.util.typedef.internal.LT;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -144,6 +143,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** Services deployment manager. */
     private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManager(ctx);
+
+    /** Services assignments function. */
+    private final ServicesAssignmentsFunction assignsFunc = new ServicesAssignmentsFunctionImpl(ctx, svcAssigns);
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -923,155 +925,155 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return res;
         }
     }
-
-    /**
-     * Reassigns service to nodes.
-     *
-     * @param cfg Service configuration.
-     * @param nodeId Deployment initiator id.
-     * @param topVer Topology version.
-     * @throws IgniteCheckedException If failed.
-     */
-    private GridServiceAssignments reassign(ServiceConfiguration cfg, UUID nodeId,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
-        Object nodeFilter = cfg.getNodeFilter();
-
-        if (nodeFilter != null)
-            ctx.resource().injectGeneric(nodeFilter);
-
-        int totalCnt = cfg.getTotalCount();
-        int maxPerNodeCnt = cfg.getMaxPerNodeCount();
-        String cacheName = cfg.getCacheName();
-        Object affKey = cfg.getAffinityKey();
-
-        while (true) {
-            GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
-
-            Collection<ClusterNode> nodes;
-
-            // Call node filter outside of transaction.
-            if (affKey == null) {
-                nodes = ctx.discovery().nodes(topVer);
-
-                if (assigns.nodeFilter() != null) {
-                    Collection<ClusterNode> nodes0 = new ArrayList<>();
-
-                    for (ClusterNode node : nodes) {
-                        if (assigns.nodeFilter().apply(node))
-                            nodes0.add(node);
-                    }
-
-                    nodes = nodes0;
-                }
-            }
-            else
-                nodes = null;
-
-            try {
-                String name = cfg.getName();
-
-                GridServiceAssignments oldAssigns = svcAssigns.get(name);
-
-                Map<UUID, Integer> cnts = new HashMap<>();
-
-                if (affKey != null) {
-                    ClusterNode n = ctx.affinity().mapKeyToNode(cacheName, affKey, topVer);
-
-                    if (n != null) {
-                        int cnt = maxPerNodeCnt == 0 ? totalCnt == 0 ? 1 : totalCnt : maxPerNodeCnt;
-
-                        cnts.put(n.id(), cnt);
-                    }
-                }
-                else {
-                    if (!nodes.isEmpty()) {
-                        int size = nodes.size();
-
-                        int perNodeCnt = totalCnt != 0 ? totalCnt / size : maxPerNodeCnt;
-                        int remainder = totalCnt != 0 ? totalCnt % size : 0;
-
-                        if (perNodeCnt >= maxPerNodeCnt && maxPerNodeCnt != 0) {
-                            perNodeCnt = maxPerNodeCnt;
-                            remainder = 0;
-                        }
-
-                        for (ClusterNode n : nodes)
-                            cnts.put(n.id(), perNodeCnt);
-
-                        assert perNodeCnt >= 0;
-                        assert remainder >= 0;
-
-                        if (remainder > 0) {
-                            int cnt = perNodeCnt + 1;
-
-                            if (oldAssigns != null) {
-                                Collection<UUID> used = new HashSet<>();
-
-                                // Avoid redundant moving of services.
-                                for (Map.Entry<UUID, Integer> e : oldAssigns.assigns().entrySet()) {
-                                    // Do not assign services to left nodes.
-                                    if (ctx.discovery().node(e.getKey()) == null)
-                                        continue;
-
-                                    // If old count and new count match, then reuse the assignment.
-                                    if (e.getValue() == cnt) {
-                                        cnts.put(e.getKey(), cnt);
-
-                                        used.add(e.getKey());
-
-                                        if (--remainder == 0)
-                                            break;
-                                    }
-                                }
-
-                                if (remainder > 0) {
-                                    List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
-
-                                    // Randomize.
-                                    Collections.shuffle(entries);
-
-                                    for (Map.Entry<UUID, Integer> e : entries) {
-                                        // Assign only the ones that have not been reused from previous assignments.
-                                        if (!used.contains(e.getKey())) {
-                                            if (e.getValue() < maxPerNodeCnt || maxPerNodeCnt == 0) {
-                                                e.setValue(e.getValue() + 1);
-
-                                                if (--remainder == 0)
-                                                    break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else {
-                                List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
-
-                                // Randomize.
-                                Collections.shuffle(entries);
-
-                                for (Map.Entry<UUID, Integer> e : entries) {
-                                    e.setValue(e.getValue() + 1);
-
-                                    if (--remainder == 0)
-                                        break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                assigns.assigns(cnts);
-
-                return assigns;
-            }
-            catch (ClusterTopologyCheckedException e) {
-                if (log.isDebugEnabled())
-                    log.debug("Topology changed while reassigning (will retry): " + e.getMessage());
-
-                U.sleep(10);
-            }
-        }
-    }
+//
+//    /**
+//     * Reassigns service to nodes.
+//     *
+//     * @param cfg Service configuration.
+//     * @param nodeId Deployment initiator id.
+//     * @param topVer Topology version.
+//     * @throws IgniteCheckedException If failed.
+//     */
+//    private GridServiceAssignments reassign(ServiceConfiguration cfg, UUID nodeId,
+//        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+//        Object nodeFilter = cfg.getNodeFilter();
+//
+//        if (nodeFilter != null)
+//            ctx.resource().injectGeneric(nodeFilter);
+//
+//        int totalCnt = cfg.getTotalCount();
+//        int maxPerNodeCnt = cfg.getMaxPerNodeCount();
+//        String cacheName = cfg.getCacheName();
+//        Object affKey = cfg.getAffinityKey();
+//
+//        while (true) {
+//            GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
+//
+//            Collection<ClusterNode> nodes;
+//
+//            // Call node filter outside of transaction.
+//            if (affKey == null) {
+//                nodes = ctx.discovery().nodes(topVer);
+//
+//                if (assigns.nodeFilter() != null) {
+//                    Collection<ClusterNode> nodes0 = new ArrayList<>();
+//
+//                    for (ClusterNode node : nodes) {
+//                        if (assigns.nodeFilter().apply(node))
+//                            nodes0.add(node);
+//                    }
+//
+//                    nodes = nodes0;
+//                }
+//            }
+//            else
+//                nodes = null;
+//
+//            try {
+//                String name = cfg.getName();
+//
+//                GridServiceAssignments oldAssigns = svcAssigns.get(name);
+//
+//                Map<UUID, Integer> cnts = new HashMap<>();
+//
+//                if (affKey != null) {
+//                    ClusterNode n = ctx.affinity().mapKeyToNode(cacheName, affKey, topVer);
+//
+//                    if (n != null) {
+//                        int cnt = maxPerNodeCnt == 0 ? totalCnt == 0 ? 1 : totalCnt : maxPerNodeCnt;
+//
+//                        cnts.put(n.id(), cnt);
+//                    }
+//                }
+//                else {
+//                    if (!nodes.isEmpty()) {
+//                        int size = nodes.size();
+//
+//                        int perNodeCnt = totalCnt != 0 ? totalCnt / size : maxPerNodeCnt;
+//                        int remainder = totalCnt != 0 ? totalCnt % size : 0;
+//
+//                        if (perNodeCnt >= maxPerNodeCnt && maxPerNodeCnt != 0) {
+//                            perNodeCnt = maxPerNodeCnt;
+//                            remainder = 0;
+//                        }
+//
+//                        for (ClusterNode n : nodes)
+//                            cnts.put(n.id(), perNodeCnt);
+//
+//                        assert perNodeCnt >= 0;
+//                        assert remainder >= 0;
+//
+//                        if (remainder > 0) {
+//                            int cnt = perNodeCnt + 1;
+//
+//                            if (oldAssigns != null) {
+//                                Collection<UUID> used = new HashSet<>();
+//
+//                                // Avoid redundant moving of services.
+//                                for (Map.Entry<UUID, Integer> e : oldAssigns.assigns().entrySet()) {
+//                                    // Do not assign services to left nodes.
+//                                    if (ctx.discovery().node(e.getKey()) == null)
+//                                        continue;
+//
+//                                    // If old count and new count match, then reuse the assignment.
+//                                    if (e.getValue() == cnt) {
+//                                        cnts.put(e.getKey(), cnt);
+//
+//                                        used.add(e.getKey());
+//
+//                                        if (--remainder == 0)
+//                                            break;
+//                                    }
+//                                }
+//
+//                                if (remainder > 0) {
+//                                    List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
+//
+//                                    // Randomize.
+//                                    Collections.shuffle(entries);
+//
+//                                    for (Map.Entry<UUID, Integer> e : entries) {
+//                                        // Assign only the ones that have not been reused from previous assignments.
+//                                        if (!used.contains(e.getKey())) {
+//                                            if (e.getValue() < maxPerNodeCnt || maxPerNodeCnt == 0) {
+//                                                e.setValue(e.getValue() + 1);
+//
+//                                                if (--remainder == 0)
+//                                                    break;
+//                                            }
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                            else {
+//                                List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
+//
+//                                // Randomize.
+//                                Collections.shuffle(entries);
+//
+//                                for (Map.Entry<UUID, Integer> e : entries) {
+//                                    e.setValue(e.getValue() + 1);
+//
+//                                    if (--remainder == 0)
+//                                        break;
+//                                }
+//                            }
+//                        }
+//                    }
+//                }
+//
+//                assigns.assigns(cnts);
+//
+//                return assigns;
+//            }
+//            catch (ClusterTopologyCheckedException e) {
+//                if (log.isDebugEnabled())
+//                    log.debug("Topology changed while reassigning (will retry): " + e.getMessage());
+//
+//                U.sleep(10);
+//            }
+//        }
+//    }
 
     /**
      * Redeploys local services based on assignments.
@@ -1301,7 +1303,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             // If topology version changed, reassignment will happen from topology event.
             if (newTopVer.equals(topVer))
-                reassign(cfg, nodeId, topVer);
+                assignsFunc.reassign(cfg, nodeId, topVer);
         }
         catch (IgniteCheckedException e) {
             if (!(e instanceof ClusterTopologyCheckedException))
@@ -1338,28 +1340,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             });
         }
-    }
-
-    void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
-        Collection<ServiceConfiguration> cfgs = req.configurations();
-
-        Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
-
-        for (ServiceConfiguration cfg : cfgs) {
-            GridServiceAssignments svcAssigns = reassign(cfg, snd, topVer);
-
-            if (log.isDebugEnabled())
-                log.debug("Calculated assignment: " + svcAssigns.assigns());
-
-            assigns.add(svcAssigns);
-        }
-
-        ServicesAssignmentsRequestMessage assignsMsg = new ServicesAssignmentsRequestMessage(snd, assigns);
-
-        assignsMsg.exchId = req.id();
-
-        ctx.discovery().sendCustomEvent(assignsMsg);
     }
 
     /**
@@ -1460,7 +1440,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (!isLocalNodeCoordinator())
                             return;
 
-                        ServicesAssignmentsExchangeFuture fut = new ServicesAssignmentsExchangeFuture(msg.id(), ctx, evt);
+                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(assignsFunc, ctx, evt);
 
                         fut.svcAssigns = svcAssigns;
 
@@ -1542,70 +1522,70 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 busyLock.leaveBusy();
             }
         }
-
-        /**
-         * Handler for reassignment failures.
-         *
-         * @param topVer Topology version.
-         * @param retries Retries.
-         */
-        private void onReassignmentFailed(final AffinityTopologyVersion topVer,
-            final Collection<GridServiceAssignments> retries) {
-            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-            if (busyLock == null || !busyLock.enterBusy())
-                return;
-
-            try {
-                // If topology changed again, let next event handle it.
-                if (ctx.discovery().topologyVersionEx().equals(topVer))
-                    return;
-
-                for (Iterator<GridServiceAssignments> it = retries.iterator(); it.hasNext(); ) {
-                    GridServiceAssignments dep = it.next();
-
-                    try {
-                        svcName.set(dep.configuration().getName());
-
-                        reassign(dep.configuration(), dep.nodeId(), topVer);
-
-                        it.remove();
-                    }
-                    catch (IgniteCheckedException e) {
-                        if (!(e instanceof ClusterTopologyCheckedException))
-                            LT.error(log, e, "Failed to do service reassignment (will retry): " +
-                                dep.configuration().getName());
-                    }
-                }
-
-                if (!retries.isEmpty()) {
-                    ctx.timeout().addTimeoutObject(new GridTimeoutObject() {
-                        private IgniteUuid id = IgniteUuid.randomUuid();
-
-                        private long start = System.currentTimeMillis();
-
-                        @Override public IgniteUuid timeoutId() {
-                            return id;
-                        }
-
-                        @Override public long endTime() {
-                            return start + RETRY_TIMEOUT;
-                        }
-
-                        @Override public void onTimeout() {
-                            depExe.execute(new Runnable() {
-                                public void run() {
-                                    onReassignmentFailed(topVer, retries);
-                                }
-                            });
-                        }
-                    });
-                }
-            }
-            finally {
-                busyLock.leaveBusy();
-            }
-        }
+//
+//        /**
+//         * Handler for reassignment failures.
+//         *
+//         * @param topVer Topology version.
+//         * @param retries Retries.
+//         */
+//        private void onReassignmentFailed(final AffinityTopologyVersion topVer,
+//            final Collection<GridServiceAssignments> retries) {
+//            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
+//
+//            if (busyLock == null || !busyLock.enterBusy())
+//                return;
+//
+//            try {
+//                // If topology changed again, let next event handle it.
+//                if (ctx.discovery().topologyVersionEx().equals(topVer))
+//                    return;
+//
+//                for (Iterator<GridServiceAssignments> it = retries.iterator(); it.hasNext(); ) {
+//                    GridServiceAssignments dep = it.next();
+//
+//                    try {
+//                        svcName.set(dep.configuration().getName());
+//
+//                        reassign(dep.configuration(), dep.nodeId(), topVer);
+//
+//                        it.remove();
+//                    }
+//                    catch (IgniteCheckedException e) {
+//                        if (!(e instanceof ClusterTopologyCheckedException))
+//                            LT.error(log, e, "Failed to do service reassignment (will retry): " +
+//                                dep.configuration().getName());
+//                    }
+//                }
+//
+//                if (!retries.isEmpty()) {
+//                    ctx.timeout().addTimeoutObject(new GridTimeoutObject() {
+//                        private IgniteUuid id = IgniteUuid.randomUuid();
+//
+//                        private long start = System.currentTimeMillis();
+//
+//                        @Override public IgniteUuid timeoutId() {
+//                            return id;
+//                        }
+//
+//                        @Override public long endTime() {
+//                            return start + RETRY_TIMEOUT;
+//                        }
+//
+//                        @Override public void onTimeout() {
+//                            depExe.execute(new Runnable() {
+//                                public void run() {
+//                                    onReassignmentFailed(topVer, retries);
+//                                }
+//                            });
+//                        }
+//                    });
+//                }
+//            }
+//            finally {
+//                busyLock.leaveBusy();
+//            }
+//        }
     }
 
     /**
