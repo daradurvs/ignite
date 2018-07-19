@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -67,6 +68,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
         this.snd = snd;
         this.client = client;
         this.exchId = exchId;
+        this.errors = Collections.EMPTY_MAP;
     }
 
     /**

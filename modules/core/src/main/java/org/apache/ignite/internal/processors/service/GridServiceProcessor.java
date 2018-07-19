@@ -1230,7 +1230,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 redeploy(assign);
                             }
                             catch (Error | RuntimeException th) {
-                                errors.put(assign.name(), marshal(th));
+                                try {
+                                    byte[] arr = U.marshal(ctx, th);
+
+                                    errors.put(assign.name(), arr);
+                                }
+                                catch (IgniteCheckedException e) {
+                                    log.error("Failed to marshal deployment exception: " + th.getMessage() + ']', e);
+                                }
                             }
                         }
                     }
@@ -1421,7 +1428,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void processFullAssignment(ServicesFullAssignmentsMessage msg) {
         try {
-            Map<String, ServiceAssignmentsMap> fullAssignsMap = new HashMap<>(msg.assigns());
+            Map<String, ServiceAssignmentsMap> fullAssignsMap = msg.assigns();
+
+            Map<String, Collection<byte[]>> fullErrors = msg.errors();
 
             synchronized (mux) {
                 fullAssignsMap.forEach((name, svcAssignsMap) -> {
@@ -1448,12 +1457,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             "but are not contained in the local storage.");
                     }
 
-                    GridServiceDeploymentFuture depFut = depFuts.remove(name);
+                    GridServiceDeploymentFuture fut = depFuts.remove(name);
 
-                    if (depFut != null) {
-                        // TODO: handle errors
-                        depFut.onDone();
+                    if (fut != null) {
+                        Collection<byte[]> errors = fullErrors.get(name);
+
+                        if (errors == null)
+                            fut.onDone();
+                        else
+                            processDeploymentErrors(fut, errors);
                     }
+                });
+
+                fullErrors.forEach((name, errors) -> {
+                    GridServiceDeploymentFuture fut = depFuts.remove(name);
+
+                    if (fut != null)
+                        processDeploymentErrors(fut, errors);
                 });
 
                 Set<String> svcsNames = fullAssignsMap.keySet();
@@ -1496,6 +1516,34 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         catch (Exception e) {
             log.error("Exception in #processFullAssignment", e);
         }
+    }
+
+    /**
+     * @param fut Service deployment future.
+     * @param errors Serialized errors.
+     */
+    private void processDeploymentErrors(GridServiceDeploymentFuture fut, Collection<byte[]> errors) {
+        ServiceConfiguration srvcCfg = fut.configuration();
+
+        ServiceDeploymentException ex = null;
+
+        for (byte[] error : errors) {
+            try {
+                Throwable t = U.unmarshal(ctx, error, null);
+
+                if (ex == null)
+                    ex = new ServiceDeploymentException(t, Collections.singleton(srvcCfg));
+                else
+                    ex.addSuppressed(t);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to unmarshal deployment exception.", e);
+            }
+        }
+
+        log.error("Failed to deploy service, name=" + srvcCfg.getName(), ex);
+
+        fut.onDone(ex);
     }
 
     /**
@@ -1548,22 +1596,5 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private ClusterNode coordinator() {
         return ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
-    }
-
-    /**
-     * Marshales given object using current context.
-     *
-     * @param obj Object to marshal.
-     * @return Marshalled bytes, possible {@code null}.
-     */
-    private byte[] marshal(Object obj) {
-        try {
-            return U.marshal(ctx, obj);
-        }
-        catch (IgniteCheckedException e) {
-            log.error("Failed to marshal object: [obj=" + obj + ']', e);
-
-            return null;
-        }
     }
 }

@@ -17,6 +17,8 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
@@ -46,8 +48,8 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
     /** Cluster services assignments. */
     private final Map<String, ServiceAssignmentsMap> assigns;
 
-    /** Deployment errors. */
-    private Map<String, byte[]> errors;
+    /** Services deployments errors. */
+    private Map<String, Collection<byte[]>> errors;
 
     /**
      * @param snd Sender id.
@@ -58,6 +60,7 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
         this.snd = snd;
         this.exchId = exchId;
         this.assigns = assigns;
+        this.errors = Collections.EMPTY_MAP;
     }
 
     /**
@@ -75,24 +78,24 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
     }
 
     /**
-     * @return Local services assignments.
+     * @return Services deployments errors.
      */
-    public Map<String, ServiceAssignmentsMap> assigns() {
-        return assigns;
-    }
-
-    /**
-     * @return Deployment errors.
-     */
-    public Map<String, byte[]> errors() {
+    public Map<String, Collection<byte[]>> errors() {
         return errors;
     }
 
     /**
-     * @param errors Deployment errors.
+     * @param errors Services deployments errors.
      */
-    public void errors(Map<String, byte[]> errors) {
+    public void errors(Map<String, Collection<byte[]>> errors) {
         this.errors = errors;
+    }
+
+    /**
+     * @return Local services assignments.
+     */
+    public Map<String, ServiceAssignmentsMap> assigns() {
+        return assigns;
     }
 
     /** {@inheritDoc} */

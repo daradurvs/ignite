@@ -43,7 +43,7 @@ import org.apache.ignite.services.ServiceConfiguration;
  */
 public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> {
     /** */
-    private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMessages = new ConcurrentHashMap<>();
+    private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -189,27 +189,43 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      */
     private ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
         synchronized (mux) {
-            Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+            final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
-            Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
+            final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
-            singleAssignsMessages.forEach((uuid, singleMsg) -> {
-                singleMsg.assigns().forEach((name, num) -> {
-                    if (num != 0) {
-                        Map<UUID, Integer> cur = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
+            final Map<String, Collection<byte[]>> fullErrors = new HashMap<>();
 
-                        cur.put(uuid, num);
-                    }
+            try {
+                singleAssignsMsgs.forEach((uuid, singleMsg) -> {
+                    singleMsg.assigns().forEach((name, num) -> {
+                        if (num != 0) {
+                            Map<UUID, Integer> cur = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
+
+                            cur.put(uuid, num);
+                        }
+                    });
+
+                    singleMsg.errors().forEach((name, err) -> {
+                        Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(name, e -> new ArrayList<>());
+
+                        srvcErrors.add(err);
+                    });
                 });
-            });
 
-            fullAssigns.forEach((name, svcAssigns) -> {
-                assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns));
-            });
+                fullAssigns.forEach((name, svcAssigns) -> {
+                    assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns));
+                });
+            }
+            catch (Throwable t) {
+                log.error("Failed to build services full assignments map.", t);
+            }
 
-            // TODO: handle errors
+            ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
 
-            return new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
+            if (!fullErrors.isEmpty())
+                msg.errors(fullErrors);
+
+            return msg;
         }
     }
 
@@ -222,7 +238,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
             if (remaining.remove(msg.senderId())) {
                 if (!msg.client())
-                    singleAssignsMessages.put(msg.senderId(), msg);
+                    singleAssignsMsgs.put(msg.senderId(), msg);
 
                 checkRemaining();
             }
