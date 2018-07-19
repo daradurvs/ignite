@@ -25,7 +25,6 @@ import org.apache.ignite.IgniteClientDisconnectedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteServices;
 import org.apache.ignite.internal.processors.service.DummyService;
-import org.apache.ignite.internal.processors.service.ServicesFullAssignmentsMessage;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceContext;
@@ -120,53 +119,6 @@ public class IgniteClientReconnectServicesTest extends IgniteClientReconnectAbst
 
         assertNotNull(newSrvc);
         assertNotNull(newSrvc.test());
-    }
-
-    /**
-     * @throws Exception If failed.
-     */
-    public void testReconnectInDeploying() throws Exception {
-        Ignite client = grid(serverCount());
-
-        assertTrue(client.cluster().localNode().isClient());
-
-        final IgniteServices services = client.services();
-
-        Ignite srv = ignite(0);
-
-        BlockTcpCommunicationSpi commSpi = commSpi(srv);
-
-        commSpi.blockMessage(ServicesFullAssignmentsMessage.class);
-
-        final IgniteInternalFuture<Object> fut = GridTestUtils.runAsync(new Callable<Object>() {
-            @Override public Object call() throws Exception {
-                try {
-                    services.deployClusterSingleton("testReconnectInDeploying", new TestServiceImpl());
-                }
-                catch (IgniteClientDisconnectedException e) {
-                    checkAndWait(e);
-
-                    return true;
-                }
-
-                return false;
-            }
-        });
-
-        // Check that client waiting operation.
-        GridTestUtils.assertThrows(log, new Callable<Object>() {
-            @Override public Object call() throws Exception {
-                return fut.get(200);
-            }
-        }, IgniteFutureTimeoutCheckedException.class, null);
-
-        assertNotDone(fut);
-
-        commSpi.unblockMessage();
-
-        reconnectClientNode(client, srv, null);
-
-        assertTrue((Boolean)fut.get(2, TimeUnit.SECONDS));
     }
 
     /**
