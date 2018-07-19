@@ -177,16 +177,14 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      *
      */
     private void checkRemaining() {
-        synchronized (mux) {
-            if (remaining.isEmpty()) {
-                ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
+        if (remaining.isEmpty()) {
+            ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
 
-                try {
-                    ctx.discovery().sendCustomEvent(fullMapMsg);
-                }
-                catch (IgniteCheckedException e) {
-                    log.error("Failed to send full services assignment across the ring.", e);
-                }
+            try {
+                ctx.discovery().sendCustomEvent(fullMapMsg);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to send full services assignment across the ring.", e);
             }
         }
     }
@@ -229,8 +227,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param snd Sender.
      * @param msg Single node services assignments.
      */
-    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg,
-        boolean client) {
+    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg, boolean client) {
         synchronized (mux) {
             assert exchId.equals(msg.exchId) : "Wrong message exchId!";
 
@@ -242,6 +239,17 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             }
             else
                 System.out.println("Unexpected message: " + msg);
+        }
+    }
+
+    /**
+     * @param nodeId Node id.
+     */
+    public void onNodeLeft(UUID nodeId) {
+        synchronized (mux) {
+            remaining.remove(nodeId);
+
+            checkRemaining();
         }
     }
 

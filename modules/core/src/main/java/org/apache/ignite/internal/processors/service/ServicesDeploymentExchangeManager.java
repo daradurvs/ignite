@@ -110,6 +110,15 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
+     * @param nodeId Node id.
+     */
+    public void onNodeLeft(UUID nodeId) {
+        synchronized (mux) {
+            exchWorker.q.forEach(fut -> fut.onNodeLeft(nodeId));
+        }
+    }
+
+    /**
      * @param msg Services full assignments message.
      */
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {

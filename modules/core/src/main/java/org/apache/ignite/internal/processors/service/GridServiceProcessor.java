@@ -43,7 +43,6 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.DeploymentMode;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.DiscoveryEvent;
-import org.apache.ignite.events.EventType;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteClientDisconnectedCheckedException;
 import org.apache.ignite.internal.IgniteInternalFuture;
@@ -85,6 +84,9 @@ import static org.apache.ignite.IgniteSystemProperties.IGNITE_SERVICES_COMPATIBI
 import static org.apache.ignite.IgniteSystemProperties.getString;
 import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
 import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
+import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
+import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
+import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
@@ -102,9 +104,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** */
     private static final int[] EVTS = {
-        EventType.EVT_NODE_JOINED,
-        EventType.EVT_NODE_LEFT,
-        EventType.EVT_NODE_FAILED,
+        EVT_NODE_JOINED,
+        EVT_NODE_LEFT,
+        EVT_NODE_FAILED,
         DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT
     };
 
@@ -1409,7 +1411,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             if (!errors.isEmpty())
                 locAssignsMsg.errors(errors);
 
-            ClusterNode crd = ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
+            ClusterNode crd = coordinator();
 
             sendServiceMessage(crd, locAssignsMsg);
         }
@@ -1463,131 +1465,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             processFullAssignment((ServicesFullAssignmentsMessage)msg);
                         });
                     }
+
+                    return;
                 }
 
-                return;
-//                }
-//
-//                topVer = new AffinityTopologyVersion((evt).topologyVersion(), 0);
-//
-//                currTopVer = topVer;
-//
-//                depExe.execute(new DepRunnable() {
-//                    @Override public void run0() {
-//                        // In case the cache instance isn't tracked by DiscoveryManager anymore.
-//                        discoCache.updateAlives(ctx.discovery());
-//
-//                        ClusterNode oldest = discoCache.oldestAliveServerNode();
-//
-//                        if (oldest != null && oldest.isLocal()) {
-//                            final Collection<GridServiceAssignments> retries = new ConcurrentLinkedQueue<>();
-//
-//                            // If topology changed again, let next event handle it.
-//                            AffinityTopologyVersion currTopVer0 = currTopVer;
-//
-//                            if (currTopVer0 != topVer) {
-//                                if (log.isInfoEnabled())
-//                                    log.info("Service processor detected a topology change during " +
-//                                        "assignments calculation (will abort current iteration and " +
-//                                        "re-calculate on the newer version): " +
-//                                        "[topVer=" + topVer + ", newTopVer=" + currTopVer0 + ']');
-//
-//                                return;
-//                            }
-//
-//                            for (Map.Entry<String, GridServiceAssignments> entry : svcsAssigns.entrySet()) {
-//                                GridServiceAssignments assigns = entry.getValue();
-//
-//                                try {
-//                                    svcName.set(assigns.configuration().getName());
-//
-////                                    ctx.cache().context().exchange().affinityReadyFuture(topVer).get();
-//
-//                                    reassign(assigns.configuration(), assigns.nodeId(), topVer);
-//                                }
-//                                catch (IgniteCheckedException ex) {
-//                                    if (!(ex instanceof ClusterTopologyCheckedException))
-//                                        LT.error(log, ex, "Failed to do service reassignment (will retry): " +
-//                                            assigns.configuration().getName());
-//
-//                                    retries.add(assigns);
-//                                }
-//                            }
-//
-//                            if (!retries.isEmpty())
-//                                onReassignmentFailed(topVer, retries);
-//                        }
-//                    }
-//                });
+                if (ctx.clientNode() || !isLocalNodeCoordinator())
+                    return;
+
+                if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
+                    exchangeMgr.onNodeLeft(evt.eventNode().id());
+                else if (evt.type() == EVT_NODE_JOINED) {
+                    // TODO
+                }
             }
             finally {
                 busyLock.leaveBusy();
             }
         }
-//
-//        /**
-//         * Handler for reassignment failures.
-//         *
-//         * @param topVer Topology version.
-//         * @param retries Retries.
-//         */
-//        private void onReassignmentFailed(final AffinityTopologyVersion topVer,
-//            final Collection<GridServiceAssignments> retries) {
-//            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-//
-//            if (busyLock == null || !busyLock.enterBusy())
-//                return;
-//
-//            try {
-//                // If topology changed again, let next event handle it.
-//                if (ctx.discovery().topologyVersionEx().equals(topVer))
-//                    return;
-//
-//                for (Iterator<GridServiceAssignments> it = retries.iterator(); it.hasNext(); ) {
-//                    GridServiceAssignments dep = it.next();
-//
-//                    try {
-//                        svcName.set(dep.configuration().getName());
-//
-//                        reassign(dep.configuration(), dep.nodeId(), topVer);
-//
-//                        it.remove();
-//                    }
-//                    catch (IgniteCheckedException e) {
-//                        if (!(e instanceof ClusterTopologyCheckedException))
-//                            LT.error(log, e, "Failed to do service reassignment (will retry): " +
-//                                dep.configuration().getName());
-//                    }
-//                }
-//
-//                if (!retries.isEmpty()) {
-//                    ctx.timeout().addTimeoutObject(new GridTimeoutObject() {
-//                        private IgniteUuid id = IgniteUuid.randomUuid();
-//
-//                        private long start = System.currentTimeMillis();
-//
-//                        @Override public IgniteUuid timeoutId() {
-//                            return id;
-//                        }
-//
-//                        @Override public long endTime() {
-//                            return start + RETRY_TIMEOUT;
-//                        }
-//
-//                        @Override public void onTimeout() {
-//                            depExe.execute(new Runnable() {
-//                                public void run() {
-//                                    onReassignmentFailed(topVer, retries);
-//                                }
-//                            });
-//                        }
-//                    });
-//                }
-//            }
-//            finally {
-//                busyLock.leaveBusy();
-//            }
-//        }
     }
 
     /**
@@ -1679,7 +1573,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** */
     private ClusterNode coordinator() {
-        return U.oldest(ctx.discovery().aliveServerNodes(), null);
+        return ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
     }
 
     /**

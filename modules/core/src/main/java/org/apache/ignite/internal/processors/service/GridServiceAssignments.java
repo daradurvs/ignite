@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.internal.processors.cache.GridCacheInternal;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -35,7 +34,7 @@ public class GridServiceAssignments implements Serializable {
     /** Serialization version. */
     private static final long serialVersionUID = 0L;
 
-    /** Initiator node ID. */
+    /** Deployment initiator node ID. */
     private final UUID nodeId;
 
     /** Topology version. */
