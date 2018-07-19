@@ -148,7 +148,13 @@ public class ServicesDeploymentExchangeManager {
                 if (fut == null)
                     continue;
 
-                fut.init();
+                try {
+                    fut.init();
+                }
+                catch (IgniteCheckedException e) {
+                    // TODO
+                    e.printStackTrace();
+                }
 
                 while (true) {
                     try {

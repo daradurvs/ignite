@@ -39,31 +39,48 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
- *
+ * Services deployment exchange future.
  */
 public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> {
     /** */
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMessages = new ConcurrentHashMap<>();
 
+    /** Mutex. */
+    private final Object mux = new Object();
+
+    /** Services assignments. */
+    private Map<String, GridServiceAssignments> svcsAssigns;
+
+    /** Services assignments function. */
     private final ServicesAssignmentsFunction assignsFunc;
 
+    /** Kernal context. */
     private final GridKernalContext ctx;
 
+    /** Logger. */
     private final IgniteLogger log;
 
+    /** Discovery event. */
     private final DiscoveryEvent evt;
 
+    /** Exchange id. */
     private final IgniteUuid exchId;
 
-    /** Remaining nodes. */
+    /** Remaining nodes to received single node assignments message. */
     private final Set<UUID> remaining;
 
-    Map<String, GridServiceAssignments> svcAssigns;
-
-    public ServicesDeploymentExchangeFuture(ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx,
+    /**
+     * @param svcAssigns Services assignments.
+     * @param assignsFunc Services assignments function.
+     * @param ctx Kernal context.
+     * @param evt Discovery event.
+     */
+    public ServicesDeploymentExchangeFuture(Map<String, GridServiceAssignments> svcAssigns,
+        ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx,
         DiscoveryEvent evt) {
         assert evt instanceof DiscoveryCustomEvent;
 
+        this.svcsAssigns = svcAssigns;
         this.assignsFunc = assignsFunc;
         this.ctx = ctx;
         this.evt = evt;
@@ -73,102 +90,40 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.remaining = ctx.discovery().nodes(evt.topologyVersion()).stream().map(ClusterNode::id).distinct().collect(Collectors.toSet());
     }
 
-    public void init() {
+    /**
+     * @throws IgniteCheckedException in case of an error.
+     */
+    public void init() throws IgniteCheckedException {
         if (log.isDebugEnabled())
-            log.debug("Started init method: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
+            log.debug("Started services exchange init: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
 
         DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
         try {
-            if (msg instanceof ServicesCancellationRequestMessage) {
-                ServicesCancellationRequestMessage msg0 = (ServicesCancellationRequestMessage)msg;
-                Collection<String> names = msg0.names();
-
-                ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
-
-                fullMsg.exchId = exchId;
-                fullMsg.snd = ctx.localNodeId();
-
-                Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
-
-                svcAssigns.forEach((name, svcMap) -> {
-                    if (!names.contains(name))
-                        assigns.put(name, new ServiceAssignmentsMap(svcMap.assigns()));
-                });
-
-                fullMsg.assigns(assigns);
-
-                try {
-                    ctx.discovery().sendCustomEvent(fullMsg);
-                }
-                catch (IgniteCheckedException e) {
-                    e.printStackTrace();
-                }
-            }
-            else if (msg instanceof ServicesDeploymentRequestMessage) {
+            if (msg instanceof ServicesCancellationRequestMessage)
+                onCancellationRequest((ServicesCancellationRequestMessage)msg);
+            else if (msg instanceof ServicesDeploymentRequestMessage)
                 onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-                //                Executors.newSingleThreadExecutor().execute(() -> {
-//                        try {
-//                            ctx.service().onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-//                        }
-//                        catch (IgniteCheckedException e) {
-//                            e.printStackTrace();
-//                        }
-//                    }
-//                );
-            }
             else
                 throw new IllegalStateException("Unexpected message type: " + msg);
         }
         catch (Exception e) {
-            log.error("Exception occurred inside init method: " + e);
+            log.error("Exception occurred inside services exchange init method: " + e);
+
+            throw e;
         }
 
         if (log.isDebugEnabled())
-            log.debug("Finished init method: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
+            log.debug("Finished services excange init method: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
     }
 
     /**
-     * @param snd Sender.
-     * @param msg Single node services assignments.
+     * @param snd Sender id.
+     * @param req Services deployment request.
+     * @param topVer Topology version.
+     * @throws IgniteCheckedException In case of an error.
      */
-    public synchronized void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg,
-        boolean client) {
-        assert exchId.equals(msg.exchId) : "Wrong message exchId!";
-
-        if (remaining.remove(snd)) {
-            if (!client)
-                singleAssignsMessages.put(snd, msg);
-
-            if (remaining.isEmpty()) {
-                ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
-
-                if (((DiscoveryCustomEvent)evt).customMessage() instanceof ServicesDeploymentRequestMessage)
-                    if (fullMapMsg.assigns().isEmpty())
-                        log.info("****");
-
-                try {
-                    ctx.discovery().sendCustomEvent(fullMapMsg);
-                }
-                catch (IgniteCheckedException e) {
-                    e.printStackTrace();
-                }
-
-//                for (UUID node : nodes) {
-//                    try {
-//                        ctx.io().sendToGridTopic(node, TOPIC_SERVICES, fullMapMsg, SERVICE_POOL);
-//                    }
-//                    catch (IgniteCheckedException e) {
-//                        log.error("Failed to send services full assignments to node: " + node, e);
-//                    }
-//                }
-            }
-        }
-        else
-            System.out.println("Unexpected message: " + msg);
-    }
-
-    void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req,
+    private void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         Collection<ServiceConfiguration> cfgs = req.configurations();
 
@@ -178,7 +133,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             GridServiceAssignments svcAssigns = assignsFunc.reassign(cfg, snd, topVer);
 
             if (log.isDebugEnabled())
-                log.debug("Calculated assignment: " + svcAssigns.assigns());
+                log.debug("Calculated service assignments: " + svcAssigns);
 
             assigns.add(svcAssigns);
         }
@@ -190,8 +145,12 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         ctx.discovery().sendCustomEvent(assignsMsg);
     }
 
-    public synchronized ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
-        // TODO: handle errors
+    /**
+     * @param msg Services cancellation request.
+     */
+    private void onCancellationRequest(ServicesCancellationRequestMessage msg) {
+        Collection<String> names = msg.names();
+
         ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
 
         fullMsg.exchId = exchId;
@@ -199,32 +158,102 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
         Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
-        Map<String, Map<UUID, Integer>> fullAssignments = new ConcurrentHashMap<>();
-
-        singleAssignsMessages.forEach((uuid, singleMsg) -> {
-            singleMsg.assigns().forEach((name, num) -> {
-                if (num != 0) {
-                    Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, m -> new HashMap<>());
-
-                    cur.put(uuid, num);
-                }
-            });
+        svcsAssigns.forEach((name, svcMap) -> {
+            if (!names.contains(name))
+                assigns.put(name, new ServiceAssignmentsMap(svcMap.assigns()));
         });
-
-        for (Map.Entry<String, Map<UUID, Integer>> entry : fullAssignments.entrySet())
-            assigns.put(entry.getKey(), new ServiceAssignmentsMap(entry.getValue()));
 
         fullMsg.assigns(assigns);
 
-        return fullMsg;
+        try {
+            ctx.discovery().sendCustomEvent(fullMsg);
+        }
+        catch (IgniteCheckedException e) {
+            e.printStackTrace();
+        }
     }
 
+    /**
+     *
+     */
+    private void checkRemaining() {
+        synchronized (mux) {
+            if (remaining.isEmpty()) {
+                ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
+
+                try {
+                    ctx.discovery().sendCustomEvent(fullMapMsg);
+                }
+                catch (IgniteCheckedException e) {
+                    log.error("Failed to send full services assignment across the ring.", e);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return Services full assignment message.
+     */
+    private ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
+        synchronized (mux) {
+            // TODO: handle errors
+            ServicesFullAssignmentsMessage fullMsg = new ServicesFullAssignmentsMessage();
+
+            fullMsg.exchId = exchId;
+            fullMsg.snd = ctx.localNodeId();
+
+            Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+
+            Map<String, Map<UUID, Integer>> fullAssignments = new ConcurrentHashMap<>();
+
+            singleAssignsMessages.forEach((uuid, singleMsg) -> {
+                singleMsg.assigns().forEach((name, num) -> {
+                    if (num != 0) {
+                        Map<UUID, Integer> cur = fullAssignments.computeIfAbsent(name, m -> new HashMap<>());
+
+                        cur.put(uuid, num);
+                    }
+                });
+            });
+
+            for (Map.Entry<String, Map<UUID, Integer>> entry : fullAssignments.entrySet())
+                assigns.put(entry.getKey(), new ServiceAssignmentsMap(entry.getValue()));
+
+            fullMsg.assigns(assigns);
+
+            return fullMsg;
+        }
+    }
+
+    /**
+     * @param snd Sender.
+     * @param msg Single node services assignments.
+     */
+    public void onReceiveSingleMessage(final UUID snd, final ServicesSingleAssignmentsMessage msg,
+        boolean client) {
+        synchronized (mux) {
+            assert exchId.equals(msg.exchId) : "Wrong message exchId!";
+
+            if (remaining.remove(snd)) {
+                if (!client)
+                    singleAssignsMessages.put(snd, msg);
+
+                checkRemaining();
+            }
+            else
+                System.out.println("Unexpected message: " + msg);
+        }
+    }
+
+    /**
+     * @return Exchange id.
+     */
     public IgniteUuid exchangeId() {
         return exchId;
     }
 
     /**
-     * @return Nodes ids to wait messages.
+     * @return Nodes ids to wait single node assignments messages.
      */
     public Set<UUID> remaining() {
         return Collections.unmodifiableSet(remaining);
