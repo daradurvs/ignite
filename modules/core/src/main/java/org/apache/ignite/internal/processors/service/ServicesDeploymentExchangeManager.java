@@ -26,6 +26,7 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
 
@@ -74,6 +75,10 @@ public class ServicesDeploymentExchangeManager {
     public void stopProcessing() {
         exchWorker.stopProcessing();
 
+        synchronized (this) {
+            notifyAll();
+        }
+
         pendingMsgs.clear();
     }
 
@@ -81,7 +86,13 @@ public class ServicesDeploymentExchangeManager {
      * Adds exchange future.
      */
     public boolean onEvent(ServicesDeploymentExchangeFuture fut) {
-        return exchWorker.q.offer(fut);
+        synchronized (exchWorker) {
+            boolean res = exchWorker.q.offer(fut);
+
+            exchWorker.notify();
+
+            return res;
+        }
     }
 
     /**
@@ -119,12 +130,11 @@ public class ServicesDeploymentExchangeManager {
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
         ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
-        // TODO
         if (fut != null) {
-            if (!fut.exchangeId().equals(msg.exchangeId()))
-                throw new IllegalStateException();
-
-            fut.onDone();
+            if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
+                log.error("Unexpected services full assignments message received: [msg=" + msg + ']');
+            else
+                fut.onDone();
         }
     }
 
@@ -149,8 +159,13 @@ public class ServicesDeploymentExchangeManager {
             while (!isCancelled()) {
                 fut = q.poll();
 
-                if (fut == null)
-                    continue;
+                synchronized (this) {
+                    if (fut == null) {
+                        U.wait(this);
+
+                        continue;
+                    }
+                }
 
                 try {
                     fut.init();
