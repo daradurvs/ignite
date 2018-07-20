@@ -23,6 +23,7 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.jetbrains.annotations.Nullable;
@@ -92,5 +93,10 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
         DiscoCache discoCache) {
         // No-op.
         return null;
+    }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        return S.toString(ServicesDeploymentRequestMessage.class, this);
     }
 }

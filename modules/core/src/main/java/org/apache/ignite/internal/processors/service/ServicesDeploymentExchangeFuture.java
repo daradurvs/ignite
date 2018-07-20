@@ -103,7 +103,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      */
     public void init() throws Exception {
         if (log.isDebugEnabled())
-            log.debug("Started services exchange init: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
+            log.debug("Started services exchange init: [exchId=" + exchangeId() + ", locId=" + ctx.localNodeId() + ']');
 
         if (evt instanceof DiscoveryCustomEvent) {
             DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
@@ -138,7 +138,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         }
 
         if (log.isDebugEnabled())
-            log.debug("Finished services excange init method: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
+            log.debug("Finished services excange init method: [exchId=" + exchangeId() + ", locId=" + ctx.localNodeId() + ']');
     }
 
     /**
@@ -284,7 +284,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      */
     public void onReceiveSingleMessage(final ServicesSingleAssignmentsMessage msg) {
         synchronized (mux) {
-            assert exchId.equals(msg.exchangeId()) : "Wrong message exchId!";
+            assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
             if (remaining.remove(msg.senderId())) {
                 if (!msg.client())

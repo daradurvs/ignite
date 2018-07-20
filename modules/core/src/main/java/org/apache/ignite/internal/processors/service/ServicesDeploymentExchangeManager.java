@@ -27,6 +27,7 @@ import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
+import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
@@ -67,14 +68,14 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Starts work of deployment exchange manager/
+     * Starts work of deployment exchange manager.
      */
     public void startProcessing() {
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
     /**
-     * Starts work of deployment exchange manager.
+     * Stops work of deployment exchange manager.
      */
     public void stopProcessing() {
         try {
@@ -87,6 +88,10 @@ public class ServicesDeploymentExchangeManager {
             }
 
             U.join(exchWorker, log);
+
+            exchWorker.q.forEach(GridFutureAdapter::onDone);
+
+            exchWorker.q.clear();
 
             if (log.isDebugEnabled() && !pendingMsgs.isEmpty())
                 log.debug("Exchange manager contained pending messages: [" + pendingMsgs + ']');
@@ -186,7 +191,7 @@ public class ServicesDeploymentExchangeManager {
             }
             finally {
                 if (err == null && !isStopped)
-                    err = new IllegalStateException("Thread " + name() + " is terminated unexpectedly");
+                    err = new IllegalStateException("Thread " + name() + " is terminated unexpectedly.");
 
                 if (err instanceof OutOfMemoryError)
                     ctx.failure().process(new FailureContext(CRITICAL_ERROR, err));
@@ -217,7 +222,7 @@ public class ServicesDeploymentExchangeManager {
                     fut.init();
                 }
                 catch (Exception e) {
-                    log.error("Failed to init services exchange future.", e);
+                    log.error("Error occurred during init service exchange future.", e);
 
                     fut.onDone(e);
 
@@ -247,7 +252,8 @@ public class ServicesDeploymentExchangeManager {
                         break;
                     }
                     catch (IgniteCheckedException e) {
-                        log.error("Exception while waiting for exchange future complete or timeout had been reached, timeout=" + timeout, e);
+                        log.error("Error occurred during waiting for exchange future completion " +
+                            "or timeout had been reached, timeout=" + timeout, e);
 
                         if (isStopped)
                             return;
@@ -257,7 +263,7 @@ public class ServicesDeploymentExchangeManager {
         }
 
         /**
-         * Processing stop handler.
+         * Handles a processing stop.
          */
         private void stopProcessing() {
             synchronized (mux) {
