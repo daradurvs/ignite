@@ -77,16 +77,25 @@ public class ServicesDeploymentExchangeManager {
      * Starts work of deployment exchange manager.
      */
     public void stopProcessing() {
-        exchWorker.stopProcessing();
+        try {
+            exchWorker.stopProcessing();
 
-        synchronized (mux) {
-            mux.notifyAll();
+            U.cancel(exchWorker);
+
+            synchronized (mux) {
+                mux.notifyAll();
+            }
+
+            U.join(exchWorker, log);
+
+            if (log.isDebugEnabled() && !pendingMsgs.isEmpty())
+                log.debug("Exchange manager contained pending messages: [" + pendingMsgs + ']');
+
+            pendingMsgs.clear();
         }
-
-        if (log.isDebugEnabled() && !pendingMsgs.isEmpty())
-            log.debug("Exchange manager contained pending messages: [" + pendingMsgs + ']');
-
-        pendingMsgs.clear();
+        catch (Exception e) {
+            log.error("Error occurred during stopping exchange worker.");
+        }
     }
 
     /**
@@ -192,6 +201,9 @@ public class ServicesDeploymentExchangeManager {
         protected void body0() throws IgniteInterruptedCheckedException {
             while (!isCancelled()) {
                 fut = q.poll();
+
+                if (isCancelled())
+                    Thread.currentThread().interrupt();
 
                 synchronized (mux) {
                     if (fut == null) {
