@@ -83,6 +83,9 @@ public class ServicesDeploymentExchangeManager {
             mux.notifyAll();
         }
 
+        if (log.isDebugEnabled() && !pendingMsgs.isEmpty())
+            log.debug("Exchange manager contained pending messages: [" + pendingMsgs + ']');
+
         pendingMsgs.clear();
     }
 
