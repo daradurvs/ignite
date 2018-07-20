@@ -90,56 +90,51 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.assignsFunc = assignsFunc;
         this.ctx = ctx;
         this.evt = evt;
-        this.exchId = ((DiscoveryCustomEvent)evt).customMessage().id();
+        this.exchId = evt.id();
 
         this.log = ctx.log(getClass());
         this.remaining = ctx.discovery().nodes(evt.topologyVersion()).stream().map(ClusterNode::id).distinct().collect(Collectors.toSet());
     }
 
     /**
-     * @throws IgniteCheckedException in case of an error.
+     * Services assignments exchange initialization method.
+     *
+     * @throws Exception In case of an error.
      */
-    public void init() throws IgniteCheckedException {
+    public void init() throws Exception {
         if (log.isDebugEnabled())
             log.debug("Started services exchange init: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
 
-        try {
-            if (evt instanceof DiscoveryCustomEvent) {
-                DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+        if (evt instanceof DiscoveryCustomEvent) {
+            DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                if (msg instanceof ServicesCancellationRequestMessage)
-                    onCancellationRequest((ServicesCancellationRequestMessage)msg);
-                else if (msg instanceof ServicesDeploymentRequestMessage)
-                    onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-                else
-                    onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
-            }
-            else {
-                if (!srvcsAssigns.isEmpty()) {
-                    switch (evt.type()) {
-                        case EVT_NODE_JOINED:
-                            // TODO: send all service GridServiceAssignments
-                        case EVT_NODE_LEFT:
-                        case EVT_NODE_FAILED:
-
-                            onChangedTopology(ctx.discovery().topologyVersionEx());
-
-                            break;
-
-                        default:
-                            onDone(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt));
-
-                            break;
-                    }
-                }
-                else
-                    onDone();
-            }
+            if (msg instanceof ServicesCancellationRequestMessage)
+                onCancellationRequest((ServicesCancellationRequestMessage)msg);
+            else if (msg instanceof ServicesDeploymentRequestMessage)
+                onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+            else
+                onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
         }
-        catch (Exception e) {
-            log.error("Exception occurred inside services exchange init method: " + e);
+        else {
+            if (!srvcsAssigns.isEmpty()) {
+                switch (evt.type()) {
+                    case EVT_NODE_JOINED:
+                        // TODO: send all service GridServiceAssignments
+                    case EVT_NODE_LEFT:
+                    case EVT_NODE_FAILED:
 
-            throw e;
+                        onChangedTopology(ctx.discovery().topologyVersionEx());
+
+                        break;
+
+                    default:
+                        onDone(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt));
+
+                        break;
+                }
+            }
+            else
+                onDone();
         }
 
         if (log.isDebugEnabled())

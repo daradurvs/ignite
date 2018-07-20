@@ -1320,7 +1320,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 if (msg instanceof ServicesSingleAssignmentsMessage) {
                     if (log.isDebugEnabled()) {
-                        log.debug("Received " + msg.getClass() +
+                        log.debug("Received " + msg.getClass().getSimpleName() +
                             "; locId=" + ctx.localNodeId() +
                             "; client" + ctx.clientNode() +
                             "; sender=" + nodeId +

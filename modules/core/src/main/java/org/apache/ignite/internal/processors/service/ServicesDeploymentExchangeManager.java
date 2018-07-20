@@ -128,8 +128,6 @@ public class ServicesDeploymentExchangeManager {
     public void onNodeLeft(UUID nodeId) {
         synchronized (mux) {
             exchWorker.q.forEach(fut -> fut.onNodeLeft(nodeId));
-
-            mux.notifyAll();
         }
     }
 
@@ -137,17 +135,13 @@ public class ServicesDeploymentExchangeManager {
      * @param msg Services full assignments message.
      */
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
-        synchronized (mux) {
-            ServicesDeploymentExchangeFuture fut = exchWorker.fut;
+        ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
-            if (fut != null) {
-                if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
-                    log.error("Unexpected services full assignments message received: [msg=" + msg + ']');
-                else
-                    fut.onDone();
-            }
-
-            mux.notifyAll();
+        if (fut != null) {
+            if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
+                log.error("Unexpected services full assignments message received: [msg=" + msg + ']');
+            else
+                fut.onDone();
         }
     }
 
@@ -210,8 +204,10 @@ public class ServicesDeploymentExchangeManager {
                 try {
                     fut.init();
                 }
-                catch (IgniteCheckedException e) {
+                catch (Exception e) {
                     log.error("Failed to init services exchange future.", e);
+
+                    fut.onDone(e);
 
                     continue;
                 }
