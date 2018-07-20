@@ -24,11 +24,15 @@ import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
+import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
+
+import static org.apache.ignite.failure.FailureType.CRITICAL_ERROR;
+import static org.apache.ignite.failure.FailureType.SYSTEM_WORKER_TERMINATION;
 
 /**
  * Services deployment exchange manager.
@@ -75,8 +79,8 @@ public class ServicesDeploymentExchangeManager {
     public void stopProcessing() {
         exchWorker.stopProcessing();
 
-        synchronized (this) {
-            notifyAll();
+        synchronized (mux) {
+            mux.notifyAll();
         }
 
         pendingMsgs.clear();
@@ -86,13 +90,13 @@ public class ServicesDeploymentExchangeManager {
      * Adds exchange future.
      */
     public boolean onEvent(ServicesDeploymentExchangeFuture fut) {
-        synchronized (exchWorker) {
-            boolean res = exchWorker.q.offer(fut);
+        boolean res = exchWorker.q.offer(fut);
 
-            exchWorker.notify();
-
-            return res;
+        synchronized (mux) {
+            mux.notifyAll();
         }
+
+        return res;
     }
 
     /**
@@ -156,12 +160,39 @@ public class ServicesDeploymentExchangeManager {
 
         /** {@inheritDoc} */
         @Override protected void body() throws InterruptedException, IgniteInterruptedCheckedException {
+            Throwable err = null;
+
+            try {
+                body0();
+            }
+            catch (IgniteInterruptedCheckedException e) {
+                if (!isStopped)
+                    err = e;
+            }
+            catch (Throwable e) {
+                err = e;
+            }
+            finally {
+                if (err == null && !isStopped)
+                    err = new IllegalStateException("Thread " + name() + " is terminated unexpectedly");
+
+                if (err instanceof OutOfMemoryError)
+                    ctx.failure().process(new FailureContext(CRITICAL_ERROR, err));
+                else if (err != null)
+                    ctx.failure().process(new FailureContext(SYSTEM_WORKER_TERMINATION, err));
+            }
+        }
+
+        /**
+         * @throws IgniteInterruptedCheckedException If interrupted.
+         */
+        protected void body0() throws IgniteInterruptedCheckedException {
             while (!isCancelled()) {
                 fut = q.poll();
 
-                synchronized (this) {
+                synchronized (mux) {
                     if (fut == null) {
-                        U.wait(this);
+                        U.wait(mux);
 
                         continue;
                     }
@@ -212,10 +243,10 @@ public class ServicesDeploymentExchangeManager {
          * Processing stop handler.
          */
         private void stopProcessing() {
-            synchronized (this) {
+            synchronized (mux) {
                 isStopped = true;
 
-                notifyAll();
+                mux.notifyAll();
             }
         }
     }
