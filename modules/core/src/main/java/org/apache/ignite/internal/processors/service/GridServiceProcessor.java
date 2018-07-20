@@ -130,7 +130,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Thread local for service name. */
     private ThreadLocal<String> srvcName = new ThreadLocal<>();
 
-    /** Topology listener. */
+    /** Discovery events listener. */
     private DiscoveryEventListener discoLsnr = new DiscoveryListener();
 
     /** Services messages communication listener. */
@@ -184,8 +184,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon() || !active)
             return;
 
-        exchangeMgr.onKernalStart();
-
         onKernalStart0();
     }
 
@@ -224,7 +222,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         U.shutdownNow(GridServiceProcessor.class, depExe, log);
 
-        exchangeMgr.onKernalStop();
+        exchangeMgr.stopProcessing();
 
         if (!ctx.clientNode())
             ctx.event().removeDiscoveryEventListener(discoLsnr);
@@ -1265,7 +1263,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             if (!errors.isEmpty())
                 locAssignsMsg.errors(errors);
 
-            ClusterNode crd = coordinator();
+            ClusterNode crd = coordinator(ctx.discovery().topologyVersionEx());
 
             sendServiceMessage(crd, locAssignsMsg);
         }
@@ -1279,25 +1277,32 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private class DiscoveryListener implements DiscoveryEventListener {
         /** */
-        private volatile AffinityTopologyVersion currTopVer = null;
+        private volatile boolean crd = false;
 
         /** {@inheritDoc} */
         @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
-            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-            if (busyLock == null || !busyLock.enterBusy())
+            if (!enterBusy())
                 return;
 
-            final AffinityTopologyVersion topVer;
-
             try {
+                final boolean curCrd = isLocalNodeCoordinator(discoCache.version());
+
+                final boolean crdChanged = crd != curCrd;
+
+                if (crdChanged) {
+                    if (crd)
+                        exchangeMgr.stopProcessing();
+                    else
+                        exchangeMgr.startProcessing();
+
+                    crd = curCrd;
+                }
+
                 if (evt instanceof DiscoveryCustomEvent) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                    topVer = ((DiscoveryCustomEvent)evt).affinityTopologyVersion();
-
                     if (msg instanceof ServicesDeploymentRequestMessage || msg instanceof ServicesCancellationRequestMessage) {
-                        if (!isLocalNodeCoordinator())
+                        if (!curCrd)
                             return;
 
                         ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(srvcsAssigns, assignsFunc, ctx, evt);
@@ -1315,16 +1320,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 " sender: " + evt.eventNode().id() +
                                 " assigns: " + ((ServicesFullAssignmentsMessage)msg).assigns());
 
+                        final ServicesFullAssignmentsMessage msg0 = (ServicesFullAssignmentsMessage)msg;
+
                         depExe.execute(() -> {
-                            processFullAssignment((ServicesFullAssignmentsMessage)msg);
+                            processFullAssignment(msg0);
+
+                            exchangeMgr.onReceiveFullMessage(msg0);
                         });
                     }
 
                     return;
                 }
 
-                if (!isLocalNodeCoordinator())
+                if (!curCrd)
                     return;
+
+                // TODO: start full reassignment
 
                 if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
                     exchangeMgr.onNodeLeft(evt.eventNode().id());
@@ -1333,7 +1344,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
             finally {
-                busyLock.leaveBusy();
+                leaveBusy();
             }
         }
     }
@@ -1344,9 +1355,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private class CommunicationListener implements GridMessageListener {
         /** {@inheritDoc} */
         @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
-            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-            if (busyLock == null || !busyLock.enterBusy())
+            if (!enterBusy())
                 return;
 
             try {
@@ -1363,7 +1372,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
             finally {
-                busyLock.leaveBusy();
+                leaveBusy();
             }
         }
     }
@@ -1393,13 +1402,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private abstract class DepRunnable implements Runnable {
         /** {@inheritDoc} */
         @Override public void run() {
-            GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-            if (busyLock == null || !busyLock.enterBusy())
+            if (!enterBusy())
                 return;
 
             // Won't block ServiceProcessor stopping process.
-            busyLock.leaveBusy();
+            leaveBusy();
 
             srvcName.set(null);
 
@@ -1509,8 +1516,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     if (!undepFuts.isEmpty())
                         log.debug("Undeployment futures: " + undepFuts);
                 }
-
-                exchangeMgr.onReceiveFullMessage(msg);
             }
         }
         catch (Exception e) {
@@ -1587,14 +1592,40 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return {@code true} if local node is clusters coordinator, otherwise {@code false}.
      */
-    private boolean isLocalNodeCoordinator() {
-        return !ctx.clientNode() && coordinator().isLocal();
+    private boolean isLocalNodeCoordinator(AffinityTopologyVersion topVer) {
+        if (ctx.clientNode())
+            return false;
+
+        ClusterNode crd = coordinator(topVer);
+
+        return crd != null && crd.isLocal();
     }
 
     /**
-     * @return Cluster coordinator.
+     * @return Cluster coordinator, may be {@code null} in case of empty topology.
      */
-    private ClusterNode coordinator() {
-        return ctx.discovery().oldestAliveServerNode(ctx.discovery().topologyVersionEx());
+    @Nullable private ClusterNode coordinator(AffinityTopologyVersion topVer) {
+        return U.oldest(ctx.discovery().serverNodes(topVer), null);
+    }
+
+    /**
+     * Enters busy state.
+     *
+     * @return {@code true} if entered to busy state.
+     */
+    private boolean enterBusy() {
+        GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
+
+        return busyLock != null && busyLock.enterBusy();
+    }
+
+    /**
+     * Leaves busy state.
+     */
+    private void leaveBusy() {
+        GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
+
+        if (busyLock != null)
+            busyLock.leaveBusy();
     }
 }

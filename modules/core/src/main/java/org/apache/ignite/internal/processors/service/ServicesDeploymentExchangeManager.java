@@ -33,22 +33,22 @@ import org.apache.ignite.thread.IgniteThread;
  * Services deployment exchange manager.
  */
 public class ServicesDeploymentExchangeManager {
-    /** */
+    /** Kernal context. */
     private final GridKernalContext ctx;
 
-    /** */
+    /** Logger. */
     private final IgniteLogger log;
 
-    /** */
+    /** Exchange worker. */
     private final ServicesDeploymentExchangeWorker exchWorker;
 
-    /** */
-    private final List<ServicesSingleAssignmentsMessage> pending = new ArrayList<>();
+    /** Pending messages. */
+    private final List<ServicesSingleAssignmentsMessage> pendingMsgs = new ArrayList<>();
 
     /** Mutex. */
     private final Object mux = new Object();
 
-    /** */
+    /** Indicates that worker is stopped. */
     private volatile boolean isStopped = false;
 
     /**
@@ -62,30 +62,26 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Kernal start handler.
+     * Starts work of deployment exchange manager/
      */
-    public void onKernalStart() {
+    public void startProcessing() {
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
     /**
-     * Kernal stop handler.
+     * Starts work of deployment exchange manager.
      */
-    public void onKernalStop() {
-        exchWorker.onKernalStop();
+    public void stopProcessing() {
+        exchWorker.stopProcessing();
 
-        pending.clear();
+        pendingMsgs.clear();
     }
 
     /**
-     * @return Added exchange future.
+     * Adds exchange future.
      */
-    public ServicesDeploymentExchangeFuture onEvent(ServicesDeploymentExchangeFuture fut) {
-        synchronized (mux) {
-            exchWorker.q.offer(fut);
-
-            return fut;
-        }
+    public boolean onEvent(ServicesDeploymentExchangeFuture fut) {
+        return exchWorker.q.offer(fut);
     }
 
     /**
@@ -96,7 +92,7 @@ public class ServicesDeploymentExchangeManager {
             ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
             if (fut == null) {
-                pending.add(msg);
+                pendingMsgs.add(msg);
 
                 return;
             }
@@ -104,7 +100,7 @@ public class ServicesDeploymentExchangeManager {
             if (fut.exchangeId().equals(msg.exchangeId()))
                 fut.onReceiveSingleMessage(msg);
             else
-                pending.add(msg);
+                pendingMsgs.add(msg);
         }
     }
 
@@ -160,14 +156,17 @@ public class ServicesDeploymentExchangeManager {
                     fut.init();
                 }
                 catch (IgniteCheckedException e) {
-                    // TODO
-                    e.printStackTrace();
+                    log.error("Failed to init services exchange future.", e);
+
+                    continue;
                 }
+
+                long timeout = ctx.config().getNetworkTimeout() * 5;
 
                 while (true) {
                     try {
                         synchronized (mux) {
-                            Iterator<ServicesSingleAssignmentsMessage> it = pending.iterator();
+                            Iterator<ServicesSingleAssignmentsMessage> it = pendingMsgs.iterator();
 
                             while (it.hasNext()) {
                                 ServicesSingleAssignmentsMessage msg = it.next();
@@ -180,12 +179,12 @@ public class ServicesDeploymentExchangeManager {
                             }
                         }
 
-                        fut.get(ctx.config().getNetworkTimeout() * 3);
+                        fut.get(timeout);
 
                         break;
                     }
                     catch (IgniteCheckedException e) {
-                        log.error("Exception while waiting for exchange future complete.", e);
+                        log.error("Exception while waiting for exchange future complete or timeout had been reached, timeout=" + timeout, e);
 
                         if (isStopped)
                             return;
@@ -195,9 +194,9 @@ public class ServicesDeploymentExchangeManager {
         }
 
         /**
-         * Kernal stop handler.
+         * Processing stop handler.
          */
-        private void onKernalStop() {
+        private void stopProcessing() {
             synchronized (this) {
                 isStopped = true;
 
