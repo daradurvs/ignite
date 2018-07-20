@@ -1277,7 +1277,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return;
                 }
 
-                if ((!curCrd && !evt.eventNode().isLocal()) && srvcsAssigns.isEmpty())
+                if (!curCrd && !evt.eventNode().isLocal())
                     return;
 
                 switch (evt.type()) {
@@ -1286,10 +1286,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         exchangeMgr.onNodeLeft(evt.eventNode().id());
 
                     case EVT_NODE_JOINED:
-                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
-                            srvcsAssigns, assignsFunc, ctx, evt);
+                        if (!srvcsAssigns.isEmpty()) {
+                            ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
+                                srvcsAssigns, assignsFunc, ctx, evt);
 
-                        exchangeMgr.onEvent(fut);
+                            exchangeMgr.onEvent(fut);
+                        }
 
                         break;
 
