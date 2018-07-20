@@ -27,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
@@ -35,21 +36,29 @@ import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
+
+import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
+import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
+import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 
 /**
  * Services deployment exchange future.
  */
 public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> {
-    /** */
+    /** Single service messages to process. */
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
+
+    /** Errors occurred during assignments calculation. */
+    private final Map<String, Throwable> reassignsErrors = new HashMap<>();
 
     /** Mutex. */
     private final Object mux = new Object();
 
     /** Services assignments. */
-    private Map<String, GridServiceAssignments> svcsAssigns;
+    private Map<String, GridServiceAssignments> srvcsAssigns;
 
     /** Services assignments function. */
     private final ServicesAssignmentsFunction assignsFunc;
@@ -70,17 +79,14 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final Set<UUID> remaining;
 
     /**
-     * @param svcAssigns Services assignments.
+     * @param srvcsAssigns Services assignments.
      * @param assignsFunc Services assignments function.
      * @param ctx Kernal context.
      * @param evt Discovery event.
      */
-    public ServicesDeploymentExchangeFuture(Map<String, GridServiceAssignments> svcAssigns,
-        ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx,
-        DiscoveryEvent evt) {
-        assert evt instanceof DiscoveryCustomEvent;
-
-        this.svcsAssigns = svcAssigns;
+    public ServicesDeploymentExchangeFuture(Map<String, GridServiceAssignments> srvcsAssigns,
+        ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt) {
+        this.srvcsAssigns = srvcsAssigns;
         this.assignsFunc = assignsFunc;
         this.ctx = ctx;
         this.evt = evt;
@@ -97,15 +103,38 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         if (log.isDebugEnabled())
             log.debug("Started services exchange init: [exchId=" + exchangeId() + "; locId=" + ctx.localNodeId() + ']');
 
-        DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
         try {
-            if (msg instanceof ServicesCancellationRequestMessage)
-                onCancellationRequest((ServicesCancellationRequestMessage)msg);
-            else if (msg instanceof ServicesDeploymentRequestMessage)
-                onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
-            else
-                throw new IllegalStateException("Unexpected message type: " + msg);
+            if (evt instanceof DiscoveryCustomEvent) {
+                DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                if (msg instanceof ServicesCancellationRequestMessage)
+                    onCancellationRequest((ServicesCancellationRequestMessage)msg);
+                else if (msg instanceof ServicesDeploymentRequestMessage)
+                    onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                else
+                    onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
+            }
+            else {
+                if (!srvcsAssigns.isEmpty()) {
+                    switch (evt.type()) {
+                        case EVT_NODE_JOINED:
+                            // TODO: send all service GridServiceAssignments
+                        case EVT_NODE_LEFT:
+                        case EVT_NODE_FAILED:
+
+                            onChangedTopology(ctx.discovery().topologyVersionEx());
+
+                            break;
+
+                        default:
+                            onDone(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt));
+
+                            break;
+                    }
+                }
+                else
+                    onDone();
+            }
         }
         catch (Exception e) {
             log.error("Exception occurred inside services exchange init method: " + e);
@@ -121,16 +150,25 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param snd Sender id.
      * @param req Services deployment request.
      * @param topVer Topology version.
-     * @throws IgniteCheckedException In case of an error.
      */
-    private void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+    private void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req, AffinityTopologyVersion topVer) {
         Collection<ServiceConfiguration> cfgs = req.configurations();
 
         Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
 
         for (ServiceConfiguration cfg : cfgs) {
-            GridServiceAssignments svcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+            GridServiceAssignments svcAssigns;
+
+            try {
+                svcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to calculate assignment for service, cfg=" + cfg, e);
+
+                reassignsErrors.put(cfg.getName(), e);
+
+                continue;
+            }
 
             if (log.isDebugEnabled())
                 log.debug("Calculated service assignments: " + svcAssigns);
@@ -138,11 +176,14 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             assigns.add(svcAssigns);
         }
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, assigns);
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId, assigns);
 
-        msg.exchId = exchId;
-
-        ctx.discovery().sendCustomEvent(msg);
+        try {
+            ctx.discovery().sendCustomEvent(msg);
+        }
+        catch (IgniteCheckedException e) {
+            log.error("Failed to send services assignments request message across the ring, msg=" + msg, e);
+        }
     }
 
     /**
@@ -153,7 +194,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
         Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
-        svcsAssigns.forEach((name, svcMap) -> {
+        srvcsAssigns.forEach((name, svcMap) -> {
             if (!names.contains(name))
                 assigns.put(name, new ServiceAssignmentsMap(name, svcMap.assigns()));
         });
@@ -164,14 +205,14 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
-            e.printStackTrace();
+            log.error("Failed to send services full assignments message across the ring, msg=" + msg, e);
         }
     }
 
     /**
      *
      */
-    private void checkRemaining() {
+    private void checkAndProcess() {
         if (remaining.isEmpty()) {
             ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
 
@@ -185,7 +226,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     }
 
     /**
-     * @return Services full assignment message.
+     * @return Services full assignments message.
      */
     private ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
         synchronized (mux) {
@@ -215,6 +256,20 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 fullAssigns.forEach((name, svcAssigns) -> {
                     assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns));
                 });
+
+                reassignsErrors.forEach((name, err) -> {
+                    byte[] arr = null;
+
+                    try {
+                        arr = U.marshal(ctx, err);
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error("Failed to marshal reassignments error.", e);
+                    }
+
+                    if (arr != null)
+                        fullErrors.putIfAbsent(name, Collections.singleton(arr));
+                });
             }
             catch (Throwable t) {
                 log.error("Failed to build services full assignments map.", t);
@@ -240,11 +295,76 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 if (!msg.client())
                     singleAssignsMsgs.put(msg.senderId(), msg);
 
-                checkRemaining();
+                checkAndProcess();
             }
             else
                 System.out.println("Unexpected message: " + msg);
         }
+    }
+
+    /**
+     * @param topVer Topology version.
+     */
+    private void onChangedTopology(AffinityTopologyVersion topVer) {
+        ServicesFullAssignmentsMessage fullMapMsg = reassignAll(topVer);
+
+        try {
+            ctx.discovery().sendCustomEvent(fullMapMsg);
+        }
+        catch (IgniteCheckedException e) {
+            log.error("Failed to send full services assignment across the ring.", e);
+        }
+    }
+
+    /**
+     * @param topVer Topology version.
+     * @return Services full assignments message.
+     */
+    private ServicesFullAssignmentsMessage reassignAll(AffinityTopologyVersion topVer) {
+        final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+
+        srvcsAssigns.forEach((name, old) -> {
+            GridServiceAssignments srvcAssigns = null;
+
+            try {
+                srvcAssigns = assignsFunc.reassign(old.configuration(), old.nodeId(), topVer);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to calculate assignment for service, cfg=" + old.configuration(), e);
+
+                reassignsErrors.put(old.name(), e);
+            }
+
+            if (srvcAssigns != null) {
+                if (log.isDebugEnabled())
+                    log.debug("Calculated service assignments: " + srvcAssigns);
+
+                assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns.assigns()));
+            }
+        });
+
+        Map<String, Collection<byte[]>> errors = new HashMap<>();
+
+        reassignsErrors.forEach((name, err) -> {
+            byte[] arr = null;
+
+            try {
+                arr = U.marshal(ctx, err);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to marshal reassignments error.", e);
+            }
+
+            if (arr != null)
+                errors.put(name, Collections.singleton(arr));
+        });
+
+        ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
+
+        if (!errors.isEmpty())
+            msg.errors(errors);
+
+        return msg;
     }
 
     /**
@@ -254,7 +374,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         synchronized (mux) {
             remaining.remove(nodeId);
 
-            checkRemaining();
+            checkAndProcess();
         }
     }
 

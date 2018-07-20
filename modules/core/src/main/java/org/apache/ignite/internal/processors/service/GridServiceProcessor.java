@@ -56,7 +56,6 @@ import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
-import org.apache.ignite.internal.processors.timeout.GridTimeoutObject;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.future.GridCompoundFuture;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
@@ -67,7 +66,6 @@ import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
-import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.security.SecurityException;
@@ -99,9 +97,6 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
 public class GridServiceProcessor extends GridProcessorAdapter implements IgniteChangeGlobalStateSupport {
     /** Services compatibility system property. */
     private final Boolean srvcCompatibilitySysProp;
-
-    /** Time to wait before reassignment retries. */
-    private static final long RETRY_TIMEOUT = 1000;
 
     /** Discovery events to listen. */
     private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
@@ -587,7 +582,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     }
 
                     if (!cfgsToDeploy.isEmpty()) {
-                        ServicesDeploymentRequestMessage req = new ServicesDeploymentRequestMessage(ctx.localNodeId(), cfgsToDeploy);
+                        ServicesDeploymentRequestMessage req = new ServicesDeploymentRequestMessage(
+                            ctx.localNodeId(), cfgsToDeploy);
 
                         ctx.discovery().sendCustomEvent(req);
 
@@ -711,7 +707,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     }
 
                     if (!svcsNamesToCancel.isEmpty()) {
-                        ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(ctx.localNodeId(), svcsNamesToCancel);
+                        ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(
+                            ctx.localNodeId(), svcsNamesToCancel);
 
                         ctx.discovery().sendCustomEvent(msg);
 
@@ -1141,59 +1138,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Deployment callback.
-     *
-     * @param cfg Service configuration.
-     * @param nodeId Deployment initiator id.
-     * @param topVer Topology version.
-     */
-    private void onDeployment(final ServiceConfiguration cfg, final UUID nodeId, final AffinityTopologyVersion topVer) {
-        // Retry forever.
-        try {
-            AffinityTopologyVersion newTopVer = ctx.discovery().topologyVersionEx();
-
-            // If topology version changed, reassignment will happen from topology event.
-            if (newTopVer.equals(topVer))
-                assignsFunc.reassign(cfg, nodeId, topVer);
-        }
-        catch (IgniteCheckedException e) {
-            if (!(e instanceof ClusterTopologyCheckedException))
-                log.error("Failed to do service reassignment (will retry): " + cfg.getName(), e);
-
-            AffinityTopologyVersion newTopVer = ctx.discovery().topologyVersionEx();
-
-            if (!newTopVer.equals(topVer)) {
-                assert newTopVer.compareTo(topVer) > 0;
-
-                // Reassignment will happen from topology event.
-                return;
-            }
-
-            ctx.timeout().addTimeoutObject(new GridTimeoutObject() {
-                private IgniteUuid id = IgniteUuid.randomUuid();
-
-                private long start = System.currentTimeMillis();
-
-                @Override public IgniteUuid timeoutId() {
-                    return id;
-                }
-
-                @Override public long endTime() {
-                    return start + RETRY_TIMEOUT;
-                }
-
-                @Override public void onTimeout() {
-                    depExe.execute(new DepRunnable() {
-                        @Override public void run0() {
-                            onDeployment(cfg, nodeId, topVer);
-                        }
-                    });
-                }
-            });
-        }
-    }
-
-    /**
      * @param msg Service assignments message.
      */
     private void onAssignmentsRequest(ServicesAssignmentsRequestMessage msg) {
@@ -1234,7 +1178,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                     errors.put(assign.name(), arr);
                                 }
                                 catch (IgniteCheckedException e) {
-                                    log.error("Failed to marshal deployment exception: " + th.getMessage() + ']', e);
+                                    log.error("Failed to marshal a deployment exception: " + th.getMessage() + ']', e);
                                 }
                             }
                         }
@@ -1255,7 +1199,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             ServicesSingleAssignmentsMessage locAssignsMsg = new ServicesSingleAssignmentsMessage(
                 ctx.localNodeId(),
                 ctx.clientNode(),
-                msg.exchId
+                msg.exchangeId()
             );
 
             locAssignsMsg.assigns(locAssings);
@@ -1305,9 +1249,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (!curCrd)
                             return;
 
-                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(srvcsAssigns, assignsFunc, ctx, evt);
+                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
+                            srvcsAssigns, assignsFunc, ctx, evt);
 
-                        exchangeMgr.onEvent(fut); // New exchange needed
+                        exchangeMgr.onEvent(fut);
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
                         depExe.execute(() -> {
@@ -1332,15 +1277,27 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return;
                 }
 
-                if (!curCrd)
+                if ((!curCrd && !evt.eventNode().isLocal()) && srvcsAssigns.isEmpty())
                     return;
 
-                // TODO: start full reassignment
+                switch (evt.type()) {
+                    case EVT_NODE_LEFT:
+                    case EVT_NODE_FAILED:
+                        exchangeMgr.onNodeLeft(evt.eventNode().id());
 
-                if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
-                    exchangeMgr.onNodeLeft(evt.eventNode().id());
-                else if (evt.type() == EVT_NODE_JOINED) {
-                    // TODO
+                    case EVT_NODE_JOINED:
+                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
+                            srvcsAssigns, assignsFunc, ctx, evt);
+
+                        exchangeMgr.onEvent(fut);
+
+                        break;
+
+                    default:
+                        if (log.isDebugEnabled())
+                            log.debug("Unexpected event, evt=" + evt);
+
+                        break;
                 }
             }
             finally {
@@ -1370,6 +1327,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     exchangeMgr.onReceiveSingleMessage((ServicesSingleAssignmentsMessage)msg);
                 }
+
+                // TODO: handle all service GridServiceAssignments
             }
             finally {
                 leaveBusy();

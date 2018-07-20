@@ -42,19 +42,19 @@ public class ServicesAssignmentsFunctionImpl implements ServicesAssignmentsFunct
     private final GridKernalContext ctx;
 
     /** Existing services assignments. */
-    private final Map<String, GridServiceAssignments> svcAssigns;
+    private final Map<String, GridServiceAssignments> srvcsAssigns;
 
     /** Logger. */
     private final IgniteLogger log;
 
     /**
      * @param ctx Kernal context.
-     * @param svcAssigns Existing services assignments.
+     * @param srvcsAssigns Existing services assignments.
      */
     public ServicesAssignmentsFunctionImpl(GridKernalContext ctx,
-        Map<String, GridServiceAssignments> svcAssigns) {
+        Map<String, GridServiceAssignments> srvcsAssigns) {
         this.ctx = ctx;
-        this.svcAssigns = svcAssigns;
+        this.srvcsAssigns = srvcsAssigns;
         this.log = ctx.log(getClass());
     }
 
@@ -97,7 +97,7 @@ public class ServicesAssignmentsFunctionImpl implements ServicesAssignmentsFunct
             try {
                 String name = cfg.getName();
 
-                GridServiceAssignments oldAssigns = svcAssigns.get(name);
+                GridServiceAssignments oldAssigns = srvcsAssigns.get(name);
 
                 Map<UUID, Integer> cnts = new HashMap<>();
 

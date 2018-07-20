@@ -39,25 +39,21 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /** Deployment initiator id. */
     private final UUID nodeId;
 
+    /** Exchange id. */
+    private final IgniteUuid exchId;
+
     /** Services configuration. */
     private final Collection<GridServiceAssignments> assigns;
-
-    IgniteUuid exchId;
 
     /**
      * @param nodeId Deployment initiator id.
      * @param assigns Services configuration.
      */
-    public ServicesAssignmentsRequestMessage(UUID nodeId, Collection<GridServiceAssignments> assigns) {
+    public ServicesAssignmentsRequestMessage(UUID nodeId, IgniteUuid exchId,
+        Collection<GridServiceAssignments> assigns) {
         this.nodeId = nodeId;
+        this.exchId = exchId;
         this.assigns = assigns;
-    }
-
-    /**
-     * @return Services configuration.
-     */
-    public Collection<GridServiceAssignments> assignments() {
-        return assigns;
     }
 
     /**
@@ -65,6 +61,20 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
      */
     public UUID nodeId() {
         return nodeId;
+    }
+
+    /**
+     * @return Exchange id.
+     */
+    public IgniteUuid exchangeId() {
+        return exchId;
+    }
+
+    /**
+     * @return Services configuration.
+     */
+    public Collection<GridServiceAssignments> assignments() {
+        return assigns;
     }
 
     /** {@inheritDoc} */

@@ -128,6 +128,8 @@ public class ServicesDeploymentExchangeManager {
     public void onNodeLeft(UUID nodeId) {
         synchronized (mux) {
             exchWorker.q.forEach(fut -> fut.onNodeLeft(nodeId));
+
+            mux.notifyAll();
         }
     }
 
@@ -135,13 +137,17 @@ public class ServicesDeploymentExchangeManager {
      * @param msg Services full assignments message.
      */
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
-        ServicesDeploymentExchangeFuture fut = exchWorker.fut;
+        synchronized (mux) {
+            ServicesDeploymentExchangeFuture fut = exchWorker.fut;
 
-        if (fut != null) {
-            if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
-                log.error("Unexpected services full assignments message received: [msg=" + msg + ']');
-            else
-                fut.onDone();
+            if (fut != null) {
+                if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
+                    log.error("Unexpected services full assignments message received: [msg=" + msg + ']');
+                else
+                    fut.onDone();
+            }
+
+            mux.notifyAll();
         }
     }
 
