@@ -108,7 +108,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final ConcurrentMap<String, GridServiceDeploymentFuture> depFuts = new ConcurrentHashMap<>();
 
     /** Deployment futures. */
-    private final ConcurrentMap<String, GridServiceUndeploymentFuture> undepFuts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, GridFutureAdapter<?>> undepFuts = new ConcurrentHashMap<>();
 
     /** Deployment executor service. */
     private volatile ExecutorService depExe;
@@ -683,9 +683,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             continue;
                         }
 
-                        GridServiceUndeploymentFuture fut = new GridServiceUndeploymentFuture(name);
+                        GridFutureAdapter<?> fut = new GridFutureAdapter<>();
 
-                        GridServiceUndeploymentFuture old = undepFuts.putIfAbsent(name, fut);
+                        GridFutureAdapter<?> old = undepFuts.putIfAbsent(name, fut);
 
                         if (old != null) {
                             res.add(old);
@@ -1474,7 +1474,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 undepFuts.entrySet().removeIf(e -> {
                     String svcName = e.getKey();
-                    GridServiceUndeploymentFuture fut = e.getValue();
+                    GridFutureAdapter<?> fut = e.getValue();
 
                     if (!svcsNames.contains(svcName)) {
                         fut.onDone();
