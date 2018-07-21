@@ -102,8 +102,11 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @throws Exception In case of an error.
      */
     public void init() throws Exception {
-        if (log.isDebugEnabled())
-            log.debug("Started services exchange init: [exchId=" + exchangeId() + ", locId=" + ctx.localNodeId() + ']');
+        if (log.isDebugEnabled()) {
+            log.debug("Started services exchange future init: [exchId=" + exchangeId() +
+                ", locId=" + ctx.localNodeId() +
+                ", evt=" + evt + ']');
+        }
 
         if (evt instanceof DiscoveryCustomEvent) {
             DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
@@ -138,7 +141,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         }
 
         if (log.isDebugEnabled())
-            log.debug("Finished services excange init method: [exchId=" + exchangeId() + ", locId=" + ctx.localNodeId() + ']');
+            log.debug("Finished services exchange future init: [exchId=" + exchangeId() + ", locId=" + ctx.localNodeId() + ']');
     }
 
     /**
