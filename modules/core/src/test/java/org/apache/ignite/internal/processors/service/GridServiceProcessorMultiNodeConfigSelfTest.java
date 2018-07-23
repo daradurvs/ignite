@@ -269,28 +269,29 @@ public class GridServiceProcessorMultiNodeConfigSelfTest extends GridServiceProc
     private void checkDeployOnEachNodeUpdateTopology(String name) throws Exception {
         Ignite g = randomGrid();
 
-        int newNodes = 4;
+        int newServers = 2;
 
-        CountDownLatch latch = new CountDownLatch(newNodes);
+        int newClients = 2;
+
+        CountDownLatch latch = new CountDownLatch(newServers);
 
         DummyService.exeLatch(name, latch);
 
-        startExtraNodes(2, 2);
+        startExtraNodes(newServers, newClients);
 
         try {
             latch.await();
 
-            waitForDeployment(name, nodeCount() + newNodes);
+            waitForDeployment(name, nodeCount() + newServers);
 
             // Since we start extra nodes, there may be extra start and cancel events,
             // so we check only the difference between start and cancel and
             // not start and cancel events individually.
-            assertEquals(name, newNodes,  DummyService.started(name) - DummyService.cancelled(name));
+            assertEquals(name, newServers, DummyService.started(name) - DummyService.cancelled(name));
 
-            checkCount(name, g.services().serviceDescriptors(), nodeCount() + newNodes);
-        }
-        finally {
-            stopExtraNodes(newNodes);
+            checkCount(name, g.services().serviceDescriptors(), nodeCount() + newServers);
+        } finally {
+            stopExtraNodes(newServers + newClients);
         }
 
         waitForDeployment(name, nodeCount());
