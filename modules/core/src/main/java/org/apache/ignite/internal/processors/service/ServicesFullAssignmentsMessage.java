@@ -25,6 +25,7 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.jetbrains.annotations.Nullable;
@@ -46,9 +47,11 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
     private final IgniteUuid exchId;
 
     /** Cluster services assignments. */
+    @GridToStringInclude
     private final Map<String, ServiceAssignmentsMap> assigns;
 
     /** Services deployments errors. */
+    @GridToStringInclude
     private Map<String, Collection<byte[]>> errors;
 
     /**

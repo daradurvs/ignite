@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
@@ -39,9 +40,11 @@ public class ServicesSingleAssignmentsMessage implements Message {
     private static final long serialVersionUID = 0L;
 
     /** Local services assignments. */
+    @GridToStringInclude
     private Map<String, Integer> assigns;
 
     /** Deployment errors. */
+    @GridToStringInclude
     private Map<String, byte[]> errors;
 
     /** Sender id. */
