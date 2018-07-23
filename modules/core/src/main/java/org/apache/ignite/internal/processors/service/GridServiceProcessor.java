@@ -1658,4 +1658,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return S.toString(InitialServicesData.class, this);
         }
     }
+
+    /**
+     * @return Unmodifiable map of current services assignments.
+     */
+    public Map<String, GridServiceAssignments> assignments() {
+        return Collections.unmodifiableMap(srvcsAssigns);
+    }
 }
