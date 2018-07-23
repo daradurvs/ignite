@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.io.Serializable;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,6 +64,7 @@ import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.A;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -74,6 +76,7 @@ import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
 import org.apache.ignite.services.ServiceDescriptor;
+import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.apache.ignite.thread.IgniteThreadFactory;
 import org.apache.ignite.thread.OomExceptionHandler;
 import org.jetbrains.annotations.Nullable;
@@ -85,6 +88,7 @@ import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
+import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
 import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT;
@@ -278,6 +282,35 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
+    }
+
+    /** {@inheritDoc} */
+    @Override public void collectGridNodeData(DiscoveryDataBag dataBag) {
+        if (!isLocalNodeCoordinator(ctx.discovery().topologyVersionEx()))
+            return;
+
+        synchronized (mux) {
+            if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
+                InitialServicesData initData = new InitialServicesData(new ArrayList<>(srvcsAssigns.values()));
+
+                dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
+            }
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
+        synchronized (mux) {
+            InitialServicesData initData = (InitialServicesData)data.commonData();
+
+            for (GridServiceAssignments assign : initData.assigns)
+                srvcsAssigns.put(assign.name(), assign);
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Nullable @Override public DiscoveryDataExchangeType discoveryDataType() {
+        return SERVICE_PROC;
     }
 
     /** {@inheritDoc} */
@@ -1256,7 +1289,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         }
 
                         ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
-                            srvcsAssigns, assignsFunc, ctx, evt);
+                            srvcsAssigns, assignsFunc, ctx, evt, discoCache.version());
 
                         exchangeMgr.onEvent(fut);
                     }
@@ -1305,7 +1338,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     case EVT_NODE_JOINED:
                         if (!srvcsAssigns.isEmpty()) {
                             ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
-                                srvcsAssigns, assignsFunc, ctx, evt);
+                                srvcsAssigns, assignsFunc, ctx, evt, discoCache.version());
 
                             exchangeMgr.onEvent(fut);
                         }
@@ -1346,8 +1379,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     exchangeMgr.onReceiveSingleMessage((ServicesSingleAssignmentsMessage)msg);
                 }
-
-                // TODO: handle all service GridServiceAssignments
             }
             finally {
                 leaveBusy();
@@ -1419,21 +1450,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             synchronized (mux) {
                 fullAssignsMap.forEach((name, svcAssignsMap) -> {
-                    GridServiceAssignments svsAssign = srvcsAssigns.get(name);
+                    GridServiceAssignments assigns = srvcsAssigns.get(name);
 
-                    if (svsAssign != null) {
-                        svsAssign.assigns(svcAssignsMap.assigns());
+                    if (assigns != null) {
+                        assigns.topologyVersion(svcAssignsMap.topologyVersion());
+                        assigns.assigns(svcAssignsMap.assigns());
 
                         if (!ctx.clientNode()) {
-                            Integer expNum = svsAssign.assigns().get(ctx.localNodeId());
+                            Integer expNum = assigns.assigns().get(ctx.localNodeId());
 
                             if (expNum == null || expNum == 0)
                                 undeploy(name);
                             else {
                                 Collection ctxs = locSvcs.get(name);
 
-                                if (ctxs != null && expNum < ctxs.size())
-                                    redeploy(svsAssign);
+                                if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size()))
+                                    redeploy(assigns);
                             }
                         }
                     }
@@ -1605,5 +1637,25 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (busyLock != null)
             busyLock.leaveBusy();
+    }
+
+    /**
+     * Initial data container to send on joined node.
+     */
+    private static class InitialServicesData implements Serializable {
+        /** Services assignments. */
+        private ArrayList<GridServiceAssignments> assigns;
+
+        /**
+         * @param assigns Services assignments.
+         */
+        public InitialServicesData(ArrayList<GridServiceAssignments> assigns) {
+            this.assigns = assigns;
+        }
+
+        /** {@inheritDoc} */
+        @Override public String toString() {
+            return S.toString(InitialServicesData.class, this);
+        }
     }
 }

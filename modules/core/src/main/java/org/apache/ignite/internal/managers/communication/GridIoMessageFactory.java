@@ -154,7 +154,6 @@ import org.apache.ignite.internal.processors.query.schema.message.SchemaOperatio
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRequest;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
 import org.apache.ignite.internal.processors.service.ServiceAssignmentsMap;
-import org.apache.ignite.internal.processors.service.ServicesFullAssignmentsMessage;
 import org.apache.ignite.internal.processors.service.ServicesSingleAssignmentsMessage;
 import org.apache.ignite.internal.util.GridByteArrayList;
 import org.apache.ignite.internal.util.GridIntList;

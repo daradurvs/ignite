@@ -38,7 +38,7 @@ public class GridServiceAssignments implements Serializable {
     private final UUID nodeId;
 
     /** Topology version. */
-    private final long topVer;
+    private long topVer;
 
     /** Service configuration. */
     private final ServiceConfiguration cfg;
@@ -77,6 +77,13 @@ public class GridServiceAssignments implements Serializable {
      */
     public long topologyVersion() {
         return topVer;
+    }
+
+    /**
+     * @param topVer Topology version.
+     */
+    public void topologyVersion(long topVer) {
+        this.topVer = topVer;
     }
 
     /**

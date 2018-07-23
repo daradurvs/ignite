@@ -38,6 +38,9 @@ public class ServiceAssignmentsMap implements Message {
     /** Service assignments. */
     private Map<UUID, Integer> assigns;
 
+    /** Topology version. */
+    private long topVer;
+
     /**
      * Empty constructor for marshalling purposes.
      */
@@ -47,10 +50,12 @@ public class ServiceAssignmentsMap implements Message {
     /**
      * @param name Service name.
      * @param assigns Service assignments.
+     * @param topVer Topology version.
      */
-    public ServiceAssignmentsMap(String name, Map<UUID, Integer> assigns) {
+    public ServiceAssignmentsMap(String name, Map<UUID, Integer> assigns, long topVer) {
         this.name = name;
         this.assigns = assigns;
+        this.topVer = topVer;
     }
 
     /**
@@ -65,6 +70,13 @@ public class ServiceAssignmentsMap implements Message {
      */
     public void assigns(Map<UUID, Integer> assigns) {
         this.assigns = assigns;
+    }
+
+    /**
+     * @return Topology version.
+     */
+    public long topologyVersion() {
+        return topVer;
     }
 
     /** {@inheritDoc} */
@@ -87,6 +99,12 @@ public class ServiceAssignmentsMap implements Message {
 
             case 1:
                 if (!writer.writeMap("assigns", assigns, UUID, INT))
+                    return false;
+
+                writer.incrementState();
+
+            case 2:
+                if (!writer.writeLong("topVer", topVer))
                     return false;
 
                 writer.incrementState();
@@ -118,6 +136,14 @@ public class ServiceAssignmentsMap implements Message {
                     return false;
 
                 reader.incrementState();
+
+            case 2:
+                topVer = reader.readLong("topVer");
+
+                if (!reader.isLastRead())
+                    return false;
+
+                reader.incrementState();
         }
 
         return reader.afterMessageRead(ServiceAssignmentsMap.class);
@@ -130,7 +156,7 @@ public class ServiceAssignmentsMap implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 1;
+        return 3;
     }
 
     /** {@inheritDoc} */

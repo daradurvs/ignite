@@ -72,6 +72,9 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     /** Discovery event. */
     private final DiscoveryEvent evt;
 
+    /** Topology version. */
+    private final AffinityTopologyVersion evtTopVer;
+
     /** Exchange id. */
     private final IgniteUuid exchId;
 
@@ -83,13 +86,16 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param assignsFunc Services assignments function.
      * @param ctx Kernal context.
      * @param evt Discovery event.
+     * @param evtTopVer Topology version.
      */
     public ServicesDeploymentExchangeFuture(Map<String, GridServiceAssignments> srvcsAssigns,
-        ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt) {
+        ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt,
+        AffinityTopologyVersion evtTopVer) {
         this.srvcsAssigns = srvcsAssigns;
         this.assignsFunc = assignsFunc;
         this.ctx = ctx;
         this.evt = evt;
+        this.evtTopVer = evtTopVer;
         this.exchId = evt.id();
 
         this.log = ctx.log(getClass());
@@ -112,9 +118,9 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
             if (msg instanceof ServicesCancellationRequestMessage)
-                onCancellationRequest((ServicesCancellationRequestMessage)msg);
+                onCancellationRequest((ServicesCancellationRequestMessage)msg, evtTopVer.topologyVersion());
             else if (msg instanceof ServicesDeploymentRequestMessage)
-                onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, ((DiscoveryCustomEvent)evt).affinityTopologyVersion());
+                onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
             else
                 onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
         }
@@ -122,11 +128,10 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             if (!srvcsAssigns.isEmpty()) {
                 switch (evt.type()) {
                     case EVT_NODE_JOINED:
-                        // TODO: send all service GridServiceAssignments
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
 
-                        onChangedTopology(ctx.discovery().topologyVersionEx());
+                        onChangedTopology(evtTopVer);
 
                         break;
 
@@ -186,15 +191,16 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
     /**
      * @param req Services cancellation request.
+     * @param topVer Topology version.
      */
-    private void onCancellationRequest(ServicesCancellationRequestMessage req) {
+    private void onCancellationRequest(ServicesCancellationRequestMessage req, long topVer) {
         Collection<String> names = req.names();
 
         Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
         srvcsAssigns.forEach((name, svcMap) -> {
             if (!names.contains(name))
-                assigns.put(name, new ServiceAssignmentsMap(name, svcMap.assigns()));
+                assigns.put(name, new ServiceAssignmentsMap(name, svcMap.assigns(), topVer));
         });
 
         ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
@@ -212,10 +218,10 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      */
     private void checkAndProcess() {
         if (remaining.isEmpty()) {
-            ServicesFullAssignmentsMessage fullMapMsg = createFullAssignmentsMessage();
+            ServicesFullAssignmentsMessage msg = createFullAssignmentsMessage();
 
             try {
-                ctx.discovery().sendCustomEvent(fullMapMsg);
+                ctx.discovery().sendCustomEvent(msg);
             }
             catch (IgniteCheckedException e) {
                 log.error("Failed to send full services assignment across the ring.", e);
@@ -252,7 +258,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 });
 
                 fullAssigns.forEach((name, svcAssigns) -> {
-                    assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns));
+                    assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns, evt.topologyVersion()));
                 });
 
                 reassignsErrors.forEach((name, err) -> {
@@ -304,10 +310,10 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param topVer Topology version.
      */
     private void onChangedTopology(AffinityTopologyVersion topVer) {
-        ServicesFullAssignmentsMessage fullMapMsg = reassignAll(topVer);
+        ServicesFullAssignmentsMessage msg = reassignAll(topVer);
 
         try {
-            ctx.discovery().sendCustomEvent(fullMapMsg);
+            ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
             log.error("Failed to send full services assignment across the ring.", e);
@@ -328,16 +334,18 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 srvcAssigns = assignsFunc.reassign(old.configuration(), old.nodeId(), topVer);
             }
             catch (IgniteCheckedException e) {
-                log.error("Failed to calculate assignment for service, cfg=" + old.configuration(), e);
+                log.error("Failed to recalculate assignments for service, previously calculated assignments will be used, cfg=" + old.configuration(), e);
 
                 reassignsErrors.put(old.name(), e);
+
+                srvcAssigns = old;
             }
 
             if (srvcAssigns != null) {
                 if (log.isDebugEnabled())
                     log.debug("Calculated service assignments: " + srvcAssigns);
 
-                assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns.assigns()));
+                assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns.assigns(), evt.topologyVersion()));
             }
         });
 
