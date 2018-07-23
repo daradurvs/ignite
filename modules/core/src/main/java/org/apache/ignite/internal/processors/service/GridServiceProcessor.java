@@ -101,7 +101,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Discovery events to listen. */
     private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
 
-    /** Local service instances. */
+    /** Local services instances. */
     private final Map<String, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
 
     /** Deployment futures. */
@@ -588,7 +588,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         ctx.discovery().sendCustomEvent(req);
 
                         if (log.isDebugEnabled()) {
-                            log.debug("Services sent to deploy: " +
+                            log.debug("Services have been sent to deploy: " +
                                 "[locId=" + ctx.localNodeId() +
                                 ", client=" + ctx.clientNode() +
                                 ", cfgs=" + cfgsToDeploy + ']');
@@ -713,7 +713,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         ctx.discovery().sendCustomEvent(msg);
 
                         if (log.isDebugEnabled()) {
-                            log.debug("Services sent to cancel: " +
+                            log.debug("Services have been sent to cancel: " +
                                 "[locId:" + ctx.localNodeId() +
                                 ", client:=" + ctx.clientNode() +
                                 ", names=" + svcsNamesToCancel + ']');
