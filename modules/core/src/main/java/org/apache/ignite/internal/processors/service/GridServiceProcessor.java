@@ -1449,6 +1449,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             Map<String, Collection<byte[]>> fullErrors = msg.errors();
 
             synchronized (mux) {
+                fullErrors.forEach((name, errors) -> {
+                    GridServiceDeploymentFuture fut = depFuts.remove(name);
+
+                    if (fut != null)
+                        processDeploymentErrors(fut, errors);
+                });
+
                 fullAssignsMap.forEach((name, svcAssignsMap) -> {
                     GridServiceAssignments assigns = srvcsAssigns.get(name);
 
@@ -1484,13 +1491,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         else
                             processDeploymentErrors(fut, errors);
                     }
-                });
-
-                fullErrors.forEach((name, errors) -> {
-                    GridServiceDeploymentFuture fut = depFuts.remove(name);
-
-                    if (fut != null)
-                        processDeploymentErrors(fut, errors);
                 });
 
                 Set<String> svcsNames = fullAssignsMap.keySet();

@@ -52,7 +52,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
 
     /** Errors occurred during assignments calculation. */
-    private final Map<String, Throwable> reassignsErrors = new HashMap<>();
+    private final Map<String, Throwable> deploymentsErrors = new HashMap<>();
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -160,23 +160,38 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
 
         for (ServiceConfiguration cfg : cfgs) {
-            GridServiceAssignments svcAssigns;
+            GridServiceAssignments srvcAssigns = srvcsAssigns.get(cfg.getName());
 
-            try {
-                svcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+            Throwable th = null;
+
+            if (srvcAssigns != null && !srvcAssigns.configuration().equalsIgnoreNodeFilter(cfg)) {
+                th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                    "different configuration) [deployed=" + srvcAssigns.configuration() + ", new=" + cfg + ']');
             }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to calculate assignment for service, cfg=" + cfg, e);
+            else {
+                try {
+                    srvcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+                }
+                catch (IgniteCheckedException e) {
+                    th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+                }
 
-                reassignsErrors.put(cfg.getName(), e);
+                if (srvcAssigns != null && srvcAssigns.assigns().isEmpty())
+                    th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
+            }
+
+            if (th != null) {
+                log.error(th.getMessage(), th);
+
+                deploymentsErrors.put(cfg.getName(), th);
 
                 continue;
             }
 
             if (log.isDebugEnabled())
-                log.debug("Calculated service assignments: " + svcAssigns);
+                log.debug("Calculated service assignments: " + srvcAssigns);
 
-            assigns.add(svcAssigns);
+            assigns.add(srvcAssigns);
         }
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId, assigns);
@@ -241,27 +256,27 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             final Map<String, Collection<byte[]>> fullErrors = new HashMap<>();
 
             try {
-                singleAssignsMsgs.forEach((uuid, singleMsg) -> {
-                    singleMsg.assigns().forEach((name, num) -> {
-                        if (num != 0) {
-                            Map<UUID, Integer> cur = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
+                singleAssignsMsgs.forEach((nodeId, msg) -> {
+                    msg.assigns().forEach((name, num) -> {
+                        if (num != null && num != 0) {
+                            Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
 
-                            cur.put(uuid, num);
+                            srvcAssigns.put(nodeId, num);
                         }
                     });
 
-                    singleMsg.errors().forEach((name, err) -> {
+                    msg.errors().forEach((name, err) -> {
                         Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(name, e -> new ArrayList<>());
 
                         srvcErrors.add(err);
                     });
                 });
 
-                fullAssigns.forEach((name, svcAssigns) -> {
-                    assigns.put(name, new ServiceAssignmentsMap(name, svcAssigns, evt.topologyVersion()));
+                fullAssigns.forEach((name, srvcAssigns) -> {
+                    assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns, evt.topologyVersion()));
                 });
 
-                reassignsErrors.forEach((name, err) -> {
+                deploymentsErrors.forEach((name, err) -> {
                     byte[] arr = null;
 
                     try {
@@ -336,7 +351,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             catch (IgniteCheckedException e) {
                 log.error("Failed to recalculate assignments for service, previously calculated assignments will be used, cfg=" + old.configuration(), e);
 
-                reassignsErrors.put(old.name(), e);
+                deploymentsErrors.put(old.name(), e);
 
                 srvcAssigns = old;
             }
@@ -351,7 +366,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
         Map<String, Collection<byte[]>> errors = new HashMap<>();
 
-        reassignsErrors.forEach((name, err) -> {
+        deploymentsErrors.forEach((name, err) -> {
             byte[] arr = null;
 
             try {
