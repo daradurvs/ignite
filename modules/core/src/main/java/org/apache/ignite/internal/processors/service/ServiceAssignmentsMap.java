@@ -20,6 +20,8 @@ package org.apache.ignite.internal.processors.service;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
+
+import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
@@ -36,6 +38,7 @@ public class ServiceAssignmentsMap implements Message {
     private String name;
 
     /** Service assignments. */
+    @GridToStringInclude
     private Map<UUID, Integer> assigns;
 
     /** Topology version. */

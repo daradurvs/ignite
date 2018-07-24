@@ -159,6 +159,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         String servicesCompatibilityMode = getString(IGNITE_SERVICES_COMPATIBILITY_MODE);
 
         srvcCompatibilitySysProp = servicesCompatibilityMode == null ? null : Boolean.valueOf(servicesCompatibilityMode);
+
+        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
+
+        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
     }
 
     /** {@inheritDoc} */
@@ -192,9 +196,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
-        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
-
-        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -222,10 +223,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         U.shutdownNow(GridServiceProcessor.class, depExe, log);
 
         exchangeMgr.stopProcessing();
-
-        ctx.event().removeDiscoveryEventListener(discoLsnr);
-
-        ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnr);
 
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 

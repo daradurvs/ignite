@@ -21,21 +21,21 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.IgniteLogger;
-import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -79,7 +79,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final IgniteUuid exchId;
 
     /** Remaining nodes to received single node assignments message. */
-    private final Set<UUID> remaining;
+    private final Set<UUID> remaining = new HashSet<>();
 
     /**
      * @param srvcsAssigns Services assignments.
@@ -99,7 +99,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.exchId = evt.id();
 
         this.log = ctx.log(getClass());
-        this.remaining = ctx.discovery().nodes(evt.topologyVersion()).stream().map(ClusterNode::id).distinct().collect(Collectors.toSet());
+        this.remaining.addAll(F.nodeIds(evt.topologyNodes()));
     }
 
     /**
