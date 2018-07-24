@@ -196,6 +196,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
+        synchronized (mux) {
+            srvcsAssigns.forEach((name, assign) -> {
+                redeploy(assign);
+            });
+        }
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -273,8 +278,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         cancelFutures(depFuts, err);
         cancelFutures(undepFuts, err);
-
-        srvcsAssigns.clear();
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");

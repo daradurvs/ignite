@@ -124,7 +124,7 @@ public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
     public void testServersWithoutPersistence() throws Exception {
         persistence = false;
 
-        checkRedeployment(2, 0, F.alwaysTrue(), 2, false, false);
+        checkRedeployment(2, 0, F.alwaysTrue(), 2, false, true);
     }
 
     /**
@@ -133,7 +133,7 @@ public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
     public void testClientsWithoutPersistence() throws Exception {
         persistence = false;
 
-        checkRedeployment(2, 2, CLIENT_FILTER, 2, false, false);
+        checkRedeployment(2, 2, CLIENT_FILTER, 2, false, true);
     }
 
     /**
