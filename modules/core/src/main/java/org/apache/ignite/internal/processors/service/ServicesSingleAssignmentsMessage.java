@@ -50,9 +50,6 @@ public class ServicesSingleAssignmentsMessage implements Message {
     /** Sender id. */
     private UUID snd;
 
-    /** Sender client mode flag. */
-    private boolean client;
-
     /** Exchange id. */
     private IgniteUuid exchId;
 
@@ -64,12 +61,10 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
     /**
      * @param snd Sender id.
-     * @param client Sender client mode flag.
      * @param exchId Exchange id.
      */
-    public ServicesSingleAssignmentsMessage(UUID snd, boolean client, IgniteUuid exchId) {
+    public ServicesSingleAssignmentsMessage(UUID snd, IgniteUuid exchId) {
         this.snd = snd;
-        this.client = client;
         this.exchId = exchId;
         this.errors = Collections.EMPTY_MAP;
     }
@@ -110,13 +105,6 @@ public class ServicesSingleAssignmentsMessage implements Message {
     }
 
     /**
-     * @return Sender client mode flag.
-     */
-    public boolean client() {
-        return client;
-    }
-
-    /**
      * @return Exchange id.
      */
     public IgniteUuid exchangeId() {
@@ -154,12 +142,6 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 writer.incrementState();
 
             case 3:
-                if (!writer.writeBoolean("client", client))
-                    return false;
-
-                writer.incrementState();
-
-            case 4:
                 if (!writer.writeIgniteUuid("exchId", exchId))
                     return false;
 
@@ -202,14 +184,6 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
 
             case 3:
-                client = reader.readBoolean("client");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 4:
                 exchId = reader.readIgniteUuid("exchId");
 
                 if (!reader.isLastRead())
@@ -228,7 +202,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 5;
+        return 4;
     }
 
     /** {@inheritDoc} */

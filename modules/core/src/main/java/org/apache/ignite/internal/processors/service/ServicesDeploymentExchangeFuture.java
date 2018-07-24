@@ -311,8 +311,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
             if (remaining.remove(msg.senderId())) {
-                if (!msg.client())
-                    singleAssignsMsgs.put(msg.senderId(), msg);
+                singleAssignsMsgs.put(msg.senderId(), msg);
 
                 checkAndProcess();
             }

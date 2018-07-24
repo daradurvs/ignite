@@ -223,8 +223,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         exchangeMgr.stopProcessing();
 
-        if (!ctx.clientNode())
-            ctx.event().removeDiscoveryEventListener(discoLsnr);
+        ctx.event().removeDiscoveryEventListener(discoLsnr);
 
         ctx.io().removeMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -1182,56 +1181,48 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             Map<String, Integer> locAssings;
 
             synchronized (mux) {
-                if (!ctx.clientNode()) {
-                    locAssings = new HashMap<>();
+                locAssings = new HashMap<>();
 
-                    for (GridServiceAssignments assign : assigns) {
-                        String svcName = assign.name();
+                for (GridServiceAssignments assign : assigns) {
+                    String svcName = assign.name();
 
-                        srvcsAssigns.putIfAbsent(svcName, assign);
+                    srvcsAssigns.putIfAbsent(svcName, assign);
 
-                        Integer expNum = assign.assigns().get(ctx.localNodeId());
+                    Integer expNum = assign.assigns().get(ctx.localNodeId());
 
-                        boolean needRedeploy = false;
+                    boolean needRedeploy = false;
 
-                        if (expNum != null && expNum > 0) {
-                            Collection<ServiceContextImpl> ctxs = locSvcs.get(svcName);
+                    if (expNum != null && expNum > 0) {
+                        Collection<ServiceContextImpl> ctxs = locSvcs.get(svcName);
 
-                            needRedeploy = (ctxs == null) || (ctxs.size() < expNum);
+                        needRedeploy = (ctxs == null) || (ctxs.size() < expNum);
+                    }
+
+                    if (needRedeploy) {
+                        try {
+                            redeploy(assign);
                         }
-
-                        if (needRedeploy) {
+                        catch (Error | RuntimeException t) {
                             try {
-                                redeploy(assign);
-                            }
-                            catch (Error | RuntimeException t) {
-                                try {
-                                    byte[] arr = U.marshal(ctx, t);
+                                byte[] arr = U.marshal(ctx, t);
 
-                                    errors.put(assign.name(), arr);
-                                }
-                                catch (IgniteCheckedException e) {
-                                    log.error("Failed to marshal a deployment exception: " + t.getMessage() + ']', e);
-                                }
+                                errors.put(assign.name(), arr);
+                            }
+                            catch (IgniteCheckedException e) {
+                                log.error("Failed to marshal a deployment exception: " + t.getMessage() + ']', e);
                             }
                         }
                     }
-
-                    locSvcs.forEach((name, ctxs) -> {
-                        if (!ctxs.isEmpty())
-                            locAssings.put(name, ctxs.size());
-                    });
                 }
-                else {
-                    assigns.forEach(assign -> srvcsAssigns.putIfAbsent(assign.name(), assign));
 
-                    locAssings = Collections.emptyMap();
-                }
+                locSvcs.forEach((name, ctxs) -> {
+                    if (!ctxs.isEmpty())
+                        locAssings.put(name, ctxs.size());
+                });
             }
 
             ServicesSingleAssignmentsMessage msg = new ServicesSingleAssignmentsMessage(
                 ctx.localNodeId(),
-                ctx.clientNode(),
                 req.exchangeId()
             );
 
@@ -1463,17 +1454,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         assigns.topologyVersion(svcAssignsMap.topologyVersion());
                         assigns.assigns(svcAssignsMap.assigns());
 
-                        if (!ctx.clientNode()) {
-                            Integer expNum = assigns.assigns().get(ctx.localNodeId());
+                        Integer expNum = assigns.assigns().get(ctx.localNodeId());
 
-                            if (expNum == null || expNum == 0)
-                                undeploy(name);
-                            else {
-                                Collection ctxs = locSvcs.get(name);
+                        if (expNum == null || expNum == 0)
+                            undeploy(name);
+                        else {
+                            Collection ctxs = locSvcs.get(name);
 
-                                if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size()))
-                                    redeploy(assigns);
-                            }
+                            if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size()))
+                                redeploy(assigns);
                         }
                     }
                     else if (log.isDebugEnabled()) {
