@@ -866,8 +866,6 @@ public class GridCacheProcessor extends GridProcessorAdapter {
         if (!active)
             return;
 
-        ctx.service().onUtilityCacheStarted();
-
         final AffinityTopologyVersion startTopVer = ctx.discovery().localJoin().joinTopologyVersion();
 
         final List<IgniteInternalFuture> syncFuts = new ArrayList<>(caches.size());
@@ -2244,7 +2242,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
      */
     void forceCloseCaches(ExchangeActions exchActions) {
         assert exchActions != null && !exchActions.cacheStopRequests().isEmpty();
-
+      
         processCacheStopRequestOnExchangeDone(exchActions);
     }
 
