@@ -252,11 +252,11 @@ public class ServicesDeploymentExchangeManager {
                         break;
                     }
                     catch (IgniteCheckedException e) {
-                        log.error("Error occurred during waiting for exchange future completion " +
-                            "or timeout had been reached, timeout=" + timeout, e);
-
                         if (isStopped)
                             return;
+
+                        log.error("Error occurred during waiting for exchange future completion " +
+                            "or timeout had been reached, timeout=" + timeout, e);
                     }
                 }
             }
