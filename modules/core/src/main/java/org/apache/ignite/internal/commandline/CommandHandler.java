@@ -145,8 +145,8 @@ public class CommandHandler {
     /** */
     private static final String CMD_USER = "--user";
 
-    /** Force option is used for auto confirmation. */
-    private static final String CMD_FORCE = "--force";
+    /** Option is used for auto confirmation. */
+    private static final String CMD_AUTO_CONFIRMATION = "--yes";
 
     /** */
     protected static final String CMD_PING_INTERVAL = "--ping-interval";
@@ -162,7 +162,7 @@ public class CommandHandler {
         AUX_COMMANDS.add(CMD_PORT);
         AUX_COMMANDS.add(CMD_PASSWORD);
         AUX_COMMANDS.add(CMD_USER);
-        AUX_COMMANDS.add(CMD_FORCE);
+        AUX_COMMANDS.add(CMD_AUTO_CONFIRMATION);
         AUX_COMMANDS.add(CMD_PING_INTERVAL);
         AUX_COMMANDS.add(CMD_PING_TIMEOUT);
     }
@@ -353,9 +353,6 @@ public class CommandHandler {
      * @return Prompt text if confirmation needed, otherwise {@code null}.
      */
     private String confirmationPrompt(Arguments args) {
-        if (args.force())
-            return null;
-
         String str = null;
 
         switch (args.command()) {
@@ -1076,7 +1073,13 @@ public class CommandHandler {
 
                 ClusterNode key = entry.getKey();
 
-                log(key.toString());
+                log(key.getClass().getSimpleName() + " [id=" + key.id() +
+                    ", addrs=" + key.addresses() +
+                    ", order=" + key.order() +
+                    ", ver=" + key.version() +
+                    ", isClient=" + key.isClient() +
+                    ", consistentId=" + key.consistentId() +
+                    "]");
 
                 for (VisorTxInfo info : entry.getValue().getInfos())
                     log("    Tx: [xid=" + info.getXid() +
@@ -1088,11 +1091,19 @@ public class CommandHandler {
                         ", concurrency=" + info.getConcurrency() +
                         ", timeout=" + info.getTimeout() +
                         ", size=" + info.getSize() +
-                        ", dhtNodes=" + F.transform(info.getPrimaryNodes(), new IgniteClosure<UUID, String>() {
-                        @Override public String apply(UUID id) {
-                            return U.id8(id);
-                        }
-                    }) +
+                        ", dhtNodes=" + (info.getPrimaryNodes() == null ? "N/A" :
+                        F.transform(info.getPrimaryNodes(), new IgniteClosure<UUID, String>() {
+                            @Override public String apply(UUID id) {
+                                return U.id8(id);
+                            }
+                        })) +
+                        ", nearXid=" + info.getNearXid() +
+                        ", parentNodeIds=" + (info.getMasterNodeIds() == null ? "N/A" :
+                        F.transform(info.getMasterNodeIds(), new IgniteClosure<UUID, String>() {
+                            @Override public String apply(UUID id) {
+                                return U.id8(id);
+                            }
+                        })) +
                         ']');
             }
         }
@@ -1338,7 +1349,7 @@ public class CommandHandler {
 
         String walArgs = "";
 
-        boolean force = false;
+        boolean autoConfirmation = false;
 
         CacheArguments cacheArgs = null;
 
@@ -1460,8 +1471,8 @@ public class CommandHandler {
 
                         break;
 
-                    case CMD_FORCE:
-                        force = true;
+                    case CMD_AUTO_CONFIRMATION:
+                        autoConfirmation = true;
 
                         break;
 
@@ -1488,7 +1499,7 @@ public class CommandHandler {
             throw new IllegalArgumentException("Both user and password should be specified");
 
         return new Arguments(cmd, host, port, user, pwd, baselineAct, baselineArgs, txArgs, cacheArgs, walAct, walArgs,
-                pingTimeout, pingInterval, force);
+                pingTimeout, pingInterval, autoConfirmation);
     }
 
     /**
@@ -1821,22 +1832,22 @@ public class CommandHandler {
                 log("This utility can do the following commands:");
 
                 usage("  Activate cluster:", ACTIVATE);
-                usage("  Deactivate cluster:", DEACTIVATE, " [--force]");
+                usage("  Deactivate cluster:", DEACTIVATE, " [" + CMD_AUTO_CONFIRMATION + "]");
                 usage("  Print current cluster state:", STATE);
                 usage("  Print cluster baseline topology:", BASELINE);
-                usage("  Add nodes into baseline topology:", BASELINE, " add consistentId1[,consistentId2,....,consistentIdN] [--force]");
-                usage("  Remove nodes from baseline topology:", BASELINE, " remove consistentId1[,consistentId2,....,consistentIdN] [--force]");
-                usage("  Set baseline topology:", BASELINE, " set consistentId1[,consistentId2,....,consistentIdN] [--force]");
-                usage("  Set baseline topology based on version:", BASELINE, " version topologyVersion [--force]");
+                usage("  Add nodes into baseline topology:", BASELINE, " add consistentId1[,consistentId2,....,consistentIdN] [" + CMD_AUTO_CONFIRMATION + "]");
+                usage("  Remove nodes from baseline topology:", BASELINE, " remove consistentId1[,consistentId2,....,consistentIdN] [" + CMD_AUTO_CONFIRMATION + "]");
+                usage("  Set baseline topology:", BASELINE, " set consistentId1[,consistentId2,....,consistentIdN] [" + CMD_AUTO_CONFIRMATION + "]");
+                usage("  Set baseline topology based on version:", BASELINE, " version topologyVersion [" + CMD_AUTO_CONFIRMATION + "]");
                 usage("  List or kill transactions:", TX, " [xid XID] [minDuration SECONDS] " +
                     "[minSize SIZE] [label PATTERN_REGEX] [servers|clients] " +
-                    "[nodes consistentId1[,consistentId2,....,consistentIdN] [limit NUMBER] [order DURATION|SIZE|", CMD_TX_ORDER_START_TIME, "] [kill] [--force]");
+                    "[nodes consistentId1[,consistentId2,....,consistentIdN] [limit NUMBER] [order DURATION|SIZE|", CMD_TX_ORDER_START_TIME, "] [kill] [" + CMD_AUTO_CONFIRMATION + "]");
 
                 if(enableExperimental) {
                     usage("  Print absolute paths of unused archived wal segments on each node:", WAL,
                             " print [consistentId1,consistentId2,....,consistentIdN]");
                     usage("  Delete unused archived wal segments on each node:", WAL,
-                            " delete [consistentId1,consistentId2,....,consistentIdN] [--force]");
+                            " delete [consistentId1,consistentId2,....,consistentIdN] [" + CMD_AUTO_CONFIRMATION + "]");
                 }
 
                 log("  View caches information in a cluster. For more details type:");
@@ -1844,7 +1855,7 @@ public class CommandHandler {
                 nl();
 
                 log("By default commands affecting the cluster require interactive confirmation.");
-                log("Use --force option to disable it.");
+                log("Use " + CMD_AUTO_CONFIRMATION + " option to disable it.");
                 nl();
 
                 log("Default values:");
@@ -1866,7 +1877,7 @@ public class CommandHandler {
 
             Arguments args = parseAndValidate(rawArgs);
 
-            if (!confirm(args)) {
+            if (!args.autoConfirmation() && !confirm(args)) {
                 log("Operation cancelled.");
 
                 return EXIT_CODE_OK;
