@@ -1239,48 +1239,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         /** If local node coordinator or not. */
         private volatile boolean crd = false;
 
-        /**
-         * Check that listening-in topology version is the latest and wait until exchange is finished.
-         *
-         * @param initTopVer listening-in topology version.
-         * @return {@code True} if current event is not last and should be skipped.
-         */
-        private boolean skipExchange(final AffinityTopologyVersion initTopVer) {
-            AffinityTopologyVersion pendingTopVer = null;
-            AffinityTopologyVersion newTopVer;
-
-            if (!initTopVer.equals(newTopVer = currTopVer))
-                pendingTopVer = newTopVer;
-            else {
-                IgniteInternalFuture<?> affReadyFut = ctx.cache().context().exchange().affinityReadyFuture(initTopVer);
-
-                if (affReadyFut != null) {
-                    try {
-                        affReadyFut.get();
-                    }
-                    catch (IgniteCheckedException e) {
-                        U.error(log, "Failed to wait for affinity ready future " +
-                            "(the assignment will be recalculated anyway)", e);
-                    }
-                }
-
-                // If exchange already moved forward - skip current version.
-                if (!initTopVer.equals(newTopVer = currTopVer))
-                    pendingTopVer = newTopVer;
-            }
-
-            boolean skipExchange = pendingTopVer != null;
-
-            if (skipExchange && log.isInfoEnabled()) {
-                log.info("Service processor detected a topology change during " +
-                    "assignments calculation (will abort current iteration and " +
-                    "re-calculate on the newer version): " +
-                    "[topVer=" + initTopVer + ", newTopVer=" + pendingTopVer + ']');
-            }
-
-            return skipExchange;
-        }
-
         /** {@inheritDoc} */
         @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
             if (!enterBusy())
