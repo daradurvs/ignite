@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.internal.processors.cache.GridCacheInternal;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -31,15 +30,15 @@ import org.apache.ignite.services.ServiceConfiguration;
 /**
  * Service per-node assignment.
  */
-public class GridServiceAssignments implements Serializable, GridCacheInternal {
+public class GridServiceAssignments implements Serializable {
     /** Serialization version. */
     private static final long serialVersionUID = 0L;
 
-    /** Node ID. */
+    /** Deployment initiator node ID. */
     private final UUID nodeId;
 
     /** Topology version. */
-    private final long topVer;
+    private long topVer;
 
     /** Service configuration. */
     private final ServiceConfiguration cfg;
@@ -78,6 +77,13 @@ public class GridServiceAssignments implements Serializable, GridCacheInternal {
      */
     public long topologyVersion() {
         return topVer;
+    }
+
+    /**
+     * @param topVer Topology version.
+     */
+    public void topologyVersion(long topVer) {
+        this.topVer = topVer;
     }
 
     /**

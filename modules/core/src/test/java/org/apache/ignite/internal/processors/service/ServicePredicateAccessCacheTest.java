@@ -83,28 +83,26 @@ public class ServicePredicateAccessCacheTest extends GridCommonAbstractTest {
 
         latch = new CountDownLatch(1);
 
-        final ClusterGroup grp = ignite0.cluster().forPredicate(new IgnitePredicate<ClusterNode>() {
-            @Override public boolean apply(ClusterNode node) {
-                System.out.println("Predicated started [thread=" + Thread.currentThread().getName() + ']');
+        final ClusterGroup grp = ignite0.cluster().forPredicate((IgnitePredicate<ClusterNode>)node -> {
+            System.out.println("Predicated started [thread=" + Thread.currentThread().getName() + ']');
 
-                latch.countDown();
+            latch.countDown();
 
-                try {
-                    Thread.sleep(3000);
-                }
-                catch (InterruptedException ignore) {
-                    // No-op.
-                }
-
-                System.out.println("Call contains key [thread=" + Thread.currentThread().getName() + ']');
-
-                boolean ret = Ignition.localIgnite().cache("testCache").containsKey(node.id().toString());
-
-                System.out.println("After contains key [ret=" + ret +
-                    ", thread=" + Thread.currentThread().getName() + ']');
-
-                return ret;
+            try {
+                Thread.sleep(3000);
             }
+            catch (InterruptedException ignore) {
+                // No-op.
+            }
+
+            System.out.println("Call contains key [thread=" + Thread.currentThread().getName() + ']');
+
+            boolean ret = Ignition.localIgnite().cache("testCache").containsKey(node.id().toString());
+
+            System.out.println("After contains key [ret=" + ret +
+                ", thread=" + Thread.currentThread().getName() + ']');
+
+            return ret;
         });
 
         IgniteInternalFuture<?> fut = GridTestUtils.runAsync(new Callable<Void>() {
