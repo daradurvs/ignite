@@ -1442,6 +1442,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     GridServiceAssignments srvcAssigns = srvcsAssigns.get(name);
 
                     if (srvcAssigns != null) {
+                        srvcAssigns.topologyVersion(assigns.topologyVersion());
+                        srvcAssigns.assigns(assigns.assigns());
+
                         Integer expNum = srvcAssigns.assigns().get(ctx.localNodeId());
 
                         if (expNum == null || expNum == 0)
@@ -1452,9 +1455,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size()))
                                 redeploy(srvcAssigns);
                         }
-
-                        srvcAssigns.topologyVersion(assigns.topologyVersion());
-                        srvcAssigns.assigns(assigns.assigns());
                     }
                     else if (log.isDebugEnabled()) {
                         log.debug("Unexpected state: service assignments are contained in full map, " +
