@@ -65,7 +65,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private Map<String, GridServiceAssignments> srvcsAssigns;
 
     /** Services assignments function. */
-    private final ServicesAssignmentsFunction assignsFunc;
+    private final ServiceAssignmentsFunction assignsFunc;
 
     /** Kernal context. */
     private final GridKernalContext ctx;
@@ -95,7 +95,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param evtTopVer Topology version.
      */
     public ServicesDeploymentExchangeFuture(Map<String, GridServiceAssignments> srvcsAssigns,
-        ServicesAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt,
+        ServiceAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt,
         AffinityTopologyVersion evtTopVer) {
         this.srvcsAssigns = srvcsAssigns;
         this.assignsFunc = assignsFunc;

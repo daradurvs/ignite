@@ -23,11 +23,11 @@ import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
- * Services assignments function.
+ * Service assignments function.
  *
  * Defines methods to calculate service's assignments.
  */
-public interface ServicesAssignmentsFunction {
+public interface ServiceAssignmentsFunction {
     /**
      * Reassigns service to nodes on given topology version.
      *

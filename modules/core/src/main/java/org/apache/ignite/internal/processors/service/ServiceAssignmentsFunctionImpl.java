@@ -37,7 +37,7 @@ import org.apache.ignite.services.ServiceConfiguration;
 /**
  * Services assignments function.
  */
-public class ServicesAssignmentsFunctionImpl implements ServicesAssignmentsFunction {
+public class ServiceAssignmentsFunctionImpl implements ServiceAssignmentsFunction {
     /** Kernal context. */
     private final GridKernalContext ctx;
 
@@ -51,7 +51,7 @@ public class ServicesAssignmentsFunctionImpl implements ServicesAssignmentsFunct
      * @param ctx Kernal context.
      * @param srvcsAssigns Existing services assignments.
      */
-    public ServicesAssignmentsFunctionImpl(GridKernalContext ctx,
+    public ServiceAssignmentsFunctionImpl(GridKernalContext ctx,
         Map<String, GridServiceAssignments> srvcsAssigns) {
         this.ctx = ctx;
         this.srvcsAssigns = srvcsAssigns;

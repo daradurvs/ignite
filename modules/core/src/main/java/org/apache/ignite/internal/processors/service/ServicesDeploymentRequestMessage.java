@@ -23,6 +23,7 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -42,6 +43,7 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
     private final UUID nodeId;
 
     /** Services configuration. */
+    @GridToStringInclude
     private final Collection<ServiceConfiguration> cfgs;
 
     /**
