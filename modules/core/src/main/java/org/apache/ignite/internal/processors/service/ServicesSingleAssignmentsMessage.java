@@ -66,7 +66,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
     public ServicesSingleAssignmentsMessage(UUID snd, IgniteUuid exchId) {
         this.snd = snd;
         this.exchId = exchId;
-        this.errors = Collections.EMPTY_MAP;
+        this.errors = Collections.emptyMap();
     }
 
     /**
