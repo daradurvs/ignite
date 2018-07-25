@@ -104,6 +104,8 @@ public class IgniteServiceProxyTimeoutInitializedTest extends GridCommonAbstract
      */
     @SuppressWarnings({"Convert2Lambda", "ThrowableResultOfMethodCallIgnored"})
     public void testUnavailableService() throws Exception {
+        fail("https://issues.apache.org/jira/browse/IGNITE-9076");
+
         srvc = new TestWaitServiceImpl();
 
         latch1 = new CountDownLatch(1);
@@ -144,6 +146,8 @@ public class IgniteServiceProxyTimeoutInitializedTest extends GridCommonAbstract
      */
     @SuppressWarnings({"ThrowableResultOfMethodCallIgnored", "Convert2Lambda"})
     public void testServiceException() throws Exception {
+        fail("https://issues.apache.org/jira/browse/IGNITE-9076");
+        
         srvc = new HangServiceImpl();
 
         // Start service grid.
