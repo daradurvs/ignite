@@ -43,7 +43,6 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridClosureCallMode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteEx;
-import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.typedef.F;
@@ -66,9 +65,6 @@ public class GridServiceProxy<T> implements Serializable {
 
     /** */
     private static final IgniteProductVersion SVC_POOL_SINCE_VER = IgniteProductVersion.fromString("1.8.5");
-
-    /** Service acquire attempts number. */
-    private static final int ATTEMPTS = 10;
 
     /** Grid logger. */
     @GridToStringExclude
@@ -166,8 +162,6 @@ public class GridServiceProxy<T> implements Serializable {
         try {
             final long startTime = U.currentTimeMillis();
 
-            int attempt = 0;
-
             while (true) {
                 ClusterNode node = null;
 
@@ -187,8 +181,6 @@ public class GridServiceProxy<T> implements Serializable {
                             if (svc != null)
                                 return mtd.invoke(svc, args);
                         }
-                        else if (log.isDebugEnabled())
-                            log.debug("Service was not found on local node (will retry).");
                     }
                     else {
                         if (node.version().compareTo(SVC_POOL_SINCE_VER) >= 0)
@@ -204,35 +196,17 @@ public class GridServiceProxy<T> implements Serializable {
                             true).get();
                     }
                 }
-                catch (GridServiceNotFoundException | ClusterTopologyCheckedException e) {
-                    if (log.isDebugEnabled())
-                        log.debug("Service was not found or topology changed (will retry): " + e.getMessage());
-
-                    throw e;
-                }
                 catch (RuntimeException | Error e) {
                     throw e;
                 }
                 catch (IgniteCheckedException e) {
-                    // Check if ignorable exceptions are in the cause chain.
-                    Throwable ignorableCause = X.cause(e, GridServiceNotFoundException.class);
+                    // Rethrow original service method exception so that calling user code can handle it correctly.
+                    ServiceProxyException svcProxyE = X.cause(e, ServiceProxyException.class);
 
-                    if (ignorableCause == null)
-                        ignorableCause = X.cause(e, ClusterTopologyCheckedException.class);
+                    if (svcProxyE != null)
+                        throw svcProxyE.getCause();
 
-                    if (ignorableCause != null) {
-                        if (log.isDebugEnabled())
-                            log.debug("Service was not found or topology changed (will retry): " + ignorableCause.getMessage());
-                    }
-                    else {
-                        // Rethrow original service method exception so that calling user code can handle it correctly.
-                        ServiceProxyException svcProxyE = X.cause(e, ServiceProxyException.class);
-
-                        if (svcProxyE != null)
-                            throw svcProxyE.getCause();
-
-                        throw U.convertException(e);
-                    }
+                    throw U.convertException(e);
                 }
                 catch (Exception e) {
                     throw new IgniteException(e);
@@ -245,7 +219,7 @@ public class GridServiceProxy<T> implements Serializable {
 
                 // Add sleep between retries to avoid busy-wait loops.
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(10);
                 }
                 catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -255,9 +229,6 @@ public class GridServiceProxy<T> implements Serializable {
 
                 if (waitTimeout > 0 && U.currentTimeMillis() - startTime >= waitTimeout)
                     throw new IgniteException("Service acquire timeout was reached, stopping. [timeout=" + waitTimeout + "]");
-
-                if (++attempt <= ATTEMPTS)
-                    throw new IgniteException("Service acquire attempts number was reached, stopping. [attempts=" + ATTEMPTS + "]");
             }
         }
         finally {
