@@ -29,7 +29,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Services deployment request discovery message.
+ * Services assignments request discovery message.
  */
 public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage {
     /** */
@@ -38,19 +38,20 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
-    /** Deployment initiator id. */
+    /** Assignments initiator id. */
     private final UUID nodeId;
 
     /** Exchange id. */
     private final IgniteUuid exchId;
 
-    /** Services configuration. */
+    /** Services assignments. */
     @GridToStringInclude
     private final Collection<GridServiceAssignments> assigns;
 
     /**
-     * @param nodeId Deployment initiator id.
-     * @param assigns Services configuration.
+     * @param nodeId Assignments initiator id.
+     * @param exchId Exchange id.
+     * @param assigns Services assignments.
      */
     public ServicesAssignmentsRequestMessage(UUID nodeId, IgniteUuid exchId,
         Collection<GridServiceAssignments> assigns) {
@@ -60,7 +61,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     }
 
     /**
-     * @return Deployment initiator id.
+     * @return Assignments initiator id.
      */
     public UUID nodeId() {
         return nodeId;
@@ -74,7 +75,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     }
 
     /**
-     * @return Services configuration.
+     * @return Services assignments.
      */
     public Collection<GridServiceAssignments> assignments() {
         return assigns;

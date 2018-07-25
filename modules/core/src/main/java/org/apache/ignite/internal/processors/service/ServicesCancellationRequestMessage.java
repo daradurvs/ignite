@@ -40,12 +40,12 @@ public class ServicesCancellationRequestMessage implements DiscoveryCustomMessag
     /** Cancellation initiator id. */
     private final UUID nodeId;
 
-    /** Services configuration. */
+    /** Services names to cancel. */
     private final Collection<String> names;
 
     /**
-     * @param nodeId Deployment initiator id.
-     * @param names Services configuration.
+     * @param nodeId Cancellation initiator id.
+     * @param names Services names to cancel.
      */
     public ServicesCancellationRequestMessage(UUID nodeId, Collection<String> names) {
         this.nodeId = nodeId;
@@ -53,14 +53,14 @@ public class ServicesCancellationRequestMessage implements DiscoveryCustomMessag
     }
 
     /**
-     * @return Services configuration.
+     * @return Services names to cancel.
      */
     public Collection<String> names() {
         return names;
     }
 
     /**
-     * @return Deployment initiator id.
+     * @return Cancellation initiator id.
      */
     public UUID nodeId() {
         return nodeId;

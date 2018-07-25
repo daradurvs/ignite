@@ -24,10 +24,12 @@ import org.apache.ignite.services.ServiceConfiguration;
 
 /**
  * Services assignments function.
+ *
+ * Defines methods to calculate service's assignments.
  */
 public interface ServicesAssignmentsFunction {
     /**
-     * Reassigns service to nodes.
+     * Reassigns service to nodes on given topology version.
      *
      * @param cfg Service configuration.
      * @param nodeId Deployment initiator id.
