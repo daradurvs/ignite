@@ -89,9 +89,9 @@ public class ServicesDeploymentExchangeManager {
 
             U.join(exchWorker, log);
 
-            exchWorker.q.forEach(GridFutureAdapter::onDone);
+            exchWorker.futQ.forEach(GridFutureAdapter::onDone);
 
-            exchWorker.q.clear();
+            exchWorker.futQ.clear();
 
             if (log.isDebugEnabled() && !pendingMsgs.isEmpty())
                 log.debug("Exchange manager contained pending messages: [" + pendingMsgs + ']');
@@ -108,7 +108,7 @@ public class ServicesDeploymentExchangeManager {
      */
     public boolean onEvent(ServicesDeploymentExchangeFuture fut) {
         synchronized (mux) {
-            boolean res = exchWorker.q.offer(fut);
+            boolean res = exchWorker.futQ.offer(fut);
 
             mux.notifyAll();
 
@@ -141,7 +141,7 @@ public class ServicesDeploymentExchangeManager {
      */
     public void onNodeLeft(UUID nodeId) {
         synchronized (mux) {
-            exchWorker.q.forEach(fut -> fut.onNodeLeft(nodeId));
+            exchWorker.futQ.forEach(fut -> fut.onNodeLeft(nodeId));
         }
     }
 
@@ -153,7 +153,7 @@ public class ServicesDeploymentExchangeManager {
 
         if (fut != null) {
             if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
-                log.error("Unexpected services full assignments message received: [msg=" + msg + ']');
+                log.error("Unexpected services full assignments message received, msg=" + msg);
             else
                 fut.onDone();
         }
@@ -163,14 +163,14 @@ public class ServicesDeploymentExchangeManager {
      * Services deployment exchange worker.
      */
     private class ServicesDeploymentExchangeWorker extends GridWorker {
-        /** */
-        private final LinkedBlockingQueue<ServicesDeploymentExchangeFuture> q = new LinkedBlockingQueue<>();
+        /** Queue to process. */
+        private final LinkedBlockingQueue<ServicesDeploymentExchangeFuture> futQ = new LinkedBlockingQueue<>();
 
         /** Exchange future in work. */
         volatile ServicesDeploymentExchangeFuture fut = null;
 
         /** {@inheritDoc} */
-        protected ServicesDeploymentExchangeWorker() {
+        private ServicesDeploymentExchangeWorker() {
             super(ctx.igniteInstanceName(), "services-deployment-exchanger",
                 ServicesDeploymentExchangeManager.this.log, ctx.workersRegistry());
         }
@@ -203,7 +203,7 @@ public class ServicesDeploymentExchangeManager {
         /**
          * @throws IgniteInterruptedCheckedException If interrupted.
          */
-        protected void body0() throws IgniteInterruptedCheckedException {
+        private void body0() throws IgniteInterruptedCheckedException {
             while (!isCancelled()) {
                 fut = null;
 
@@ -211,7 +211,7 @@ public class ServicesDeploymentExchangeManager {
                     Thread.currentThread().interrupt();
 
                 synchronized (mux) {
-                    fut = q.poll();
+                    fut = futQ.poll();
 
                     if (fut == null) {
                         U.wait(mux);

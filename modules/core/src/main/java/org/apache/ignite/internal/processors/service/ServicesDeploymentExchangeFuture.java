@@ -151,8 +151,10 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 onDone();
         }
 
-        if (log.isDebugEnabled())
-            log.debug("Finished services exchange future init: [exchId=" + exchangeId() + ", locId=" + ctx.localNodeId() + ']');
+        if (log.isDebugEnabled()) {
+            log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
+                ", locId=" + ctx.localNodeId() + ']');
+        }
     }
 
     /**
@@ -202,12 +204,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId, assigns);
 
-        try {
-            ctx.discovery().sendCustomEvent(msg);
-        }
-        catch (IgniteCheckedException e) {
-            log.error("Failed to send services assignments request message across the ring, msg=" + msg, e);
-        }
+        sendCustomEvent(msg);
     }
 
     /**
@@ -226,31 +223,21 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
         ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
 
-        try {
-            ctx.discovery().sendCustomEvent(msg);
-        }
-        catch (IgniteCheckedException e) {
-            log.error("Failed to send services full assignments message across the ring, msg=" + msg, e);
-        }
+        sendCustomEvent(msg);
     }
 
     /**
-     * Checks if all remaining messages received and proccess with full assignment
+     * Creates full assignments message and send it across over discovery.
      */
-    private void checkAndProcess() {
-        if (remaining.isEmpty()) {
-            ServicesFullAssignmentsMessage msg = createFullAssignmentsMessage();
+    private void onAllReceived() {
+        ServicesFullAssignmentsMessage msg = createFullAssignmentsMessage();
 
-            try {
-                ctx.discovery().sendCustomEvent(msg);
-            }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to send full services assignment across the ring.", e);
-            }
-        }
+        sendCustomEvent(msg);
     }
 
     /**
+     * Processes single assignments messages to build full assignments message.
+     *
      * @return Services full assignments message.
      */
     private ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
@@ -319,10 +306,11 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             if (remaining.remove(msg.senderId())) {
                 singleAssignsMsgs.put(msg.senderId(), msg);
 
-                checkAndProcess();
+                if (remaining.isEmpty())
+                    onAllReceived();
             }
             else
-                System.out.println("Unexpected message: " + msg);
+                log.warning("Unexpected service assignments message received, msg=" + msg);
         }
     }
 
@@ -332,11 +320,20 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private void onChangedTopology(AffinityTopologyVersion topVer) {
         ServicesFullAssignmentsMessage msg = reassignAll(topVer);
 
+        sendCustomEvent(msg);
+    }
+
+    /**
+     * Sends given message over discovery.
+     *
+     * @param msg Message to send.
+     */
+    private void sendCustomEvent(DiscoveryCustomMessage msg) {
         try {
             ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
-            log.error("Failed to send full services assignment across the ring.", e);
+            log.error("Failed to send message across the ring, msg=" + msg, e);
         }
     }
 
@@ -398,9 +395,13 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param nodeId Node id.
      */
     public void onNodeLeft(UUID nodeId) {
+        if (isDone())
+            return;
+
         remaining.remove(nodeId);
 
-        checkAndProcess();
+        if (remaining.isEmpty())
+            onAllReceived();
     }
 
     /**
