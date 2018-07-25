@@ -107,13 +107,13 @@ public class ServicesDeploymentExchangeManager {
      * Adds exchange future.
      */
     public boolean onEvent(ServicesDeploymentExchangeFuture fut) {
-        boolean res = exchWorker.q.offer(fut);
-
         synchronized (mux) {
-            mux.notifyAll();
-        }
+            boolean res = exchWorker.q.offer(fut);
 
-        return res;
+            mux.notifyAll();
+
+            return res;
+        }
     }
 
     /**
@@ -205,12 +205,14 @@ public class ServicesDeploymentExchangeManager {
          */
         protected void body0() throws IgniteInterruptedCheckedException {
             while (!isCancelled()) {
-                fut = q.poll();
+                fut = null;
 
                 if (isCancelled())
                     Thread.currentThread().interrupt();
 
                 synchronized (mux) {
+                    fut = q.poll();
+
                     if (fut == null) {
                         U.wait(mux);
 
