@@ -35,7 +35,9 @@ import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -49,9 +51,11 @@ import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
  */
 public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> {
     /** Single service messages to process. */
+    @GridToStringInclude
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
 
     /** Errors occurred during assignments calculation. */
+    @GridToStringInclude
     private final Map<String, Throwable> deploymentsErrors = new HashMap<>();
 
     /** Mutex. */
@@ -70,6 +74,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final IgniteLogger log;
 
     /** Discovery event. */
+    @GridToStringInclude
     private final DiscoveryEvent evt;
 
     /** Topology version. */
@@ -79,6 +84,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final IgniteUuid exchId;
 
     /** Remaining nodes to received single node assignments message. */
+    @GridToStringInclude
     private final Set<UUID> remaining = new HashSet<>();
 
     /**
@@ -99,7 +105,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.exchId = evt.id();
 
         this.log = ctx.log(getClass());
-        this.remaining.addAll(F.nodeIds(evt.topologyNodes()));
+        this.remaining.addAll(F.nodeIds(ctx.discovery().allNodes()));
     }
 
     /**
@@ -391,11 +397,9 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param nodeId Node id.
      */
     public void onNodeLeft(UUID nodeId) {
-        synchronized (mux) {
-            remaining.remove(nodeId);
+        remaining.remove(nodeId);
 
-            checkAndProcess();
-        }
+        checkAndProcess();
     }
 
     /**
@@ -410,5 +414,10 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      */
     public Set<UUID> remaining() {
         return Collections.unmodifiableSet(remaining);
+    }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        return S.toString(ServicesDeploymentExchangeFuture.class, this);
     }
 }

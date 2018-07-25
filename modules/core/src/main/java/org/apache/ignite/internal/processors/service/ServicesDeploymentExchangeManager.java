@@ -252,11 +252,16 @@ public class ServicesDeploymentExchangeManager {
                         break;
                     }
                     catch (IgniteCheckedException e) {
+                        log.error("Error occurred during waiting for exchange future completion " +
+                            "or timeout had been reached, timeout=" + timeout + ", fut=" + fut, e);
+
                         if (isStopped)
                             return;
 
-                        log.error("Error occurred during waiting for exchange future completion " +
-                            "or timeout had been reached, timeout=" + timeout, e);
+                        for (UUID uuid : fut.remaining()) {
+                            if (!ctx.discovery().alive(uuid))
+                                fut.onNodeLeft(uuid);
+                        }
                     }
                 }
             }
