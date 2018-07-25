@@ -1465,12 +1465,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     GridServiceDeploymentFuture fut = depFuts.remove(name);
 
                     if (fut != null) {
-                        Collection<byte[]> errors = fullErrors.get(name);
+                        if (!assigns.configuration().equalsIgnoreNodeFilter(fut.configuration())) {
+                            fut.onDone(new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                                "different configuration) [deployed=" + assigns.configuration() +
+                                ", new=" + fut.configuration() + ']'));
+                        }
+                        else {
+                            Collection<byte[]> errors = fullErrors.get(name);
 
-                        if (errors == null)
-                            fut.onDone();
-                        else
-                            processDeploymentErrors(fut, errors);
+                            if (errors == null)
+                                fut.onDone();
+                            else
+                                processDeploymentErrors(fut, errors);
+                        }
                     }
                 });
 
