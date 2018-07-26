@@ -17,22 +17,16 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.nio.ByteBuffer;
+import java.io.Serializable;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.plugin.extensions.communication.Message;
-import org.apache.ignite.plugin.extensions.communication.MessageReader;
-import org.apache.ignite.plugin.extensions.communication.MessageWriter;
-
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.INT;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.UUID;
 
 /**
- * Single service assignments unit to send over communication.
+ * Single service assignments unit to send over network.
  */
-public class ServiceAssignmentsMap implements Message {
+public class ServiceAssignmentsMap implements Serializable {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -45,12 +39,6 @@ public class ServiceAssignmentsMap implements Message {
 
     /** Topology version. */
     private long topVer;
-
-    /**
-     * Empty constructor for marshalling purposes.
-     */
-    public ServiceAssignmentsMap() {
-    }
 
     /**
      * @param name Service name.
@@ -78,95 +66,17 @@ public class ServiceAssignmentsMap implements Message {
     }
 
     /**
+     * @return Service name.
+     */
+    public String name() {
+        return name;
+    }
+
+    /**
      * @return Topology version.
      */
     public long topologyVersion() {
         return topVer;
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean writeTo(ByteBuffer buf, MessageWriter writer) {
-        writer.setBuffer(buf);
-
-        if (!writer.isHeaderWritten()) {
-            if (!writer.writeHeader(directType(), fieldsCount()))
-                return false;
-
-            writer.onHeaderWritten();
-        }
-
-        switch (writer.state()) {
-            case 0:
-                if (!writer.writeString("name", name))
-                    return false;
-
-                writer.incrementState();
-
-            case 1:
-                if (!writer.writeMap("assigns", assigns, UUID, INT))
-                    return false;
-
-                writer.incrementState();
-
-            case 2:
-                if (!writer.writeLong("topVer", topVer))
-                    return false;
-
-                writer.incrementState();
-        }
-
-        return true;
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean readFrom(ByteBuffer buf, MessageReader reader) {
-        reader.setBuffer(buf);
-
-        if (!reader.beforeMessageRead())
-            return false;
-
-        switch (reader.state()) {
-            case 0:
-                name = reader.readString("name");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 1:
-                assigns = reader.readMap("assigns", UUID, INT, false);
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 2:
-                topVer = reader.readLong("topVer");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-        }
-
-        return reader.afterMessageRead(ServiceAssignmentsMap.class);
-    }
-
-    /** {@inheritDoc} */
-    @Override public short directType() {
-        return 136;
-    }
-
-    /** {@inheritDoc} */
-    @Override public byte fieldsCount() {
-        return 3;
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onAckReceived() {
-        // No-op.
     }
 
     /** {@inheritDoc} */

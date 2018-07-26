@@ -930,11 +930,6 @@ public class GridIoMessageFactory implements MessageFactory {
                 break;
 
             case 136:
-                msg = new ServiceAssignmentsMap();
-
-                break;
-
-            case 137:
                 msg = new ServicesSingleAssignmentsMessage();
 
                 break;
