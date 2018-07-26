@@ -86,7 +86,7 @@ public class ServicesCancellationRequestMessage implements DiscoveryCustomMessag
 
     /** {@inheritDoc} */
     @Override public boolean stopProcess() {
-        return true;
+        return false;
     }
 
     /** {@inheritDoc} */

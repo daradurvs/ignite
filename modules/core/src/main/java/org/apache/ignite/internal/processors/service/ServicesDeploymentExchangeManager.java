@@ -56,7 +56,7 @@ public class ServicesDeploymentExchangeManager {
     private final Object mux = new Object();
 
     /** Indicates that worker is stopped. */
-    private volatile boolean isStopped = false;
+    private volatile boolean isStopped = true;
 
     /**
      * @param ctx Grid kernal context.
@@ -73,6 +73,10 @@ public class ServicesDeploymentExchangeManager {
      */
     public void startProcessing() {
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
+
+        synchronized (mux) {
+            mux.notifyAll();
+        }
     }
 
     /**
@@ -141,8 +145,13 @@ public class ServicesDeploymentExchangeManager {
      * @param nodeId Node id.
      */
     public void onNodeLeft(UUID nodeId) {
+        if (isStopped)
+            return;
+
         synchronized (mux) {
             exchWorker.futQ.forEach(fut -> fut.onNodeLeft(nodeId));
+
+            mux.notifyAll();
         }
     }
 
@@ -159,8 +168,11 @@ public class ServicesDeploymentExchangeManager {
                 fut = exchWorker.futQ.peek();
 
             if (fut != null) {
-                if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
-                    log.error("Unexpected services full assignments message received, msg=" + msg);
+                if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled()) {
+                    log.warning("Unexpected services full assignments message received" +
+                        ", locId=" + ctx.localNodeId() +
+                        ", msg=" + msg);
+                }
                 else {
                     fut.onDone();
 
@@ -168,6 +180,8 @@ public class ServicesDeploymentExchangeManager {
                         exchWorker.futQ.poll();
                 }
             }
+
+            mux.notifyAll();
         }
     }
 
@@ -189,9 +203,7 @@ public class ServicesDeploymentExchangeManager {
 
         /** {@inheritDoc} */
         @Override protected void body() throws InterruptedException, IgniteInterruptedCheckedException {
-            synchronized (mux) {
-                isStopped = false;
-            }
+            isStopped = false;
 
             Throwable err = null;
 

@@ -1254,7 +1254,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 final boolean crdChanged = crd != curCrd;
 
-                if (crdChanged) {
+                if (crdChanged && !ctx.clientNode()) {
                     if (crd)
                         exchangeMgr.stopProcessing();
                     else
@@ -1267,7 +1267,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
                     if (msg instanceof ServicesDeploymentRequestMessage || msg instanceof ServicesCancellationRequestMessage) {
-                        if (curCrd && log.isDebugEnabled()) {
+                        if (ctx.clientNode())
+                            return;
+
+                        if (log.isDebugEnabled()) {
                             log.debug("Received services change state request: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
                                 ", msg=" + msg + ']');
@@ -1304,7 +1307,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             @Override public void run0() {
                                 processFullAssignment(msg0);
 
-                                exchangeMgr.onReceiveFullMessage(msg0);
+                                if (!ctx.clientNode())
+                                    exchangeMgr.onReceiveFullMessage(msg0);
                             }
                         });
                     }
@@ -1312,7 +1316,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return;
                 }
 
-                if (!evt.eventNode().isLocal())
+                if (ctx.clientNode())
                     return;
 
                 switch (evt.type()) {

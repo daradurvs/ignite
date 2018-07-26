@@ -400,7 +400,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param nodeId Node id.
      */
     public void onNodeLeft(UUID nodeId) {
-        if (isDone())
+        if (isDone() || remaining.isEmpty())
             return;
 
         remaining.remove(nodeId);
