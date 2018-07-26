@@ -1267,10 +1267,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
                     if (msg instanceof ServicesDeploymentRequestMessage || msg instanceof ServicesCancellationRequestMessage) {
-                        if (!curCrd)
-                            return;
-
-                        if (log.isDebugEnabled()) {
+                        if (curCrd && log.isDebugEnabled()) {
                             log.debug("Received services change state request: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
                                 ", msg=" + msg + ']');
@@ -1315,7 +1312,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return;
                 }
 
-                if (!curCrd && !evt.eventNode().isLocal())
+                if (!evt.eventNode().isLocal())
                     return;
 
                 switch (evt.type()) {

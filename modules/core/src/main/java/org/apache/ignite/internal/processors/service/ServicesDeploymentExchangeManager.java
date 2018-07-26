@@ -28,6 +28,7 @@ import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
@@ -149,13 +150,24 @@ public class ServicesDeploymentExchangeManager {
      * @param msg Services full assignments message.
      */
     public void onReceiveFullMessage(ServicesFullAssignmentsMessage msg) {
-        ServicesDeploymentExchangeFuture fut = exchWorker.fut;
+        ServicesDeploymentExchangeFuture fut;
 
-        if (fut != null) {
-            if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
-                log.error("Unexpected services full assignments message received, msg=" + msg);
+        synchronized (mux) {
+            if (!isStopped)
+                fut = exchWorker.fut;
             else
-                fut.onDone();
+                fut = exchWorker.futQ.peek();
+
+            if (fut != null) {
+                if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled())
+                    log.error("Unexpected services full assignments message received, msg=" + msg);
+                else {
+                    fut.onDone();
+
+                    if (isStopped)
+                        exchWorker.futQ.poll();
+                }
+            }
         }
     }
 
@@ -177,6 +189,10 @@ public class ServicesDeploymentExchangeManager {
 
         /** {@inheritDoc} */
         @Override protected void body() throws InterruptedException, IgniteInterruptedCheckedException {
+            synchronized (mux) {
+                isStopped = false;
+            }
+
             Throwable err = null;
 
             try {
@@ -254,6 +270,9 @@ public class ServicesDeploymentExchangeManager {
                         break;
                     }
                     catch (IgniteCheckedException e) {
+                        if (X.hasCause(e, IgniteInterruptedCheckedException.class) && isStopped)
+                            return;
+
                         log.error("Error occurred during waiting for exchange future completion " +
                             "or timeout had been reached, timeout=" + timeout + ", fut=" + fut, e);
 

@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.IgniteLogger;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
@@ -36,7 +37,6 @@ import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
-import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
@@ -103,9 +103,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.evt = evt;
         this.evtTopVer = evtTopVer;
         this.exchId = evt.id();
-
         this.log = ctx.log(getClass());
-        this.remaining.addAll(F.nodeIds(ctx.discovery().allNodes()));
     }
 
     /**
@@ -118,6 +116,13 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             log.debug("Started services exchange future init: [exchId=" + exchangeId() +
                 ", locId=" + ctx.localNodeId() +
                 ", evt=" + evt + ']');
+        }
+
+        synchronized (mux) {
+            for (ClusterNode node : ctx.discovery().allNodes()) {
+                if (ctx.discovery().alive(node))
+                    remaining.add(node.id());
+            }
         }
 
         if (evt instanceof DiscoveryCustomEvent) {
