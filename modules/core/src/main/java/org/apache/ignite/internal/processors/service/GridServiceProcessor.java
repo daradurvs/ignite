@@ -1593,6 +1593,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * Initial data container to send on joined node.
      */
     private static class InitialServicesData implements Serializable {
+        /** */
+        private static final long serialVersionUID = 0L;
+
         /** Services assignments. */
         private ArrayList<GridServiceAssignments> assigns;
 

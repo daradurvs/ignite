@@ -20,7 +20,6 @@ package org.apache.ignite.internal.processors.service;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
-
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.plugin.extensions.communication.Message;
@@ -34,6 +33,9 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
  * Single service assignments unit to send over communication.
  */
 public class ServiceAssignmentsMap implements Message {
+    /** */
+    private static final long serialVersionUID = 0L;
+
     /** Service name. */
     private String name;
 
