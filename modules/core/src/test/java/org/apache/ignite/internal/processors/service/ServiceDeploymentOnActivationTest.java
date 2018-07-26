@@ -33,7 +33,9 @@ import org.apache.ignite.spi.discovery.tcp.ipfinder.TcpDiscoveryIpFinder;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
-/** */
+/**
+ * TODO: what behaviour is expected here?
+ */
 public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
     /** */
     private static final TcpDiscoveryIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder(true);
@@ -122,7 +124,7 @@ public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
     public void testServersWithoutPersistence() throws Exception {
         persistence = false;
 
-        checkRedeployment(2, 0, F.alwaysTrue(), 2, false, false);
+        checkRedeployment(2, 0, F.alwaysTrue(), 2, false, true);
     }
 
     /**
@@ -131,7 +133,7 @@ public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
     public void testClientsWithoutPersistence() throws Exception {
         persistence = false;
 
-        checkRedeployment(2, 2, CLIENT_FILTER, 2, false, false);
+        checkRedeployment(2, 2, CLIENT_FILTER, 2, false, true);
     }
 
     /**

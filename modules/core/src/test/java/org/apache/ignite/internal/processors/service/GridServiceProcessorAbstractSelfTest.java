@@ -254,11 +254,11 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
 
         info("Deployed service: " + name);
 
-        fut1.get();
-
-        info("Finished waiting for service future: " + name);
-
         try {
+            fut1.get();
+
+            info("Finished waiting for service future: " + name);
+
             fut2.get();
 
             fail("Failed to receive mismatching configuration exception.");
