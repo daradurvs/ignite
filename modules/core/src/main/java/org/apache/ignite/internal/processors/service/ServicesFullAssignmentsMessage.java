@@ -63,7 +63,7 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
         this.snd = snd;
         this.exchId = exchId;
         this.assigns = assigns;
-        this.errors = Collections.EMPTY_MAP;
+        this.errors = Collections.emptyMap();
     }
 
     /**
