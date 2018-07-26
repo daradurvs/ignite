@@ -17,34 +17,25 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import org.apache.ignite.Ignite;
-import org.apache.ignite.IgniteException;
+import java.util.UUID;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.services.ServiceConfiguration;
 
 /**
- * Single node services test.
+ * Service assignments function.
+ *
+ * Defines methods to calculate service's assignments.
  */
-public class GridServiceProcessorSingleNodeSelfTest extends GridServiceProcessorAbstractSelfTest {
-    /** {@inheritDoc} */
-    @Override protected int nodeCount() {
-        return 1;
-    }
-
+public interface ServiceAssignmentsFunction {
     /**
-     * @throws Exception If failed.
+     * Reassigns service to nodes on given topology version.
+     *
+     * @param cfg Service configuration.
+     * @param nodeId Deployment initiator id.
+     * @param topVer Topology version.
+     * @throws IgniteCheckedException If failed.
      */
-    public void testNodeSingletonNotDeployedProxy() throws Exception {
-        String name = "testNodeSingletonNotDeployedProxy";
-
-        Ignite ignite = randomGrid();
-
-        try {
-            // Deploy only on remote nodes.
-            ignite.services(ignite.cluster().forRemotes()).deployNodeSingleton(name, new CounterServiceImpl());
-
-            fail("Should never reach here.");
-        }
-        catch (IgniteException e) {
-            info("Got expected exception: " + e.getMessage());
-        }
-    }
+    public GridServiceAssignments reassign(ServiceConfiguration cfg, UUID nodeId,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException;
 }

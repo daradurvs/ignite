@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Objects;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -25,11 +26,11 @@ import org.apache.ignite.services.ServiceConfiguration;
  * Service deployment future.
  */
 public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
-    /** */
+    /** Service configuration. */
     private final ServiceConfiguration cfg;
 
     /**
-     * @param cfg Configuration.
+     * @param cfg Service configuration.
      */
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
         this.cfg = cfg;
@@ -38,8 +39,26 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     /**
      * @return Service configuration.
      */
-    ServiceConfiguration configuration() {
+    public ServiceConfiguration configuration() {
         return cfg;
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean equals(Object o) {
+        if (this == o)
+            return true;
+
+        if (o == null || getClass() != o.getClass())
+            return false;
+
+        GridServiceDeploymentFuture fut = (GridServiceDeploymentFuture)o;
+
+        return cfg.equalsIgnoreNodeFilter(fut.cfg);
+    }
+
+    /** {@inheritDoc} */
+    @Override public int hashCode() {
+        return Objects.hash(cfg);
     }
 
     /** {@inheritDoc} */

@@ -153,6 +153,8 @@ import org.apache.ignite.internal.processors.query.h2.twostep.messages.GridQuery
 import org.apache.ignite.internal.processors.query.schema.message.SchemaOperationStatusMessage;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRequest;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
+import org.apache.ignite.internal.processors.service.ServiceAssignmentsMap;
+import org.apache.ignite.internal.processors.service.ServicesSingleAssignmentsMessage;
 import org.apache.ignite.internal.util.GridByteArrayList;
 import org.apache.ignite.internal.util.GridIntList;
 import org.apache.ignite.internal.util.GridLongList;
@@ -927,6 +929,15 @@ public class GridIoMessageFactory implements MessageFactory {
 
                 break;
 
+            case 136:
+                msg = new ServiceAssignmentsMap();
+
+                break;
+
+            case 137:
+                msg = new ServicesSingleAssignmentsMessage();
+
+                break;
             // [-3..119] [124..129] [-23..-27] [-36..-55]- this
             // [120..123] - DR
             // [-4..-22, -30..-35] - SQL
