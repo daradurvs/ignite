@@ -272,7 +272,7 @@ namespace Apache.Ignite.Core.Tests.Services
             var ex = Assert.Throws<IgniteException>(()=> Services.GetServiceProxy<ITestIgniteService>(SvcName));
             Assert.AreEqual("Failed to find deployed service: " + SvcName, ex.Message);
 
-            // Deploy to grid2 & grid3
+            // Deploy to grid1 & grid2
             var svc = binarizable
                 ? new TestIgniteServiceBinarizable {TestProperty = 17}
                 : new TestIgniteServiceSerializable {TestProperty = 17};
@@ -325,7 +325,7 @@ namespace Apache.Ignite.Core.Tests.Services
         {
             // Deploy to remotes.
             var svc = new TestIgniteServiceSerializable { TestProperty = 37 };
-            Grid1.GetCluster().ForRemotes().GetServices().DeployNodeSingleton(SvcName, svc);
+            Grid3.GetCluster().ForRemotes().GetServices().DeployNodeSingleton(SvcName, svc);
 
             // Make sure there is no local instance on grid3
             Assert.IsNull(Grid3.GetServices().GetService<ITestIgniteService>(SvcName));
