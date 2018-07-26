@@ -75,6 +75,8 @@ import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
 import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
+import org.apache.ignite.spi.discovery.DiscoverySpi;
+import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.thread.IgniteThreadFactory;
 import org.apache.ignite.thread.OomExceptionHandler;
 import org.jetbrains.annotations.Nullable;
@@ -1553,19 +1555,27 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return {@code true} if local node is clusters coordinator, otherwise {@code false}.
      */
     private boolean isLocalNodeCoordinator() {
-        if (ctx.clientNode())
-            return false;
+        DiscoverySpi spi = ctx.discovery().getInjectedDiscoverySpi();
 
-        ClusterNode crd = coordinator();
+        if (spi instanceof TcpDiscoverySpi)
+            return ((TcpDiscoverySpi)spi).isLocalNodeCoordinator();
+        else {
+            ClusterNode node = coordinator();
 
-        return crd != null && crd.isLocal();
+            return node != null && node.isLocal();
+        }
     }
 
     /**
      * @return Coordinator node or {@code null} if there are no coordinator.
      */
     @Nullable private ClusterNode coordinator() {
-        return U.oldest(ctx.discovery().aliveServerNodes(), null);
+        try {
+            return U.oldest(ctx.discovery().aliveServerNodes(), null);
+        }
+        catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**
