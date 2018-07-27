@@ -99,7 +99,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
 
     /** {@inheritDoc} */
     @Override public boolean stopProcess() {
-        return true;
+        return false;
     }
 
     /** {@inheritDoc} */
