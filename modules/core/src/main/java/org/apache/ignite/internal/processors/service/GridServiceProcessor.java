@@ -1322,8 +1322,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 switch (evt.type()) {
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
-                        exchangeMgr.onNodeLeft(evt.eventNode().id());
-
                     case EVT_NODE_JOINED:
                         if (!srvcsAssigns.isEmpty()) {
                             ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(

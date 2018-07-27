@@ -416,6 +416,13 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     }
 
     /**
+     * @return Cause discovery event.
+     */
+    public DiscoveryEvent event() {
+        return evt;
+    }
+
+    /**
      * @return Nodes ids to wait single node assignments messages.
      */
     public Set<UUID> remaining() {

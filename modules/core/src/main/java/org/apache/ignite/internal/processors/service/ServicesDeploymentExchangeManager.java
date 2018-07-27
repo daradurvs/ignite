@@ -24,6 +24,7 @@ import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
+import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
@@ -33,6 +34,8 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
 
+import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
+import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 import static org.apache.ignite.failure.FailureType.CRITICAL_ERROR;
 import static org.apache.ignite.failure.FailureType.SYSTEM_WORKER_TERMINATION;
 
@@ -113,6 +116,11 @@ public class ServicesDeploymentExchangeManager {
      */
     public void onEvent(ServicesDeploymentExchangeFuture fut) {
         synchronized (mux) {
+            DiscoveryEvent evt = fut.event();
+
+            if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
+                onNodeLeft(evt.eventNode().id());
+
             if (!exchWorker.futQ.contains(fut))
                 exchWorker.futQ.offer(fut);
 
@@ -137,18 +145,6 @@ public class ServicesDeploymentExchangeManager {
                 fut.onReceiveSingleMessage(msg);
             else
                 pendingMsgs.add(msg);
-        }
-    }
-
-    /**
-     * @param nodeId Node id.
-     */
-    public void onNodeLeft(UUID nodeId) {
-        if (isStopped)
-            return;
-
-        synchronized (mux) {
-            exchWorker.futQ.forEach(fut -> fut.onNodeLeft(nodeId));
         }
     }
 
@@ -203,6 +199,16 @@ public class ServicesDeploymentExchangeManager {
 
             mux.notifyAll();
         }
+    }
+
+    /**
+     * @param nodeId Node id.
+     */
+    private void onNodeLeft(UUID nodeId) {
+        if (isStopped)
+            return;
+
+        exchWorker.futQ.forEach(fut -> fut.onNodeLeft(nodeId));
     }
 
     /**
