@@ -111,13 +111,12 @@ public class ServicesDeploymentExchangeManager {
     /**
      * Adds exchange future.
      */
-    public boolean onEvent(ServicesDeploymentExchangeFuture fut) {
+    public void onEvent(ServicesDeploymentExchangeFuture fut) {
         synchronized (mux) {
-            boolean res = exchWorker.futQ.offer(fut);
+            if (!exchWorker.futQ.contains(fut))
+                exchWorker.futQ.offer(fut);
 
             mux.notifyAll();
-
-            return res;
         }
     }
 

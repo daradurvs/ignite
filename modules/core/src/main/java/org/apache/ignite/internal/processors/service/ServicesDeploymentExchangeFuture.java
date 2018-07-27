@@ -423,6 +423,24 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     }
 
     /** {@inheritDoc} */
+    @Override public boolean equals(Object o) {
+        if (this == o)
+            return true;
+
+        if (o == null || getClass() != o.getClass())
+            return false;
+
+        ServicesDeploymentExchangeFuture fut1 = (ServicesDeploymentExchangeFuture)o;
+
+        return exchId.equals(fut1.exchId);
+    }
+
+    /** {@inheritDoc} */
+    @Override public int hashCode() {
+        return exchId.hashCode();
+    }
+
+    /** {@inheritDoc} */
     @Override public String toString() {
         return S.toString(ServicesDeploymentExchangeFuture.class, this);
     }
