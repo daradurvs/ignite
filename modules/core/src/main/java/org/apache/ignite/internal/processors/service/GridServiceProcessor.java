@@ -1270,7 +1270,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (ctx.clientNode())
                             return;
 
-                        if (log.isDebugEnabled()) {
+                        if (log.isDebugEnabled() && curCrd) {
                             log.debug("Received services change state request: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
                                 ", msg=" + msg + ']');

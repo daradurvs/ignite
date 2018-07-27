@@ -150,8 +150,6 @@ public class ServicesDeploymentExchangeManager {
 
         synchronized (mux) {
             exchWorker.futQ.forEach(fut -> fut.onNodeLeft(nodeId));
-
-            mux.notifyAll();
         }
     }
 
@@ -168,10 +166,33 @@ public class ServicesDeploymentExchangeManager {
                 fut = exchWorker.futQ.peek();
 
             if (fut != null) {
-                if (!fut.exchangeId().equals(msg.exchangeId()) && log.isDebugEnabled()) {
+                if (!fut.exchangeId().equals(msg.exchangeId())) {
                     log.warning("Unexpected services full assignments message received" +
                         ", locId=" + ctx.localNodeId() +
                         ", msg=" + msg);
+
+                    // The section to handle a critical situation when TcpDiscoverySpi breaches safeguards.
+                    if (isStopped) {
+                        boolean found = false;
+
+                        for (ServicesDeploymentExchangeFuture f : exchWorker.futQ) {
+                            if (f.exchangeId().equals(msg.exchangeId())) {
+                                found = true;
+
+                                break;
+                            }
+                        }
+
+                        if (found) {
+                            do {
+                                fut = exchWorker.futQ.poll();
+
+                                if (fut != null)
+                                    fut.onDone();
+                            }
+                            while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
+                        }
+                    }
                 }
                 else {
                     fut.onDone();
