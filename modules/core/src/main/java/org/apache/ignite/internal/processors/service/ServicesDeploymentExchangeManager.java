@@ -236,7 +236,7 @@ public class ServicesDeploymentExchangeManager {
             try {
                 body0();
             }
-            catch (IgniteInterruptedCheckedException e) {
+            catch (InterruptedException | IgniteInterruptedCheckedException e) {
                 if (!isStopped)
                     err = e;
             }
@@ -255,9 +255,10 @@ public class ServicesDeploymentExchangeManager {
         }
 
         /**
-         * @throws IgniteInterruptedCheckedException If interrupted.
+         * @throws InterruptedException If interrupted.
+         * @throws IgniteCheckedException In case of an error.
          */
-        private void body0() throws IgniteInterruptedCheckedException {
+        private void body0() throws InterruptedException, IgniteCheckedException {
             while (!isCancelled()) {
                 fut = null;
 
