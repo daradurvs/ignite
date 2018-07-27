@@ -18,96 +18,82 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
-import org.apache.ignite.internal.util.tostring.GridToStringInclude;
+import org.apache.ignite.events.DiscoveryEvent;
+import org.apache.ignite.internal.events.DiscoveryCustomEvent;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.INT;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
-
 /**
- * Services single node assignments message.
+ * Service deployment exchange id.
  */
-public class ServicesSingleAssignmentsMessage implements Message {
+public class ServiceDeploymentExchangeId implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Local services assignments. */
-    @GridToStringInclude
-    private Map<String, Integer> assigns;
+    /** Event node id. */
+    private UUID nodeId;
 
-    /** Deployment errors. */
-    @GridToStringInclude
-    private Map<String, byte[]> errors;
+    /** Topology version. */
+    private long topVer;
 
-    /** Sender id. */
-    private UUID snd;
+    /** Event type. */
+    private int evtType;
 
-    /** Exchange id. */
-    private ServiceDeploymentExchangeId exchId;
+    /** Requests id. */
+    private IgniteUuid reqId;
 
     /**
      * Empty constructor for marshalling purposes.
      */
-    public ServicesSingleAssignmentsMessage() {
+    public ServiceDeploymentExchangeId() {
     }
 
     /**
-     * @param snd Sender id.
-     * @param exchId Exchange id.
+     * @param evt Cause discovery event.
      */
-    public ServicesSingleAssignmentsMessage(UUID snd, ServiceDeploymentExchangeId exchId) {
-        this.snd = snd;
-        this.exchId = exchId;
-        this.errors = Collections.emptyMap();
+    public ServiceDeploymentExchangeId(DiscoveryEvent evt) {
+        this.nodeId = evt.eventNode().id();
+        this.topVer = evt.topologyVersion();
+        this.evtType = evt.type();
+
+        if (evt instanceof DiscoveryCustomEvent)
+            this.reqId = ((DiscoveryCustomEvent)evt).customMessage().id();
+        else
+            this.reqId = null;
     }
 
     /**
-     * @return Sender id.
+     * @return Event node id.
      */
-    public UUID senderId() {
-        return snd;
+    public UUID nodeId() {
+        return nodeId;
     }
 
     /**
-     * @return Single node services assignments.
+     * @return Topology version.
      */
-    public Map<String, Integer> assigns() {
-        return assigns;
+    public long topologyVersion() {
+        return topVer;
     }
 
     /**
-     * @param assigns Single node services assignments.
+     * @return Event type.
      */
-    public void assigns(Map<String, Integer> assigns) {
-        this.assigns = assigns;
+    public int eventType() {
+        return evtType;
     }
 
     /**
-     * @return Deployment errors.
+     * @return Requests id.
      */
-    public Map<String, byte[]> errors() {
-        return errors;
-    }
-
-    /**
-     * @param errors Deployment errors.
-     */
-    public void errors(Map<String, byte[]> errors) {
-        this.errors = errors;
-    }
-
-    /**
-     * @return Exchange id.
-     */
-    public ServiceDeploymentExchangeId exchangeId() {
-        return exchId;
+    public IgniteUuid requestId() {
+        return reqId;
     }
 
     /** {@inheritDoc} */
@@ -123,25 +109,25 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeMap("assigns", assigns, STRING, INT))
+                if (!writer.writeUuid("nodeId", nodeId))
                     return false;
 
                 writer.incrementState();
 
             case 1:
-                if (!writer.writeMap("errors", errors, STRING, BYTE_ARR))
+                if (!writer.writeLong("topVer", topVer))
                     return false;
 
                 writer.incrementState();
 
             case 2:
-                if (!writer.writeUuid("snd", snd))
+                if (!writer.writeInt("evtType", evtType))
                     return false;
 
                 writer.incrementState();
 
             case 3:
-                if (!writer.writeMessage("exchId", exchId))
+                if (!writer.writeIgniteUuid("reqId", reqId))
                     return false;
 
                 writer.incrementState();
@@ -159,7 +145,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
         switch (reader.state()) {
             case 0:
-                assigns = reader.readMap("assigns", STRING, INT, false);
+                nodeId = reader.readUuid("nodeId");
 
                 if (!reader.isLastRead())
                     return false;
@@ -167,7 +153,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
 
             case 1:
-                errors = reader.readMap("errors", STRING, BYTE_ARR, false);
+                topVer = reader.readLong("topVer");
 
                 if (!reader.isLastRead())
                     return false;
@@ -175,7 +161,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
 
             case 2:
-                snd = reader.readUuid("snd");
+                evtType = reader.readInt("evtType");
 
                 if (!reader.isLastRead())
                     return false;
@@ -183,7 +169,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
 
             case 3:
-                exchId = reader.readMessage("exchId");
+                reqId = reader.readIgniteUuid("reqId");
 
                 if (!reader.isLastRead())
                     return false;
@@ -191,12 +177,12 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServicesSingleAssignmentsMessage.class);
+        return reader.afterMessageRead(ServiceDeploymentExchangeId.class);
     }
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 136;
+        return 137;
     }
 
     /** {@inheritDoc} */
@@ -210,7 +196,26 @@ public class ServicesSingleAssignmentsMessage implements Message {
     }
 
     /** {@inheritDoc} */
+    @Override public boolean equals(Object o) {
+        if (this == o)
+            return true;
+
+        if (o == null || getClass() != o.getClass())
+            return false;
+
+        ServiceDeploymentExchangeId id = (ServiceDeploymentExchangeId)o;
+
+        return topVer == id.topVer && evtType == id.evtType &&
+            F.eq(nodeId, id.nodeId) && F.eq(reqId, id.reqId);
+    }
+
+    /** {@inheritDoc} */
+    @Override public int hashCode() {
+        return Objects.hash(nodeId, topVer, evtType, reqId);
+    }
+
+    /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesSingleAssignmentsMessage.class, this);
+        return S.toString(ServiceDeploymentExchangeId.class, this);
     }
 }

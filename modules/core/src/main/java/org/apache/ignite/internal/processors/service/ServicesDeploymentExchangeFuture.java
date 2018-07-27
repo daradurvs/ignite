@@ -39,7 +39,6 @@ import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
-import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
@@ -81,7 +80,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final AffinityTopologyVersion evtTopVer;
 
     /** Exchange id. */
-    private final IgniteUuid exchId;
+    private final ServiceDeploymentExchangeId exchId;
 
     /** Remaining nodes to received single node assignments message. */
     @GridToStringInclude
@@ -102,7 +101,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.ctx = ctx;
         this.evt = evt;
         this.evtTopVer = evtTopVer;
-        this.exchId = evt.id();
+        this.exchId = new ServiceDeploymentExchangeId(evt);
         this.log = ctx.log(getClass());
     }
 
@@ -412,7 +411,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     /**
      * @return Exchange id.
      */
-    public IgniteUuid exchangeId() {
+    public ServiceDeploymentExchangeId exchangeId() {
         return exchId;
     }
 

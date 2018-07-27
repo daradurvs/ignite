@@ -154,6 +154,7 @@ import org.apache.ignite.internal.processors.query.schema.message.SchemaOperatio
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRequest;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
 import org.apache.ignite.internal.processors.service.ServiceAssignmentsMap;
+import org.apache.ignite.internal.processors.service.ServiceDeploymentExchangeId;
 import org.apache.ignite.internal.processors.service.ServicesSingleAssignmentsMessage;
 import org.apache.ignite.internal.util.GridByteArrayList;
 import org.apache.ignite.internal.util.GridIntList;
@@ -931,6 +932,11 @@ public class GridIoMessageFactory implements MessageFactory {
 
             case 136:
                 msg = new ServicesSingleAssignmentsMessage();
+
+                break;
+
+            case 137:
+                msg = new ServiceDeploymentExchangeId();
 
                 break;
             // [-3..119] [124..129] [-23..-27] [-36..-55]- this

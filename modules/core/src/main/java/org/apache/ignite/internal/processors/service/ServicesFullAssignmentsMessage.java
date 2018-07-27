@@ -44,7 +44,7 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
     private final UUID snd;
 
     /** Exchange id. */
-    private final IgniteUuid exchId;
+    private final ServiceDeploymentExchangeId exchId;
 
     /** Cluster services assignments. */
     @GridToStringInclude
@@ -59,7 +59,7 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
      * @param exchId Exchange id.
      * @param assigns Services assignments.
      */
-    public ServicesFullAssignmentsMessage(UUID snd, IgniteUuid exchId, Map<String, ServiceAssignmentsMap> assigns) {
+    public ServicesFullAssignmentsMessage(UUID snd, ServiceDeploymentExchangeId exchId, Map<String, ServiceAssignmentsMap> assigns) {
         this.snd = snd;
         this.exchId = exchId;
         this.assigns = assigns;
@@ -76,7 +76,7 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
     /**
      * @return Exchange id.
      */
-    public IgniteUuid exchangeId() {
+    public ServiceDeploymentExchangeId exchangeId() {
         return exchId;
     }
 

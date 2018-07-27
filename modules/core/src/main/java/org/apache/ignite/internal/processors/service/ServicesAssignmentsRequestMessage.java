@@ -42,7 +42,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     private final UUID nodeId;
 
     /** Exchange id. */
-    private final IgniteUuid exchId;
+    private final ServiceDeploymentExchangeId exchId;
 
     /** Services assignments. */
     @GridToStringInclude
@@ -53,7 +53,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
      * @param exchId Exchange id.
      * @param assigns Services assignments.
      */
-    public ServicesAssignmentsRequestMessage(UUID nodeId, IgniteUuid exchId,
+    public ServicesAssignmentsRequestMessage(UUID nodeId, ServiceDeploymentExchangeId exchId,
         Collection<GridServiceAssignments> assigns) {
         this.nodeId = nodeId;
         this.exchId = exchId;
@@ -70,7 +70,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /**
      * @return Exchange id.
      */
-    public IgniteUuid exchangeId() {
+    public ServiceDeploymentExchangeId exchangeId() {
         return exchId;
     }
 
