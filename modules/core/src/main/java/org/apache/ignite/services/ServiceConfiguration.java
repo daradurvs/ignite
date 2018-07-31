@@ -77,6 +77,10 @@ public class ServiceConfiguration implements Serializable {
     @GridToStringExclude
     protected IgnitePredicate<ClusterNode> nodeFilter;
 
+    /** Service deployment failures policy. */
+    @GridToStringExclude
+    protected ServiceDeploymentFailuresPolicy plc = ServiceDeploymentFailuresPolicy.CANCEL;
+
     /**
      * Gets service name.
      * <p>
@@ -252,6 +256,20 @@ public class ServiceConfiguration implements Serializable {
         this.nodeFilter = nodeFilter;
 
         return this;
+    }
+
+    /**
+     * @return Service deployment failures policy.
+     */
+    public ServiceDeploymentFailuresPolicy policy() {
+        return plc;
+    }
+
+    /**
+     * @param plc New service deployment failures policy.
+     */
+    public void policy(ServiceDeploymentFailuresPolicy plc) {
+        this.plc = plc;
     }
 
     /** {@inheritDoc} */
