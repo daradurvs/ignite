@@ -35,6 +35,8 @@ import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -135,6 +137,8 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                 onCancellationRequest((ServicesCancellationRequestMessage)msg, evtTopVer.topologyVersion());
             else if (msg instanceof ServicesDeploymentRequestMessage)
                 onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
+            else if (msg instanceof DynamicCacheChangeBatch)
+                onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
             else
                 onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
         }
@@ -145,7 +149,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
 
-                        onChangedTopology(evtTopVer);
+                        initFullReassignment(evtTopVer, Collections.emptySet());
 
                         break;
 
@@ -235,6 +239,56 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     }
 
     /**
+     * @param req Cacje state change request.
+     * @param topVer Topology version;
+     */
+    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req, AffinityTopologyVersion topVer) {
+        Set<String> cacheToStop = new HashSet<>();
+
+        for (DynamicCacheChangeRequest chReq : req.requests()) {
+            if (chReq.stop())
+                cacheToStop.add(chReq.cacheName());
+        }
+
+        Set<String> srvcsToUndeploy = new HashSet<>();
+
+        srvcsAssigns.forEach((name, assigns) -> {
+            if (cacheToStop.contains(assigns.cacheName()))
+                srvcsToUndeploy.add(name);
+        });
+
+        initFullReassignment(topVer, srvcsToUndeploy);
+    }
+
+    /**
+     * @param topVer Topology version.
+     * @param undeploy Services names to undeploy.
+     */
+    private void initFullReassignment(AffinityTopologyVersion topVer, Collection<String> undeploy) {
+        ServicesReassignmentsRequestMessage msg = createReassignmentsRequest(topVer, Collections.emptySet());
+
+        sendCustomEvent(msg);
+    }
+
+    /**
+     * @param msg Single node services assignments.
+     */
+    public void onReceiveSingleMessage(final ServicesSingleAssignmentsMessage msg) {
+        synchronized (mux) {
+            assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+
+            if (remaining.remove(msg.senderId())) {
+                singleAssignsMsgs.put(msg.senderId(), msg);
+
+                if (remaining.isEmpty())
+                    onAllReceived();
+            }
+            else
+                log.warning("Unexpected service assignments message received, msg=" + msg);
+        }
+    }
+
+    /**
      * Creates full assignments message and send it across over discovery.
      */
     private void onAllReceived() {
@@ -316,56 +370,22 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     }
 
     /**
-     * @param msg Single node services assignments.
-     */
-    public void onReceiveSingleMessage(final ServicesSingleAssignmentsMessage msg) {
-        synchronized (mux) {
-            assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
-
-            if (remaining.remove(msg.senderId())) {
-                singleAssignsMsgs.put(msg.senderId(), msg);
-
-                if (remaining.isEmpty())
-                    onAllReceived();
-            }
-            else
-                log.warning("Unexpected service assignments message received, msg=" + msg);
-        }
-    }
-
-    /**
-     * @param topVer Topology version.
-     */
-    private void onChangedTopology(AffinityTopologyVersion topVer) {
-        ServicesReassignmentsRequestMessage msg = createReassignmentsRequest(topVer);
-
-        sendCustomEvent(msg);
-    }
-
-    /**
-     * Sends given message over discovery.
-     *
-     * @param msg Message to send.
-     */
-    private void sendCustomEvent(DiscoveryCustomMessage msg) {
-        try {
-            ctx.discovery().sendCustomEvent(msg);
-        }
-        catch (IgniteCheckedException e) {
-            log.error("Failed to send message across the ring, msg=" + msg, e);
-        }
-    }
-
-    /**
      * @param topVer Topology version.
      * @return Services reassignments request.
      */
-    private ServicesReassignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer) {
+    private ServicesReassignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer,
+        Collection<String> undeploy) {
         final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
         final Set<String> servicesToUndeploy = new HashSet<>();
 
         srvcsAssigns.forEach((name, old) -> {
+            if (undeploy.contains(name)) {
+                servicesToUndeploy.add(name);
+
+                return;
+            }
+
             ServiceConfiguration cfg = old.configuration();
 
             GridServiceAssignments newAssigns = null;
@@ -413,6 +433,20 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             msg.servicesToUndeploy(servicesToUndeploy);
 
         return msg;
+    }
+
+    /**
+     * Sends given message over discovery.
+     *
+     * @param msg Message to send.
+     */
+    private void sendCustomEvent(DiscoveryCustomMessage msg) {
+        try {
+            ctx.discovery().sendCustomEvent(msg);
+        }
+        catch (IgniteCheckedException e) {
+            log.error("Failed to send message across the ring, msg=" + msg, e);
+        }
     }
 
     /**

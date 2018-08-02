@@ -55,6 +55,8 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.future.GridCompoundFuture;
@@ -1395,6 +1397,24 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                     exchangeMgr.onReceiveFullMessage(msg0);
                             }
                         });
+                    }
+                    else if (msg instanceof DynamicCacheChangeBatch) {
+                        DynamicCacheChangeBatch msg0 = (DynamicCacheChangeBatch)msg;
+
+                        Set<String> cachesToStop = new HashSet<>();
+                        for (DynamicCacheChangeRequest req : msg0.requests()) {
+                            if (req.stop())
+                                cachesToStop.add(req.cacheName());
+                        }
+
+                        if (!cachesToStop.isEmpty()) {
+                            if (srvcsAssigns.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().cacheName()))) {
+                                ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
+                                    srvcsAssigns, assignsFunc, ctx, evt, discoCache.version());
+
+                                exchangeMgr.onEvent(fut);
+                            }
+                        }
                     }
 
                     return;
