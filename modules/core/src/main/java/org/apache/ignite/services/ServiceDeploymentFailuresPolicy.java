@@ -20,14 +20,20 @@ package org.apache.ignite.services;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Policy that defines how the coordinator will react on a failure of a service's deployment.
+ * Policy that defines how the coordinator will react on a failure of a service's deployment or reassignment.
  */
 public enum ServiceDeploymentFailuresPolicy {
     /**
-     * When service deployment failures policy is {@code CANCEL}, coordinator will initiate cancel of existing services
-     * in Ingite cluster.
+     * When service deployment failures policy is {@code CANCEL} and there are errors on deployment/reassignment
+     * requests, coordinator will initiate cancellation of existing services in Ingite cluster.
      */
-    CANCEL;
+    CANCEL,
+
+    /**
+     * When service deployment failures policy is {@code IGNORE} and there are errors on deployment request or
+     * reassignment  and there are at least one node with successful deployment then service won't be canceled.
+     */
+    IGNORE;
 
     /** Enumerated values. */
     private static final ServiceDeploymentFailuresPolicy[] VALS = values();

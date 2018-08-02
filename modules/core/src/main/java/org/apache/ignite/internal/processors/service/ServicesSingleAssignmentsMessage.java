@@ -61,10 +61,13 @@ public class ServicesSingleAssignmentsMessage implements Message {
     /**
      * @param snd Sender id.
      * @param exchId Exchange id.
+     * @param assigns Local services assignments.
      */
-    public ServicesSingleAssignmentsMessage(UUID snd, ServiceDeploymentExchangeId exchId) {
+    public ServicesSingleAssignmentsMessage(UUID snd, ServiceDeploymentExchangeId exchId,
+        Map<String, Integer> assigns) {
         this.snd = snd;
         this.exchId = exchId;
+        this.assigns = assigns;
         this.errors = Collections.emptyMap();
     }
 

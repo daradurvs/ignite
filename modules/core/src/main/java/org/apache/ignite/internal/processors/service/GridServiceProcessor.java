@@ -955,9 +955,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param assigns Service assignments.
      */
     private void redeploy(GridServiceAssignments assigns) {
-        String srvcName = assigns.name();
+        redeploy(assigns.name(), assigns.configuration(), assigns.assigns(), assigns.cacheName(), assigns.affinityKey());
+    }
 
-        Integer assignCnt = assigns.assigns().get(ctx.localNodeId());
+    /**
+     * Redeploys local services based on assignments.
+     *
+     * @param name Service name.
+     * @param cfg Service configuration.
+     * @param assigns Service assignments.
+     * @param cacheName Cache name
+     * @param affKey Affinity key.
+     */
+    private void redeploy(String name, ServiceConfiguration cfg, Map<UUID, Integer> assigns, String cacheName,
+        Object affKey) {
+        Integer assignCnt = assigns.get(ctx.localNodeId());
 
         if (assignCnt == null)
             assignCnt = 0;
@@ -965,10 +977,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Collection<ServiceContextImpl> ctxs;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(srvcName);
+            ctxs = locSvcs.get(name);
 
             if (ctxs == null)
-                locSvcs.put(srvcName, ctxs = new ArrayList<>());
+                locSvcs.put(name, ctxs = new ArrayList<>());
         }
 
         Collection<ServiceContextImpl> toInit = new ArrayList<>();
@@ -983,10 +995,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 int createCnt = assignCnt - ctxs.size();
 
                 for (int i = 0; i < createCnt; i++) {
-                    ServiceContextImpl svcCtx = new ServiceContextImpl(assigns.name(),
+                    ServiceContextImpl svcCtx = new ServiceContextImpl(name,
                         UUID.randomUUID(),
-                        assigns.cacheName(),
-                        assigns.affinityKey(),
+                        cacheName,
+                        affKey,
                         Executors.newSingleThreadExecutor(threadFactory));
 
                     ctxs.add(svcCtx);
@@ -1000,7 +1012,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             final Service svc;
 
             try {
-                svc = copyAndInject(assigns.configuration());
+                svc = copyAndInject(cfg);
 
                 // Initialize service.
                 svc.init(svcCtx);
@@ -1008,7 +1020,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 svcCtx.service(svc);
             }
             catch (Throwable e) {
-                U.error(log, "Failed to initialize service (service will not be deployed): " + assigns.name(), e);
+                U.error(log, "Failed to initialize service (service will not be deployed): " + name, e);
 
                 synchronized (ctxs) {
                     ctxs.removeAll(toInit);
@@ -1160,81 +1172,139 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void onAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
         try {
-            Collection<GridServiceAssignments> assigns = req.assignments();
+            final Collection<GridServiceAssignments> newAssigns = req.assignments();
 
-            Map<String, byte[]> errors = new HashMap<>();
-
-            Map<String, Integer> locAssings;
+            final Map<String, Throwable> errors = new HashMap<>();
 
             synchronized (mux) {
-                locAssings = new HashMap<>();
+                for (GridServiceAssignments assigns : newAssigns) {
+                    String name = assigns.name();
 
-                for (GridServiceAssignments assign : assigns) {
-                    String svcName = assign.name();
+                    srvcsAssigns.putIfAbsent(name, assigns);
 
-                    srvcsAssigns.putIfAbsent(svcName, assign);
-
-                    Integer expNum = assign.assigns().get(ctx.localNodeId());
-
-                    boolean needRedeploy = false;
-
-                    if (expNum != null && expNum > 0) {
-                        Collection<ServiceContextImpl> ctxs = locSvcs.get(svcName);
-
-                        needRedeploy = (ctxs == null) || (ctxs.size() < expNum);
-                    }
-
-                    if (needRedeploy) {
-                        try {
-                            redeploy(assign);
-                        }
-                        catch (Error | RuntimeException t) {
-                            try {
-                                byte[] arr = U.marshal(ctx, t);
-
-                                errors.put(assign.name(), arr);
-                            }
-                            catch (IgniteCheckedException e) {
-                                log.error("Failed to marshal a deployment exception: " + t.getMessage() + ']', e);
-                            }
-                        }
-                    }
+                    deployIfNeeded(name, assigns.assigns(), errors);
                 }
 
-                locSvcs.forEach((name, ctxs) -> {
-                    if (!ctxs.isEmpty())
-                        locAssings.put(name, ctxs.size());
-                });
-            }
-
-            ServicesSingleAssignmentsMessage msg = new ServicesSingleAssignmentsMessage(
-                ctx.localNodeId(),
-                req.exchangeId()
-            );
-
-            msg.assigns(locAssings);
-
-            if (!errors.isEmpty())
-                msg.errors(errors);
-
-            ClusterNode crd = coordinator();
-
-            try {
-                ctx.io().sendToGridTopic(crd, TOPIC_SERVICES, msg, SERVICE_POOL);
-
-                if (log.isDebugEnabled())
-                    log.debug("Send services single assignments message, msg=" + msg);
-            }
-            catch (IgniteCheckedException e) {
-                if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
-                    log.debug("Topology changed while message send: " + e.getMessage());
-
-                log.error("Failed to send message over communication spi, msg=" + msg, e);
+                createAndSendSingleAssingmentsMessage(req.exchangeId(), errors);
             }
         }
         catch (Exception e) {
             log.error("Error occurred during processing of service assignments request, req=" + req, e);
         }
+    }
+
+    /**
+     * @param req Services reassignments request.
+     */
+    private void onReassignmentsRequest(ServicesReassignmentsRequestMessage req) {
+        try {
+            final Map<String, Throwable> errors = new HashMap<>();
+
+            synchronized (mux) {
+                req.assigns().forEach((name, assigns) -> deployIfNeeded(name, assigns, errors));
+
+                req.servicesToUndeploy().forEach(this::undeploy);
+
+                createAndSendSingleAssingmentsMessage(req.exchangeId(), errors);
+            }
+        }
+        catch (Exception e) {
+            log.error("Error occurred during processing of service reassignments request, req=" + req, e);
+        }
+    }
+
+    /**
+     * Deploys service with given name if a number of local instances less than its number in given assignments.
+     *
+     * @param name Service name.
+     * @param assigns Service assigns.
+     * @param errors Deployment errors container to fill in.
+     */
+    private void deployIfNeeded(String name, Map<UUID, Integer> assigns, Map<String, Throwable> errors) {
+        Integer expNum = assigns.get(ctx.localNodeId());
+
+        boolean needDeploy = false;
+
+        if (expNum != null && expNum > 0) {
+            Collection<ServiceContextImpl> ctxs = locSvcs.get(name);
+
+            needDeploy = (ctxs == null) || (ctxs.size() != expNum);
+        }
+
+        if (needDeploy) {
+            try {
+                GridServiceAssignments old = srvcsAssigns.get(name);
+
+                redeploy(old.name(), old.configuration(), assigns, old.cacheName(), old.affinityKey());
+            }
+            catch (Error | RuntimeException t) {
+                errors.put(name, t);
+            }
+        }
+    }
+
+    /**
+     * @param exchId Exchange id.
+     * @param errors Deployment errors.
+     */
+    private void createAndSendSingleAssingmentsMessage(ServiceDeploymentExchangeId exchId,
+        final Map<String, Throwable> errors) {
+        ServicesSingleAssignmentsMessage msg = createSingleAssignmentsMessage(exchId, errors);
+
+        ClusterNode crd = coordinator();
+
+        try {
+            ctx.io().sendToGridTopic(crd, TOPIC_SERVICES, msg, SERVICE_POOL);
+
+            if (log.isDebugEnabled())
+                log.debug("Send services single assignments message, msg=" + msg);
+        }
+        catch (IgniteCheckedException e) {
+            if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
+                log.debug("Topology changed while message send: " + e.getMessage());
+
+            log.error("Failed to send message over communication spi, msg=" + msg, e);
+        }
+    }
+
+    /**
+     * @param exchId Exchange id.
+     * @param errors Deployment errors.
+     * @return Services single assignments message.
+     */
+    private ServicesSingleAssignmentsMessage createSingleAssignmentsMessage(ServiceDeploymentExchangeId exchId,
+        Map<String, Throwable> errors) {
+        Map<String, Integer> locAssings = new HashMap<>();
+
+        locSvcs.forEach((name, ctxs) -> {
+            if (!ctxs.isEmpty())
+                locAssings.put(name, ctxs.size());
+        });
+
+        ServicesSingleAssignmentsMessage msg = new ServicesSingleAssignmentsMessage(
+            ctx.localNodeId(),
+            exchId,
+            locAssings
+        );
+
+        if (!errors.isEmpty()) {
+            Map<String, byte[]> errorsBytes = new HashMap<>();
+
+            errors.forEach((name, err) -> {
+                try {
+                    byte[] arr = U.marshal(ctx, err);
+
+                    errorsBytes.put(name, arr);
+                }
+                catch (IgniteCheckedException e) {
+                    log.error("Failed to marshal a deployment exception: " + err.getMessage() + ']', e);
+                }
+            });
+
+            msg.errors(errorsBytes);
+        }
+
+        return msg;
     }
 
     /**
@@ -1291,6 +1361,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         depExe.execute(new DepRunnable() {
                             @Override public void run0() {
                                 onAssignmentsRequest((ServicesAssignmentsRequestMessage)msg);
+                            }
+                        });
+                    }
+                    else if (msg instanceof ServicesReassignmentsRequestMessage) {
+                        final ServicesReassignmentsRequestMessage msg0 = (ServicesReassignmentsRequestMessage)msg;
+
+                        if (log.isDebugEnabled()) {
+                            log.debug("Received services reassignments message: [locId=" + ctx.localNodeId() +
+                                ", sender=" + evt.eventNode().id() +
+                                ", msg=" + msg0 + ']');
+                        }
+                        depExe.execute(new DepRunnable() {
+                            @Override public void run0() {
+                                onReassignmentsRequest(msg0);
                             }
                         });
                     }

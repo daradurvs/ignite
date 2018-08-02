@@ -44,6 +44,7 @@ import org.apache.ignite.services.ServiceConfiguration;
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
+import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 
 /**
  * Services deployment exchange future.
@@ -52,6 +53,9 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     /** Single service messages to process. */
     @GridToStringInclude
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
+
+    /** Expected services assignments. */
+    private final Map<String, Map<UUID, Integer>> expAssigns = new HashMap<>();
 
     /** Deployment errors. */
     @GridToStringInclude
@@ -258,6 +262,17 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
                         if (num != null && num != 0) {
                             Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
 
+                            Map<UUID, Integer> expSrvcAssigns = expAssigns.get(name);
+
+                            if (expSrvcAssigns != null) {
+                                Integer expNum = expSrvcAssigns.get(nodeId);
+
+                                if (expNum == null)
+                                    num = 0;
+                                else if (expNum < num)
+                                    num = expNum;
+                            }
+
                             srvcAssigns.put(nodeId, num);
                         }
                     });
@@ -322,7 +337,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param topVer Topology version.
      */
     private void onChangedTopology(AffinityTopologyVersion topVer) {
-        ServicesFullAssignmentsMessage msg = reassignAll(topVer);
+        ServicesReassignmentsRequestMessage msg = createReassignmentsRequest(topVer);
 
         sendCustomEvent(msg);
     }
@@ -343,54 +358,59 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
     /**
      * @param topVer Topology version.
-     * @return Services full assignments message.
+     * @return Services reassignments request.
      */
-    private ServicesFullAssignmentsMessage reassignAll(AffinityTopologyVersion topVer) {
-        final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+    private ServicesReassignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer) {
+        final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
+
+        final Set<String> servicesToUndeploy = new HashSet<>();
 
         srvcsAssigns.forEach((name, old) -> {
-            GridServiceAssignments srvcAssigns = null;
+            ServiceConfiguration cfg = old.configuration();
+
+            GridServiceAssignments newAssigns = null;
+
+            Throwable th = null;
 
             try {
-                srvcAssigns = assignsFunc.reassign(old.configuration(), old.nodeId(), topVer);
+                newAssigns = assignsFunc.reassign(cfg, old.nodeId(), topVer);
             }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to recalculate assignments for service, previously calculated assignments " +
-                    "will be used, cfg=" + old.configuration(), e);
+            catch (Throwable e) {
+                log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);
 
-                depErrors.put(old.name(), e);
-
-                srvcAssigns = old;
+                th = e;
             }
 
-            if (srvcAssigns != null) {
+            if (th == null && newAssigns != null && !newAssigns.assigns().isEmpty()) {
                 if (log.isDebugEnabled())
-                    log.debug("Calculated service assignments: " + srvcAssigns);
+                    log.debug("Calculated service assignments: " + newAssigns.assigns());
 
-                assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns.assigns(), evt.topologyVersion()));
+                fullAssigns.put(name, newAssigns.assigns());
             }
+            else if (cfg.policy() == IGNORE) {
+                Map<UUID, Integer> assigns = new HashMap<>();
+
+                old.assigns().forEach((id, num) -> {
+                    if (ctx.discovery().alive(id))
+                        assigns.put(id, num);
+                });
+
+                if (!assigns.isEmpty())
+                    fullAssigns.put(name, assigns);
+                else
+                    servicesToUndeploy.add(name);
+            }
+            else
+                servicesToUndeploy.add(name);
         });
 
-        Map<String, Collection<byte[]>> errors = new HashMap<>();
+        expAssigns.putAll(fullAssigns);
 
-        depErrors.forEach((name, err) -> {
-            byte[] arr = null;
+        ServicesReassignmentsRequestMessage msg = new ServicesReassignmentsRequestMessage(ctx.localNodeId(),
+            exchId, topVer.topologyVersion(), fullAssigns);
 
-            try {
-                arr = U.marshal(ctx, err);
-            }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to marshal reassignments error.", e);
-            }
-
-            if (arr != null)
-                errors.put(name, Collections.singleton(arr));
-        });
-
-        ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
-
-        if (!errors.isEmpty())
-            msg.errors(errors);
+        if (!servicesToUndeploy.isEmpty())
+            msg.servicesToUndeploy(servicesToUndeploy);
 
         return msg;
     }
