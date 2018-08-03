@@ -33,12 +33,12 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
     public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer);
 
     /**
-     * Starts work of deployment exchange manager.
+     * Starts processing of services deployments exchange tasks.
      */
     public void startProcessing();
 
     /**
-     * Stops work of deployment exchange manager.
+     * Stops processing of services deployments exchange tasks.
      */
     public void stopProcessing();
 }
