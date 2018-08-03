@@ -42,6 +42,7 @@ import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.services.ServiceConfiguration;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
@@ -51,7 +52,7 @@ import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 /**
  * Services deployment exchange future.
  */
-public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> {
+public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask {
     /** Single service messages to process. */
     @GridToStringInclude
     private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
@@ -86,7 +87,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
     private final AffinityTopologyVersion evtTopVer;
 
     /** Exchange id. */
-    private final ServiceDeploymentExchangeId exchId;
+    private final ServicesDeploymentExchangeId exchId;
 
     /** Remaining nodes to received single node assignments message. */
     @GridToStringInclude
@@ -99,7 +100,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
      */
-    public ServicesDeploymentExchangeFuture(Map<String, GridServiceAssignments> srvcsAssigns,
+    public ServicesDeploymentExchangeFutureTask(Map<String, GridServiceAssignments> srvcsAssigns,
         ServiceAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt,
         AffinityTopologyVersion evtTopVer) {
         this.srvcsAssigns = srvcsAssigns;
@@ -107,65 +108,66 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         this.ctx = ctx;
         this.evt = evt;
         this.evtTopVer = evtTopVer;
-        this.exchId = new ServiceDeploymentExchangeId(evt);
+        this.exchId = new ServicesDeploymentExchangeId(evt);
         this.log = ctx.log(getClass());
     }
 
-    /**
-     * Services assignments exchange initialization method.
-     *
-     * @throws Exception In case of an error.
-     */
-    public void init() throws Exception {
-        if (log.isDebugEnabled()) {
-            log.debug("Started services exchange future init: [exchId=" + exchangeId() +
-                ", locId=" + ctx.localNodeId() +
-                ", evt=" + evt + ']');
-        }
-
-        synchronized (mux) {
-            for (ClusterNode node : ctx.discovery().allNodes()) {
-                if (ctx.discovery().alive(node))
-                    remaining.add(node.id());
+    /** {@inheritDoc} */
+    @Override public void init() throws IgniteCheckedException {
+        try {
+            if (log.isDebugEnabled()) {
+                log.debug("Started services exchange future init: [exchId=" + exchangeId() +
+                    ", locId=" + ctx.localNodeId() +
+                    ", evt=" + evt + ']');
             }
-        }
 
-        if (evt instanceof DiscoveryCustomEvent) {
-            DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
-            if (msg instanceof ServicesCancellationRequestMessage)
-                onCancellationRequest((ServicesCancellationRequestMessage)msg, evtTopVer.topologyVersion());
-            else if (msg instanceof ServicesDeploymentRequestMessage)
-                onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
-            else if (msg instanceof DynamicCacheChangeBatch)
-                onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
-            else
-                onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
-        }
-        else {
-            if (!srvcsAssigns.isEmpty()) {
-                switch (evt.type()) {
-                    case EVT_NODE_JOINED:
-                    case EVT_NODE_LEFT:
-                    case EVT_NODE_FAILED:
-
-                        initFullReassignment(evtTopVer, Collections.emptySet());
-
-                        break;
-
-                    default:
-                        onDone(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt));
-
-                        break;
+            synchronized (mux) {
+                for (ClusterNode node : ctx.discovery().allNodes()) {
+                    if (ctx.discovery().alive(node))
+                        remaining.add(node.id());
                 }
             }
-            else
-                onDone();
-        }
 
-        if (log.isDebugEnabled()) {
-            log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
-                ", locId=" + ctx.localNodeId() + ']');
+            if (evt instanceof DiscoveryCustomEvent) {
+                DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                if (msg instanceof ServicesCancellationRequestMessage)
+                    onCancellationRequest((ServicesCancellationRequestMessage)msg, evtTopVer.topologyVersion());
+                else if (msg instanceof ServicesDeploymentRequestMessage)
+                    onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
+                else if (msg instanceof DynamicCacheChangeBatch)
+                    onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
+                else
+                    onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
+            }
+            else {
+                if (!srvcsAssigns.isEmpty()) {
+                    switch (evt.type()) {
+                        case EVT_NODE_JOINED:
+                        case EVT_NODE_LEFT:
+                        case EVT_NODE_FAILED:
+
+                            initFullReassignment(evtTopVer, Collections.emptySet());
+
+                            break;
+
+                        default:
+                            onDone(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt));
+
+                            break;
+                    }
+                }
+                else
+                    onDone();
+            }
+
+            if (log.isDebugEnabled()) {
+                log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
+                    ", locId=" + ctx.localNodeId() + ']');
+            }
+        }
+        catch (Exception e) {
+            throw new IgniteCheckedException(e);
         }
     }
 
@@ -270,10 +272,8 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         sendCustomEvent(msg);
     }
 
-    /**
-     * @param msg Single node services assignments.
-     */
-    public void onReceiveSingleMessage(final ServicesSingleAssignmentsMessage msg) {
+    /** {@inheritDoc} */
+    @Override public void onReceiveSingleAssignmentsMessage(ServicesSingleAssignmentsMessage msg) {
         synchronized (mux) {
             assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
@@ -286,6 +286,11 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             else
                 log.warning("Unexpected service assignments message received, msg=" + msg);
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onReceiveFullAssignmentsMessage(ServicesFullAssignmentsMessage msg) {
+        onDone();
     }
 
     /**
@@ -449,10 +454,8 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         }
     }
 
-    /**
-     * @param nodeId Node id.
-     */
-    public void onNodeLeft(UUID nodeId) {
+    /** {@inheritDoc} */
+    @Override public void onNodeLeft(UUID nodeId) {
         if (isDone() || remaining.isEmpty())
             return;
 
@@ -462,11 +465,19 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
             onAllReceived();
     }
 
-    /**
-     * @return Exchange id.
-     */
-    public ServiceDeploymentExchangeId exchangeId() {
+    /** {@inheritDoc} */
+    @Override public ServicesDeploymentExchangeId exchangeId() {
         return exchId;
+    }
+
+    /** {@inheritDoc} */
+    @Override public void complete(@Nullable Throwable err, boolean cancel) {
+        onDone(null, err, cancel);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void waitForComplete(long timeout) throws IgniteCheckedException {
+        get(timeout);
     }
 
     /**
@@ -476,10 +487,8 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         return evt;
     }
 
-    /**
-     * @return Nodes ids to wait single node assignments messages.
-     */
-    public Set<UUID> remaining() {
+    /** {@inheritDoc} */
+    @Override public Set<UUID> remaining() {
         return Collections.unmodifiableSet(remaining);
     }
 
@@ -491,7 +500,7 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
         if (o == null || getClass() != o.getClass())
             return false;
 
-        ServicesDeploymentExchangeFuture fut1 = (ServicesDeploymentExchangeFuture)o;
+        ServicesDeploymentExchangeFutureTask fut1 = (ServicesDeploymentExchangeFutureTask)o;
 
         return exchId.equals(fut1.exchId);
     }
@@ -503,6 +512,6 @@ public class ServicesDeploymentExchangeFuture extends GridFutureAdapter<Object> 
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesDeploymentExchangeFuture.class, this);
+        return S.toString(ServicesDeploymentExchangeFutureTask.class, this);
     }
 }

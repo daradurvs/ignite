@@ -17,28 +17,30 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import org.apache.ignite.events.DiscoveryEvent;
-import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import java.util.UUID;
 
 /**
- * Defines methods to manage a services deployment and reassignments exchange across Ignite cluster.
+ * Defines methods to be manageable in service deployment exchange.
  */
-public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExchangeManageable {
+public interface ServicesDeploymentExchangeManageable {
     /**
-     * Handles event as cause of services assignments exchange.
+     * Handles received single services assignments message.
      *
-     * @param evt Discovery event.
-     * @param topVer Affinity topology version.
+     * @param msg Single services assignments message.
      */
-    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer);
+    public void onReceiveSingleAssignmentsMessage(ServicesSingleAssignmentsMessage msg);
 
     /**
-     * Starts work of deployment exchange manager.
+     * Handles received full services assignments message.
+     *
+     * @param msg Full services assignments message.
      */
-    public void startProcessing();
+    public void onReceiveFullAssignmentsMessage(ServicesFullAssignmentsMessage msg);
 
     /**
-     * Stops work of deployment exchange manager.
+     * Handles situations when node leaves topology.
+     *
+     * @param nodeId Left node id.
      */
-    public void stopProcessing();
+    public void onNodeLeft(UUID nodeId);
 }

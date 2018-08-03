@@ -44,7 +44,7 @@ public class ServicesReassignmentsRequestMessage implements DiscoveryCustomMessa
     private final UUID snd;
 
     /** Exchange id. */
-    private final ServiceDeploymentExchangeId exchId;
+    private final ServicesDeploymentExchangeId exchId;
 
     /** Topology version. */
     private final long topVer;
@@ -63,7 +63,7 @@ public class ServicesReassignmentsRequestMessage implements DiscoveryCustomMessa
      * @param topVer Topology version.
      * @param assigns Services assignments.
      */
-    public ServicesReassignmentsRequestMessage(UUID snd, ServiceDeploymentExchangeId exchId, long topVer,
+    public ServicesReassignmentsRequestMessage(UUID snd, ServicesDeploymentExchangeId exchId, long topVer,
         Map<String, Map<UUID, Integer>> assigns) {
         this.snd = snd;
         this.exchId = exchId;
@@ -82,7 +82,7 @@ public class ServicesReassignmentsRequestMessage implements DiscoveryCustomMessa
     /**
      * @return Exchange id.
      */
-    public ServiceDeploymentExchangeId exchangeId() {
+    public ServicesDeploymentExchangeId exchangeId() {
         return exchId;
     }
 

@@ -32,7 +32,7 @@ import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 /**
  * Service deployment exchange id.
  */
-public class ServiceDeploymentExchangeId implements Message {
+public class ServicesDeploymentExchangeId implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -51,13 +51,13 @@ public class ServiceDeploymentExchangeId implements Message {
     /**
      * Empty constructor for marshalling purposes.
      */
-    public ServiceDeploymentExchangeId() {
+    public ServicesDeploymentExchangeId() {
     }
 
     /**
      * @param evt Cause discovery event.
      */
-    public ServiceDeploymentExchangeId(DiscoveryEvent evt) {
+    public ServicesDeploymentExchangeId(DiscoveryEvent evt) {
         this.nodeId = evt.eventNode().id();
         this.topVer = evt.topologyVersion();
         this.evtType = evt.type();
@@ -177,7 +177,7 @@ public class ServiceDeploymentExchangeId implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServiceDeploymentExchangeId.class);
+        return reader.afterMessageRead(ServicesDeploymentExchangeId.class);
     }
 
     /** {@inheritDoc} */
@@ -203,7 +203,7 @@ public class ServiceDeploymentExchangeId implements Message {
         if (o == null || getClass() != o.getClass())
             return false;
 
-        ServiceDeploymentExchangeId id = (ServiceDeploymentExchangeId)o;
+        ServicesDeploymentExchangeId id = (ServicesDeploymentExchangeId)o;
 
         return topVer == id.topVer && evtType == id.evtType &&
             F.eq(nodeId, id.nodeId) && F.eq(reqId, id.reqId);
@@ -216,6 +216,6 @@ public class ServiceDeploymentExchangeId implements Message {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServiceDeploymentExchangeId.class, this);
+        return S.toString(ServicesDeploymentExchangeId.class, this);
     }
 }

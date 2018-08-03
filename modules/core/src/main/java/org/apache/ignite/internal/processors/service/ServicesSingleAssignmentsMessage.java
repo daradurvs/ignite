@@ -50,7 +50,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
     private UUID snd;
 
     /** Exchange id. */
-    private ServiceDeploymentExchangeId exchId;
+    private ServicesDeploymentExchangeId exchId;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -63,7 +63,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
      * @param exchId Exchange id.
      * @param assigns Local services assignments.
      */
-    public ServicesSingleAssignmentsMessage(UUID snd, ServiceDeploymentExchangeId exchId,
+    public ServicesSingleAssignmentsMessage(UUID snd, ServicesDeploymentExchangeId exchId,
         Map<String, Integer> assigns) {
         this.snd = snd;
         this.exchId = exchId;
@@ -109,7 +109,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
     /**
      * @return Exchange id.
      */
-    public ServiceDeploymentExchangeId exchangeId() {
+    public ServicesDeploymentExchangeId exchangeId() {
         return exchId;
     }
 

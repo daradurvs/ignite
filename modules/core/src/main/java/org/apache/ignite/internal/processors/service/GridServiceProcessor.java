@@ -142,7 +142,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final Map<String, GridServiceAssignments> srvcsAssigns = new ConcurrentHashMap<>();
 
     /** Services deployment exchange manager. */
-    private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManager(ctx);
+    private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
     /** Services assignments function. */
     private final ServiceAssignmentsFunction assignsFunc = new ServiceAssignmentsFunctionImpl(ctx, srvcsAssigns);
@@ -1249,7 +1249,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param exchId Exchange id.
      * @param errors Deployment errors.
      */
-    private void createAndSendSingleAssingmentsMessage(ServiceDeploymentExchangeId exchId,
+    private void createAndSendSingleAssingmentsMessage(ServicesDeploymentExchangeId exchId,
         final Map<String, Throwable> errors) {
         ServicesSingleAssignmentsMessage msg = createSingleAssignmentsMessage(exchId, errors);
 
@@ -1274,7 +1274,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param errors Deployment errors.
      * @return Services single assignments message.
      */
-    private ServicesSingleAssignmentsMessage createSingleAssignmentsMessage(ServiceDeploymentExchangeId exchId,
+    private ServicesSingleAssignmentsMessage createSingleAssignmentsMessage(ServicesDeploymentExchangeId exchId,
         Map<String, Throwable> errors) {
         Map<String, Integer> locAssings = new HashMap<>();
 
@@ -1348,10 +1348,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 ", msg=" + msg + ']');
                         }
 
-                        ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
-                            srvcsAssigns, assignsFunc, ctx, evt, discoCache.version());
-
-                        exchangeMgr.onEvent(fut);
+                        exchangeMgr.onEvent(evt, discoCache.version());
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
                         if (log.isDebugEnabled()) {
@@ -1394,7 +1391,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 processFullAssignment(msg0);
 
                                 if (!ctx.clientNode())
-                                    exchangeMgr.onReceiveFullMessage(msg0);
+                                    exchangeMgr.onReceiveFullAssignmentsMessage(msg0);
                             }
                         });
                     }
@@ -1408,12 +1405,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         }
 
                         if (!cachesToStop.isEmpty()) {
-                            if (srvcsAssigns.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().cacheName()))) {
-                                ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
-                                    srvcsAssigns, assignsFunc, ctx, evt, discoCache.version());
-
-                                exchangeMgr.onEvent(fut);
-                            }
+                            if (srvcsAssigns.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().cacheName())))
+                                exchangeMgr.onEvent(evt, discoCache.version());
                         }
                     }
 
@@ -1427,12 +1420,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
                     case EVT_NODE_JOINED:
-                        if (!srvcsAssigns.isEmpty()) {
-                            ServicesDeploymentExchangeFuture fut = new ServicesDeploymentExchangeFuture(
-                                srvcsAssigns, assignsFunc, ctx, evt, discoCache.version());
-
-                            exchangeMgr.onEvent(fut);
-                        }
+                        if (!srvcsAssigns.isEmpty())
+                            exchangeMgr.onEvent(evt, discoCache.version());
 
                         break;
 
@@ -1465,7 +1454,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             ", msg=" + msg + ']');
                     }
 
-                    exchangeMgr.onReceiveSingleMessage((ServicesSingleAssignmentsMessage)msg);
+                    exchangeMgr.onReceiveSingleAssignmentsMessage((ServicesSingleAssignmentsMessage)msg);
                 }
             }
             finally {
@@ -1730,5 +1719,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Map<String, GridServiceAssignments> assignments() {
         return Collections.unmodifiableMap(srvcsAssigns);
+    }
+
+    /**
+     * @return Services assignments function.
+     */
+    public ServiceAssignmentsFunction assignmentsFunction() {
+        return assignsFunc;
     }
 }
