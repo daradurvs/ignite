@@ -30,7 +30,7 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
      * @param evt Discovery event.
      * @param topVer Affinity topology version.
      */
-    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer);
+    public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer);
 
     /**
      * Starts processing of services deployments exchange tasks.

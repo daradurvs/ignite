@@ -1348,7 +1348,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 ", msg=" + msg + ']');
                         }
 
-                        exchangeMgr.onEvent(evt, discoCache.version());
+                        exchangeMgr.processEvent(evt, discoCache.version());
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
                         if (log.isDebugEnabled()) {
@@ -1406,7 +1406,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         if (!cachesToStop.isEmpty()) {
                             if (srvcsAssigns.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().cacheName())))
-                                exchangeMgr.onEvent(evt, discoCache.version());
+                                exchangeMgr.processEvent(evt, discoCache.version());
                         }
                     }
 
@@ -1421,7 +1421,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     case EVT_NODE_FAILED:
                     case EVT_NODE_JOINED:
                         if (!srvcsAssigns.isEmpty())
-                            exchangeMgr.onEvent(evt, discoCache.version());
+                            exchangeMgr.processEvent(evt, discoCache.version());
 
                         break;
 

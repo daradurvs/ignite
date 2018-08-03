@@ -72,7 +72,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    public void startProcessing() {
+    @Override public void startProcessing() {
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
 
         synchronized (mux) {
@@ -108,7 +108,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+    @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(
             ctx.service().assignments(),
             ctx.service().assignmentsFunction(),
