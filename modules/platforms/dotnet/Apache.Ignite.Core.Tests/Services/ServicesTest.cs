@@ -331,7 +331,7 @@ namespace Apache.Ignite.Core.Tests.Services
             Assert.IsNull(Grid3.GetServices().GetService<ITestIgniteService>(SvcName));
 
             // Get proxy.
-            dynamic prx = Grid3.GetServices().GetDynamicServiceProxy(SvcName, false);
+            dynamic prx = Grid3.GetServices().GetDynamicServiceProxy(SvcName, true);
 
             // Property getter.
             Assert.AreEqual(37, prx.TestProperty);
