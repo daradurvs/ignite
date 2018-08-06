@@ -55,6 +55,7 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
+import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
@@ -133,7 +134,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadLocal<String> srvcName = new ThreadLocal<>();
 
     /** Discovery events listener. */
-    private DiscoveryEventListener discoLsnr = new DiscoveryListener();
+    private final DiscoveryEventListener discoLsnr = new DiscoveryListener();
 
     /** Services messages communication listener. */
     private final CommunicationListener commLsnr = new CommunicationListener();
@@ -1371,6 +1372,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 ", sender=" + evt.eventNode().id() +
                                 ", msg=" + msg0 + ']');
                         }
+
                         depExe.execute(new DepRunnable() {
                             @Override public void run0() {
                                 onReassignmentsRequest(msg0);
@@ -1408,6 +1410,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             if (srvcsAssigns.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().cacheName())))
                                 exchangeMgr.processEvent(evt, discoCache.version());
                         }
+                    }
+                    if (msg instanceof CacheAffinityChangeMessage) {
+                        if (srvcsAssigns.entrySet().stream().anyMatch(e -> e.getValue().cacheName() != null))
+                            exchangeMgr.processEvent(evt, discoCache.version());
                     }
 
                     return;

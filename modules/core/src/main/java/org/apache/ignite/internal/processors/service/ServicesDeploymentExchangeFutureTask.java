@@ -35,6 +35,7 @@ import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
@@ -137,6 +138,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
+                else if (msg instanceof CacheAffinityChangeMessage)
+                    initFullReassignment(evtTopVer, Collections.emptySet());
                 else
                     onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
             }
