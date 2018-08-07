@@ -1321,10 +1321,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (evt instanceof DiscoveryCustomEvent) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                    if (msg instanceof ServicesDeploymentRequestMessage) {
-                        if (ctx.clientNode())
-                            return;
-
+                    if (msg instanceof ServicesDeploymentRequestMessage && !ctx.clientNode()) {
                         if (log.isDebugEnabled() && curCrd) {
                             log.debug("Received services change state request: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
@@ -1366,10 +1363,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
                         });
                     }
-                    else if (msg instanceof DynamicCacheChangeBatch) {
+                    else if (msg instanceof DynamicCacheChangeBatch && !ctx.clientNode()) {
                         DynamicCacheChangeBatch msg0 = (DynamicCacheChangeBatch)msg;
 
                         Set<String> cachesToStop = new HashSet<>();
+
                         for (DynamicCacheChangeRequest req : msg0.requests()) {
                             if (req.stop())
                                 cachesToStop.add(req.cacheName());
@@ -1380,7 +1378,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 exchangeMgr.processEvent(evt, discoCache.version());
                         }
                     }
-                    if (msg instanceof CacheAffinityChangeMessage) {
+                    else if (msg instanceof CacheAffinityChangeMessage && !ctx.clientNode()) {
                         if (srvcsAssigns.entrySet().stream().anyMatch(e -> e.getValue().cacheName() != null))
                             exchangeMgr.processEvent(evt, discoCache.version());
                     }
@@ -1551,13 +1549,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 });
 
                 Set<String> srvcsNames = fullAssigns.keySet();
-
-                Set<String> locSrvcsNames = new HashSet<>(locSvcs.keySet());
-
-                for (String name : locSrvcsNames) {
-                    if (!srvcsNames.contains(name))
-                        undeploy(name);
-                }
 
                 srvcsAssigns.entrySet().removeIf(assign -> !srvcsNames.contains(assign.getKey()));
 
