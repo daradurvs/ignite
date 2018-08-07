@@ -30,6 +30,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -84,7 +85,6 @@ import org.apache.ignite.thread.IgniteThreadFactory;
 import org.apache.ignite.thread.OomExceptionHandler;
 import org.jetbrains.annotations.Nullable;
 
-import static javax.cache.event.EventType.REMOVED;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_SERVICES_COMPATIBILITY_MODE;
 import static org.apache.ignite.IgniteSystemProperties.getString;
 import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
@@ -691,9 +691,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     @SuppressWarnings("unchecked")
     public IgniteInternalFuture<?> cancelAll(Collection<String> srvcsNames) {
-        List<String> srvcsNamesCp = new ArrayList<>(srvcsNames);
-
-        Collections.sort(srvcsNamesCp);
+        Set<String> srvcsNamesCp = new TreeSet<>(srvcsNames);
 
         GridCompoundFuture res;
 
@@ -701,9 +699,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             res = new GridCompoundFuture<>();
 
             synchronized (mux) {
-                List<String> toRollback = new ArrayList<>();
+                Set<String> toRollback = new TreeSet<>();
 
-                List<String> namesToCancel = new ArrayList<>(srvcsNamesCp.size());
+                Set<String> namesToCancel = new TreeSet<>();
 
                 try {
                     for (String name : srvcsNamesCp) {
@@ -740,7 +738,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     }
 
                     if (!namesToCancel.isEmpty()) {
-                        ServicesCancellationRequestMessage msg = new ServicesCancellationRequestMessage(
+                        ServicesDeploymentRequestMessage msg = new ServicesDeploymentRequestMessage(
                             ctx.localNodeId(), namesToCancel);
 
                         ctx.discovery().sendCustomEvent(msg);
@@ -1171,16 +1169,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param req Service assignments request.
+     * @param req Services assignments request.
      */
     private void onAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
         try {
-            final Collection<GridServiceAssignments> newAssigns = req.assignments();
-
             final Map<String, Throwable> errors = new HashMap<>();
 
             synchronized (mux) {
-                for (GridServiceAssignments assigns : newAssigns) {
+                req.assignments().forEach((name, assigns) -> deployIfNeeded(name, assigns, errors));
+
+                req.servicesToUndeploy().forEach(this::undeploy);
+
+                for (GridServiceAssignments assigns : req.servicesToDeploy()) {
                     String name = assigns.name();
 
                     srvcsAssigns.putIfAbsent(name, assigns);
@@ -1188,31 +1188,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     deployIfNeeded(name, assigns.assigns(), errors);
                 }
 
-                createAndSendSingleAssingmentsMessage(req.exchangeId(), errors);
-            }
-        }
-        catch (Exception e) {
-            log.error("Error occurred during processing of service assignments request, req=" + req, e);
-        }
-    }
-
-    /**
-     * @param req Services reassignments request.
-     */
-    private void onReassignmentsRequest(ServicesReassignmentsRequestMessage req) {
-        try {
-            final Map<String, Throwable> errors = new HashMap<>();
-
-            synchronized (mux) {
-                req.assigns().forEach((name, assigns) -> deployIfNeeded(name, assigns, errors));
-
                 req.servicesToUndeploy().forEach(this::undeploy);
 
                 createAndSendSingleAssingmentsMessage(req.exchangeId(), errors);
             }
         }
         catch (Exception e) {
-            log.error("Error occurred during processing of service reassignments request, req=" + req, e);
+            log.error("Error occurred during processing of service assignments request, req=" + req, e);
         }
     }
 
@@ -1339,7 +1321,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (evt instanceof DiscoveryCustomEvent) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                    if (msg instanceof ServicesDeploymentRequestMessage || msg instanceof ServicesCancellationRequestMessage) {
+                    if (msg instanceof ServicesDeploymentRequestMessage) {
                         if (ctx.clientNode())
                             return;
 
@@ -1352,30 +1334,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         exchangeMgr.processEvent(evt, discoCache.version());
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("Received services assignments request: [locId=" + ctx.localNodeId() +
-                                ", sender=" + evt.eventNode().id() +
-                                ", msg=" + msg + ']');
-                        }
-
-                        depExe.execute(new DepRunnable() {
-                            @Override public void run0() {
-                                onAssignmentsRequest((ServicesAssignmentsRequestMessage)msg);
-                            }
-                        });
-                    }
-                    else if (msg instanceof ServicesReassignmentsRequestMessage) {
-                        final ServicesReassignmentsRequestMessage msg0 = (ServicesReassignmentsRequestMessage)msg;
+                        final ServicesAssignmentsRequestMessage msg0 = (ServicesAssignmentsRequestMessage)msg;
 
                         if (log.isDebugEnabled()) {
-                            log.debug("Received services reassignments message: [locId=" + ctx.localNodeId() +
+                            log.debug("Received services assignments message: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
                                 ", msg=" + msg0 + ']');
                         }
 
                         depExe.execute(new DepRunnable() {
                             @Override public void run0() {
-                                onReassignmentsRequest(msg0);
+                                onAssignmentsRequest(msg0);
                             }
                         });
                     }

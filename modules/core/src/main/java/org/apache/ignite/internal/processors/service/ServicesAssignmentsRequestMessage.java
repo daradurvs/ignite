@@ -18,6 +18,8 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
@@ -39,32 +41,45 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
     /** Assignments initiator id. */
-    private final UUID nodeId;
+    private final UUID snd;
 
     /** Exchange id. */
     private final ServicesDeploymentExchangeId exchId;
 
-    /** Services assignments. */
+    /** Topology version. */
+    private final long topVer;
+
+    /** New services assignments. */
     @GridToStringInclude
-    private final Collection<GridServiceAssignments> assigns;
+    private Map<String, Map<UUID, Integer>> assigns;
+
+    /** Services assignments to apply. */
+    @GridToStringInclude
+    private Collection<GridServiceAssignments> srvcsToDeploy;
+
+    /** Services names to undeploy. */
+    @GridToStringInclude
+    private Collection<String> srvcsToUndeploy;
 
     /**
-     * @param nodeId Assignments initiator id.
+     * @param snd Sender id.
      * @param exchId Exchange id.
-     * @param assigns Services assignments.
+     * @param topVer Topology version.
      */
-    public ServicesAssignmentsRequestMessage(UUID nodeId, ServicesDeploymentExchangeId exchId,
-        Collection<GridServiceAssignments> assigns) {
-        this.nodeId = nodeId;
+    public ServicesAssignmentsRequestMessage(UUID snd, ServicesDeploymentExchangeId exchId, long topVer) {
+        this.snd = snd;
         this.exchId = exchId;
-        this.assigns = assigns;
+        this.topVer = topVer;
+        this.assigns = Collections.emptyMap();
+        this.srvcsToDeploy = Collections.emptySet();
+        this.srvcsToUndeploy = Collections.emptySet();
     }
 
     /**
-     * @return Assignments initiator id.
+     * @return Sender id.
      */
-    public UUID nodeId() {
-        return nodeId;
+    public UUID senderId() {
+        return snd;
     }
 
     /**
@@ -75,10 +90,52 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     }
 
     /**
+     * Topology version.
+     */
+    public long topologyVersion() {
+        return topVer;
+    }
+
+    /**
      * @return Services assignments.
      */
-    public Collection<GridServiceAssignments> assignments() {
+    public Map<String, Map<UUID, Integer>> assignments() {
         return assigns;
+    }
+
+    /**
+     * @param assigns Services assignments.
+     */
+    public void assignments(Map<String, Map<UUID, Integer>> assigns) {
+        this.assigns = assigns;
+    }
+
+    /**
+     * @return Services assignments to apply.
+     */
+    public Collection<GridServiceAssignments> servicesToDeploy() {
+        return srvcsToDeploy;
+    }
+
+    /**
+     * @param servicesToDeploy Services assignments to apply.
+     */
+    public void servicesToDeploy(Collection<GridServiceAssignments> servicesToDeploy) {
+        this.srvcsToDeploy = servicesToDeploy;
+    }
+
+    /**
+     * @return Services names to undeploy.
+     */
+    public Collection<String> servicesToUndeploy() {
+        return srvcsToUndeploy;
+    }
+
+    /**
+     * @param undepSrvcsNames Services names to undeploy.
+     */
+    public void servicesToUndeploy(Collection<String> undepSrvcsNames) {
+        this.srvcsToUndeploy = undepSrvcsNames;
     }
 
     /** {@inheritDoc} */

@@ -132,16 +132,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (evt instanceof DiscoveryCustomEvent) {
                 DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                if (msg instanceof ServicesCancellationRequestMessage)
-                    onCancellationRequest((ServicesCancellationRequestMessage)msg, evtTopVer.topologyVersion());
-                else if (msg instanceof ServicesDeploymentRequestMessage)
+                if (msg instanceof ServicesDeploymentRequestMessage)
                     onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
                 else if (msg instanceof CacheAffinityChangeMessage)
-                    initFullReassignment(evtTopVer, Collections.emptySet());
+                    initFullReassignment(evtTopVer);
                 else
-                    onDone(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg));
+                    complete(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg), true);
             }
             else {
                 if (!srvcsAssigns.isEmpty()) {
@@ -150,18 +148,18 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         case EVT_NODE_LEFT:
                         case EVT_NODE_FAILED:
 
-                            initFullReassignment(evtTopVer, Collections.emptySet());
+                            initFullReassignment(evtTopVer);
 
                             break;
 
                         default:
-                            onDone(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt));
+                            complete(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt), true);
 
                             break;
                     }
                 }
                 else
-                    onDone();
+                    complete(null, false);
             }
 
             if (log.isDebugEnabled()) {
@@ -180,65 +178,53 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req, AffinityTopologyVersion topVer) {
-        Collection<ServiceConfiguration> cfgs = req.configurations();
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId,
+            evtTopVer.topologyVersion());
 
-        Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
+        if (!req.servicesToDeploy().isEmpty()) {
+            Collection<ServiceConfiguration> cfgs = req.servicesToDeploy();
 
-        for (ServiceConfiguration cfg : cfgs) {
-            GridServiceAssignments srvcAssigns = srvcsAssigns.get(cfg.getName());
+            Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
 
-            Throwable th = null;
+            for (ServiceConfiguration cfg : cfgs) {
+                GridServiceAssignments srvcAssigns = srvcsAssigns.get(cfg.getName());
 
-            if (srvcAssigns != null && !srvcAssigns.configuration().equalsIgnoreNodeFilter(cfg)) {
-                th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                    "different configuration) [deployed=" + srvcAssigns.configuration() + ", new=" + cfg + ']');
-            }
-            else {
-                try {
-                    srvcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+                Throwable th = null;
+
+                if (srvcAssigns != null && !srvcAssigns.configuration().equalsIgnoreNodeFilter(cfg)) {
+                    th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                        "different configuration) [deployed=" + srvcAssigns.configuration() + ", new=" + cfg + ']');
                 }
-                catch (IgniteCheckedException e) {
-                    th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+                else {
+                    try {
+                        srvcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+                    }
+                    catch (IgniteCheckedException e) {
+                        th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+                    }
+
+                    if (srvcAssigns != null && srvcAssigns.assigns().isEmpty())
+                        th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
                 }
 
-                if (srvcAssigns != null && srvcAssigns.assigns().isEmpty())
-                    th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
+                if (th != null) {
+                    log.error(th.getMessage(), th);
+
+                    depErrors.put(cfg.getName(), th);
+
+                    continue;
+                }
+
+                if (log.isDebugEnabled())
+                    log.debug("Calculated service assignments: " + srvcAssigns);
+
+                assigns.add(srvcAssigns);
             }
 
-            if (th != null) {
-                log.error(th.getMessage(), th);
-
-                depErrors.put(cfg.getName(), th);
-
-                continue;
-            }
-
-            if (log.isDebugEnabled())
-                log.debug("Calculated service assignments: " + srvcAssigns);
-
-            assigns.add(srvcAssigns);
+            msg.servicesToDeploy(assigns);
         }
-
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId, assigns);
-
-        sendCustomEvent(msg);
-    }
-
-    /**
-     * @param req Services cancellation request.
-     * @param topVer Topology version.
-     */
-    private void onCancellationRequest(ServicesCancellationRequestMessage req, long topVer) {
-        Collection<String> names = req.names();
-
-        Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
-
-        srvcsAssigns.forEach((name, svcMap) -> {
-            if (!names.contains(name))
-                assigns.put(name, new ServiceAssignmentsMap(name, svcMap.assigns(), topVer));
-        });
-
-        ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
+        else
+            msg.servicesToUndeploy(req.servicesToUndeploy());
 
         sendCustomEvent(msg);
     }
@@ -262,15 +248,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(name);
         });
 
-        initFullReassignment(topVer, srvcsToUndeploy);
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(),
+            exchId, topVer.topologyVersion());
+
+        msg.servicesToUndeploy(srvcsToUndeploy);
+
+        sendCustomEvent(msg);
     }
 
     /**
      * @param topVer Topology version.
-     * @param undeploy Services names to undeploy.
      */
-    private void initFullReassignment(AffinityTopologyVersion topVer, Collection<String> undeploy) {
-        ServicesReassignmentsRequestMessage msg = createReassignmentsRequest(topVer, Collections.emptySet());
+    private void initFullReassignment(AffinityTopologyVersion topVer) {
+        ServicesAssignmentsRequestMessage msg = createReassignmentsRequest(topVer);
 
         sendCustomEvent(msg);
     }
@@ -379,21 +369,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /**
      * @param topVer Topology version.
-     * @return Services reassignments request.
      */
-    private ServicesReassignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer,
-        Collection<String> undeploy) {
+    private ServicesAssignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer) {
         final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
         final Set<String> servicesToUndeploy = new HashSet<>();
 
         srvcsAssigns.forEach((name, old) -> {
-            if (undeploy.contains(name)) {
-                servicesToUndeploy.add(name);
-
-                return;
-            }
-
             ServiceConfiguration cfg = old.configuration();
 
             GridServiceAssignments newAssigns = null;
@@ -434,8 +416,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         expAssigns.putAll(fullAssigns);
 
-        ServicesReassignmentsRequestMessage msg = new ServicesReassignmentsRequestMessage(ctx.localNodeId(),
-            exchId, topVer.topologyVersion(), fullAssigns);
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(),
+            exchId, topVer.topologyVersion());
+
+        msg.assignments(fullAssigns);
 
         if (!servicesToUndeploy.isEmpty())
             msg.servicesToUndeploy(servicesToUndeploy);

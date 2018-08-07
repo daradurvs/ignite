@@ -76,7 +76,6 @@ public class ServiceAssignmentsFunctionImpl implements ServiceAssignmentsFunctio
 
             Collection<ClusterNode> nodes;
 
-            // Call node filter outside of transaction.
             if (affKey == null) {
                 nodes = ctx.discovery().nodes(topVer);
 

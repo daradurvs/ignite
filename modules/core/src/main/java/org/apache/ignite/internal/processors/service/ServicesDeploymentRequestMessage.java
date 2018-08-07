@@ -17,7 +17,9 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
@@ -42,24 +44,46 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
     /** Deployment initiator id. */
     private final UUID nodeId;
 
-    /** Services configuration. */
+    /** Services configurations to deploy. */
     @GridToStringInclude
-    private final Collection<ServiceConfiguration> cfgs;
+    private final List<ServiceConfiguration> srvcsToDeploy;
+
+    /** Services names to undeploy. */
+    @GridToStringInclude
+    private final Set<String> srvcsToUndeploy;
 
     /**
      * @param nodeId Deployment initiator id.
-     * @param cfgs Services configuration.
+     * @param srvcsToDeploy Services configurations to deploy.
      */
-    public ServicesDeploymentRequestMessage(UUID nodeId, Collection<ServiceConfiguration> cfgs) {
-        this.nodeId = nodeId;
-        this.cfgs = cfgs;
+    public ServicesDeploymentRequestMessage(UUID nodeId, List<ServiceConfiguration> srvcsToDeploy) {
+        this(nodeId, srvcsToDeploy, Collections.emptySet());
     }
 
     /**
-     * @return Services configuration.
+     * @param nodeId Deployment initiator id.
+     * @param srvcsToUndeploy Services names to undeploy.
      */
-    public Collection<ServiceConfiguration> configurations() {
-        return cfgs;
+    public ServicesDeploymentRequestMessage(UUID nodeId, Set<String> srvcsToUndeploy) {
+        this(nodeId, Collections.emptyList(), srvcsToUndeploy);
+    }
+
+    /**
+     * @param nodeId Deployment initiator id.
+     * @param srvcsToDeploy Services configurations to deploy.
+     * @param srvcsToUndeploy Services names to undeploy.
+     */
+    private ServicesDeploymentRequestMessage(
+        UUID nodeId,
+        List<ServiceConfiguration> srvcsToDeploy,
+        Set<String> srvcsToUndeploy
+    ) {
+        assert (srvcsToDeploy.isEmpty() && !srvcsToUndeploy.isEmpty()) ||
+            (!srvcsToDeploy.isEmpty() && srvcsToUndeploy.isEmpty());
+
+        this.nodeId = nodeId;
+        this.srvcsToDeploy = srvcsToDeploy;
+        this.srvcsToUndeploy = srvcsToUndeploy;
     }
 
     /**
@@ -67,6 +91,20 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
      */
     public UUID nodeId() {
         return nodeId;
+    }
+
+    /**
+     * @return Services configurations to deploy.
+     */
+    public List<ServiceConfiguration> servicesToDeploy() {
+        return srvcsToDeploy;
+    }
+
+    /**
+     * @return Services names to undeploy.
+     */
+    public Set<String> servicesToUndeploy() {
+        return srvcsToUndeploy;
     }
 
     /** {@inheritDoc} */
