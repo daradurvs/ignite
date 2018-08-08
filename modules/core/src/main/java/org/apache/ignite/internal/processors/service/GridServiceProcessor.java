@@ -137,7 +137,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final DiscoveryEventListener discoLsnr = new DiscoveryListener();
 
     /** Services messages communication listener. */
-    private final CommunicationListener commLsnr = new CommunicationListener();
+    private final GridMessageListener commLsnr = new CommunicationListener();
 
     /** Contains all services assignments, not only locally deployed. */
     private final Map<String, GridServiceAssignments> srvcsAssigns = new ConcurrentHashMap<>();

@@ -155,7 +155,15 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
     private boolean checkServices(int total, int maxPerNode, int gridIdx, boolean lastTry) throws Exception {
         IgniteEx grid = grid(gridIdx);
 
-        GridServiceAssignments assignments = grid.context().service().assignments().get("testService");
+        long topVer = grid.context().discovery().topologyVersion();
+
+        GridTestUtils.waitForCondition(() -> {
+            GridServiceAssignments assigns = grid.context().service().assignments().get(SERVICE_NAME);
+
+            return assigns.topologyVersion() == topVer;
+        }, 5_000);
+
+        GridServiceAssignments assignments = grid.context().service().assignments().get(SERVICE_NAME);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.cluster().nodes(), F.node2id());
 
