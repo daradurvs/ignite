@@ -110,6 +110,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void init() throws IgniteCheckedException {
+        if (isDone())
+            return;
+
         try {
             if (log.isDebugEnabled()) {
                 log.debug("Started services exchange future init: [exchId=" + exchangeId() +
@@ -262,9 +265,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg) {
-        synchronized (mux) {
-            assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
+        synchronized (mux) {
             if (remaining.remove(msg.senderId())) {
                 singleAssignsMsgs.put(msg.senderId(), msg);
 
@@ -296,70 +299,63 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @return Services full assignments message.
      */
     private ServicesFullMapMessage createFullAssignmentsMessage() {
-        synchronized (mux) {
-            final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+        final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
-            final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
+        final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
-            final Map<String, Collection<byte[]>> fullErrors = new HashMap<>();
+        final Map<String, Collection<byte[]>> fullErrors = new HashMap<>();
+
+        singleAssignsMsgs.forEach((nodeId, msg) -> {
+            msg.assigns().forEach((name, num) -> {
+                if (num != null && num != 0) {
+                    Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
+
+                    Map<UUID, Integer> expSrvcAssigns = expAssigns.get(name);
+
+                    if (expSrvcAssigns != null) {
+                        Integer expNum = expSrvcAssigns.get(nodeId);
+
+                        if (expNum == null)
+                            num = 0;
+                        else if (expNum < num)
+                            num = expNum;
+                    }
+
+                    srvcAssigns.put(nodeId, num);
+                }
+            });
+
+            msg.errors().forEach((name, err) -> {
+                Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(name, e -> new ArrayList<>());
+
+                srvcErrors.add(err);
+            });
+        });
+
+        fullAssigns.forEach((name, srvcAssigns) -> {
+            assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns, evt.topologyVersion()));
+        });
+
+        depErrors.forEach((name, err) -> {
+            byte[] arr = null;
 
             try {
-                singleAssignsMsgs.forEach((nodeId, msg) -> {
-                    msg.assigns().forEach((name, num) -> {
-                        if (num != null && num != 0) {
-                            Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
-
-                            Map<UUID, Integer> expSrvcAssigns = expAssigns.get(name);
-
-                            if (expSrvcAssigns != null) {
-                                Integer expNum = expSrvcAssigns.get(nodeId);
-
-                                if (expNum == null)
-                                    num = 0;
-                                else if (expNum < num)
-                                    num = expNum;
-                            }
-
-                            srvcAssigns.put(nodeId, num);
-                        }
-                    });
-
-                    msg.errors().forEach((name, err) -> {
-                        Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(name, e -> new ArrayList<>());
-
-                        srvcErrors.add(err);
-                    });
-                });
-
-                fullAssigns.forEach((name, srvcAssigns) -> {
-                    assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns, evt.topologyVersion()));
-                });
-
-                depErrors.forEach((name, err) -> {
-                    byte[] arr = null;
-
-                    try {
-                        arr = U.marshal(ctx, err);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Failed to marshal reassignments error.", e);
-                    }
-
-                    if (arr != null)
-                        fullErrors.putIfAbsent(name, Collections.singleton(arr));
-                });
+                arr = U.marshal(ctx, err);
             }
-            catch (Throwable t) {
-                log.error("Failed to build services full assignments map.", t);
+            catch (IgniteCheckedException e) {
+                log.error("Failed to marshal reassignments error.", e);
             }
 
-            ServicesFullMapMessage msg = new ServicesFullMapMessage(ctx.localNodeId(), exchId, assigns);
+            if (arr != null)
+                fullErrors.putIfAbsent(name, Collections.singleton(arr));
+        });
 
-            if (!fullErrors.isEmpty())
-                msg.errors(fullErrors);
+        ServicesFullMapMessage msg = new ServicesFullMapMessage(ctx.localNodeId(), exchId, assigns);
 
-            return msg;
-        }
+        if (!fullErrors.isEmpty())
+            msg.errors(fullErrors);
+
+        return msg;
     }
 
     /**
@@ -441,10 +437,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (isDone() || remaining.isEmpty())
             return;
 
-        remaining.remove(nodeId);
+        synchronized (mux) {
+            remaining.remove(nodeId);
 
-        if (remaining.isEmpty())
-            onAllReceived();
+            if (remaining.isEmpty())
+                onAllReceived();
+        }
     }
 
     /** {@inheritDoc} */

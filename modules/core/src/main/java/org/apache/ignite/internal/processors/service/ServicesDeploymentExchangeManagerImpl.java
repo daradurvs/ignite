@@ -74,10 +74,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** {@inheritDoc} */
     @Override public void startProcessing() {
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
-
-        synchronized (mux) {
-            mux.notifyAll();
-        }
     }
 
     /** {@inheritDoc} */
@@ -86,10 +82,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             exchWorker.stopProcessing();
 
             U.cancel(exchWorker);
-
-            synchronized (mux) {
-                mux.notifyAll();
-            }
 
             U.join(exchWorker, log);
 
@@ -115,83 +107,67 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             evt,
             topVer);
 
-        synchronized (mux) {
-            if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
-                onNodeLeft(evt.eventNode().id());
+        if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
+            onNodeLeft(evt.eventNode().id());
 
-            if (!exchWorker.tasksQueue.contains(task))
-                exchWorker.tasksQueue.offer(task);
-
-            mux.notifyAll();
-        }
+        if (!exchWorker.tasksQueue.contains(task))
+            exchWorker.tasksQueue.offer(task);
     }
 
     /** {@inheritDoc} */
     @Override public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg) {
-        synchronized (mux) {
-            ServicesDeploymentExchangeTask task = exchWorker.task;
+        ServicesDeploymentExchangeTask task = exchWorker.task;
 
-            if (task == null) {
-                pendingMsgs.add(msg);
-
-                return;
-            }
-
-            if (task.exchangeId().equals(msg.exchangeId()))
-                task.onReceiveSingleMapMessage(msg);
-            else
-                pendingMsgs.add(msg);
-        }
+        if (task != null && task.exchangeId().equals(msg.exchangeId()))
+            task.onReceiveSingleMapMessage(msg);
+        else
+            pendingMsgs.add(msg);
     }
 
     /** {@inheritDoc} */
     @Override public void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
         ServicesDeploymentExchangeTask fut;
 
-        synchronized (mux) {
-            if (!isStopped)
-                fut = exchWorker.task;
-            else
-                fut = exchWorker.tasksQueue.peek();
+        if (!isStopped)
+            fut = exchWorker.task;
+        else
+            fut = exchWorker.tasksQueue.peek();
 
-            if (fut != null) {
-                if (!fut.exchangeId().equals(msg.exchangeId())) {
-                    log.warning("Unexpected services full assignments message received" +
-                        ", locId=" + ctx.localNodeId() +
-                        ", msg=" + msg);
+        if (fut != null) {
+            if (!fut.exchangeId().equals(msg.exchangeId())) {
+                log.warning("Unexpected services full assignments message received" +
+                    ", locId=" + ctx.localNodeId() +
+                    ", msg=" + msg);
 
-                    // The section to handle a critical situation when TcpDiscoverySpi breaches safeguards.
-                    if (isStopped) {
-                        boolean found = false;
+                // The section to handle a critical situation when TcpDiscoverySpi breaches safeguards.
+                if (isStopped) {
+                    boolean found = false;
 
-                        for (ServicesDeploymentExchangeTask f : exchWorker.tasksQueue) {
-                            if (f.exchangeId().equals(msg.exchangeId())) {
-                                found = true;
+                    for (ServicesDeploymentExchangeTask f : exchWorker.tasksQueue) {
+                        if (f.exchangeId().equals(msg.exchangeId())) {
+                            found = true;
 
-                                break;
-                            }
-                        }
-
-                        if (found) {
-                            do {
-                                fut = exchWorker.tasksQueue.poll();
-
-                                if (fut != null)
-                                    fut.onReceiveFullMapMessage(msg);
-                            }
-                            while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
+                            break;
                         }
                     }
-                }
-                else {
-                    fut.onReceiveFullMapMessage(msg);
 
-                    if (isStopped)
-                        exchWorker.tasksQueue.poll();
+                    if (found) {
+                        do {
+                            fut = exchWorker.tasksQueue.poll();
+
+                            if (fut != null)
+                                fut.onReceiveFullMapMessage(msg);
+                        }
+                        while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
+                    }
                 }
             }
+            else {
+                fut.onReceiveFullMapMessage(msg);
 
-            mux.notifyAll();
+                if (isStopped)
+                    exchWorker.tasksQueue.poll();
+            }
         }
     }
 
@@ -200,10 +176,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         if (isStopped)
             return;
 
-        synchronized (mux) {
-            if (exchWorker.task != null)
-                exchWorker.task.onNodeLeft(nodeId);
-        }
+        if (exchWorker.task != null)
+            exchWorker.task.onNodeLeft(nodeId);
     }
 
     /**
@@ -260,15 +234,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 if (isCancelled())
                     Thread.currentThread().interrupt();
 
-                synchronized (mux) {
-                    task = tasksQueue.poll();
-
-                    if (task == null) {
-                        U.wait(mux);
-
-                        continue;
-                    }
-                }
+                task = tasksQueue.take();
 
                 try {
                     task.init();
@@ -285,17 +251,15 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                 while (true) {
                     try {
-                        synchronized (mux) {
-                            Iterator<ServicesSingleMapMessage> it = pendingMsgs.iterator();
+                        Iterator<ServicesSingleMapMessage> it = pendingMsgs.iterator();
 
-                            while (it.hasNext()) {
-                                ServicesSingleMapMessage msg = it.next();
+                        while (it.hasNext()) {
+                            ServicesSingleMapMessage msg = it.next();
 
-                                if (task.exchangeId().equals(msg.exchangeId())) {
-                                    task.onReceiveSingleMapMessage(msg);
+                            if (task.exchangeId().equals(msg.exchangeId())) {
+                                task.onReceiveSingleMapMessage(msg);
 
-                                    it.remove();
-                                }
+                                it.remove();
                             }
                         }
 
@@ -326,11 +290,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
          * Handles a processing stop.
          */
         private void stopProcessing() {
-            synchronized (mux) {
-                isStopped = true;
-
-                mux.notifyAll();
-            }
+            isStopped = true;
         }
     }
 }
