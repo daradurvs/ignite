@@ -115,7 +115,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT
     };
 
-    /** Local services instances. */
+    /** Local service instances. */
     private final Map<String, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
 
     /** Deployment futures. */
@@ -690,12 +690,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param srvcsNames Name of service to deploy.
+     * @param svcNames Name of service to deploy.
      * @return Future.
      */
     @SuppressWarnings("unchecked")
-    public IgniteInternalFuture<?> cancelAll(Collection<String> srvcsNames) {
-        Set<String> srvcsNamesCp = new TreeSet<>(srvcsNames);
+    public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
+        Set<String> srvcsNamesCp = new TreeSet<>(svcNames);
 
         GridCompoundFuture res;
 
@@ -1342,7 +1342,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 req.servicesToUndeploy().forEach(this::undeploy);
 
-                createAndSendSingleAssingmentsMessage(req.exchangeId(), errors);
+                createAndSendSingleMapMessage(req.exchangeId(), errors);
             }
         }
         catch (Exception e) {
@@ -1384,9 +1384,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param exchId Exchange id.
      * @param errors Deployment errors.
      */
-    private void createAndSendSingleAssingmentsMessage(ServicesDeploymentExchangeId exchId,
+    private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<String, Throwable> errors) {
-        ServicesSingleMapMessage msg = createSingleAssignmentsMessage(exchId, errors);
+        ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
         ClusterNode crd = coordinator();
 
@@ -1407,9 +1407,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @param exchId Exchange id.
      * @param errors Deployment errors.
-     * @return Services single assignments message.
+     * @return Services single map message.
      */
-    private ServicesSingleMapMessage createSingleAssignmentsMessage(ServicesDeploymentExchangeId exchId,
+    private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
         Map<String, Throwable> errors) {
         Map<String, Integer> locAssings = new HashMap<>();
 
@@ -1508,7 +1508,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         depExe.execute(new DepRunnable() {
                             @Override public void run0() {
-                                processFullAssignment(msg0);
+                                processFullMap(msg0);
 
                                 if (!ctx.clientNode())
                                     exchangeMgr.onReceiveFullMapMessage(msg0);
@@ -1589,7 +1589,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param name Service name to undeploy.
+     * @param name Name.
      */
     private void undeploy(String name) {
         svcName.set(name);
@@ -1642,9 +1642,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param msg Services full assignments message.
+     * @param msg Services full map message.
      */
-    private void processFullAssignment(ServicesFullMapMessage msg) {
+    private void processFullMap(ServicesFullMapMessage msg) {
         try {
             Map<String, ServiceAssignmentsMap> fullAssigns = msg.assigns();
 

@@ -109,7 +109,8 @@ public class GridServiceProxy<T> implements Serializable {
         Class<? super T> svc,
         boolean sticky,
         long timeout,
-        GridKernalContext ctx) {
+        GridKernalContext ctx)
+    {
         assert timeout >= 0 : timeout;
 
         this.prj = prj;
