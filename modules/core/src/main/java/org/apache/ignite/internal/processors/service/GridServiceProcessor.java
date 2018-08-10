@@ -45,6 +45,7 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.DeploymentMode;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.DiscoveryEvent;
+import org.apache.ignite.events.EventType;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteClientDisconnectedCheckedException;
 import org.apache.ignite.internal.IgniteInternalFuture;
@@ -56,6 +57,7 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
@@ -95,7 +97,6 @@ import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
-import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 
 /**
@@ -103,11 +104,16 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
  */
 @SuppressWarnings({"SynchronizationOnLocalVariableOrMethodParameter", "ConstantConditions"})
 public class GridServiceProcessor extends GridProcessorAdapter implements IgniteChangeGlobalStateSupport {
-    /** Services compatibility system property. */
+    /** */
     private final Boolean srvcCompatibilitySysProp;
 
-    /** Discovery events to handle. */
-    private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
+    /** */
+    private static final int[] EVTS = {
+        EventType.EVT_NODE_JOINED,
+        EventType.EVT_NODE_LEFT,
+        EventType.EVT_NODE_FAILED,
+        DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT
+    };
 
     /** Local services instances. */
     private final Map<String, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
@@ -128,13 +134,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final UncaughtExceptionHandler oomeHnd = new OomExceptionHandler(ctx);
 
     /** Thread factory. */
-    private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service", oomeHnd);
+    private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
+        oomeHnd);
 
     /** Thread local for service name. */
-    private ThreadLocal<String> srvcName = new ThreadLocal<>();
+    private ThreadLocal<String> svcName = new ThreadLocal<>();
 
-    /** Discovery events listener. */
-    private final DiscoveryEventListener discoLsnr = new DiscoveryListener();
+    /** Topology listener. */
+    private final DiscoveryEventListener topLsnr = new TopologyListener();
 
     /** Services messages communication listener. */
     private final GridMessageListener commLsnr = new CommunicationListener();
@@ -144,9 +151,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
-
-    /** Services assignments function. */
-    private final ServiceAssignmentsFunction assignsFunc = new ServiceAssignmentsFunctionImpl(ctx, srvcsAssigns);
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -164,7 +168,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         srvcCompatibilitySysProp = servicesCompatibilityMode == null ? null : Boolean.valueOf(servicesCompatibilityMode);
 
-        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
+        ctx.event().addDiscoveryEventListener(topLsnr, EVTS);
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
     }
@@ -550,7 +554,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param cfgs Services configurations.
+     * @param cfgs Service configurations.
      * @param dfltNodeFilter Default NodeFilter.
      * @return Future for deployment.
      */
@@ -670,7 +674,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param name Service name to cancel.
+     * @param name Service name.
      * @return Future.
      */
     public IgniteInternalFuture<?> cancel(String name) {
@@ -686,7 +690,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param srvcsNames Services names to cancel.
+     * @param srvcsNames Name of service to deploy.
      * @return Future.
      */
     @SuppressWarnings("unchecked")
@@ -951,9 +955,157 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * Reassigns service to nodes.
+     *
+     * @param cfg Service configuration.
+     * @param nodeId Deployment initiator id.
+     * @param topVer Topology version.
+     * @throws IgniteCheckedException If failed.
+     */
+    public GridServiceAssignments reassign(ServiceConfiguration cfg, UUID nodeId,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        Object nodeFilter = cfg.getNodeFilter();
+
+        if (nodeFilter != null)
+            ctx.resource().injectGeneric(nodeFilter);
+
+        int totalCnt = cfg.getTotalCount();
+        int maxPerNodeCnt = cfg.getMaxPerNodeCount();
+        String cacheName = cfg.getCacheName();
+        Object affKey = cfg.getAffinityKey();
+
+        while (true) {
+            GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
+
+            Collection<ClusterNode> nodes;
+
+            if (affKey == null) {
+                nodes = ctx.discovery().nodes(topVer);
+
+                if (assigns.nodeFilter() != null) {
+                    Collection<ClusterNode> nodes0 = new ArrayList<>();
+
+                    for (ClusterNode node : nodes) {
+                        if (assigns.nodeFilter().apply(node))
+                            nodes0.add(node);
+                    }
+
+                    nodes = nodes0;
+                }
+            }
+            else
+                nodes = null;
+
+            try {
+                String name = cfg.getName();
+
+                GridServiceAssignments oldAssigns = srvcsAssigns.get(name);
+
+                Map<UUID, Integer> cnts = new HashMap<>();
+
+                if (affKey != null) {
+                    ClusterNode n = ctx.affinity().mapKeyToNode(cacheName, affKey, topVer);
+
+                    if (n != null) {
+                        int cnt = maxPerNodeCnt == 0 ? totalCnt == 0 ? 1 : totalCnt : maxPerNodeCnt;
+
+                        cnts.put(n.id(), cnt);
+                    }
+                }
+                else {
+                    if (!nodes.isEmpty()) {
+                        int size = nodes.size();
+
+                        int perNodeCnt = totalCnt != 0 ? totalCnt / size : maxPerNodeCnt;
+                        int remainder = totalCnt != 0 ? totalCnt % size : 0;
+
+                        if (perNodeCnt >= maxPerNodeCnt && maxPerNodeCnt != 0) {
+                            perNodeCnt = maxPerNodeCnt;
+                            remainder = 0;
+                        }
+
+                        for (ClusterNode n : nodes)
+                            cnts.put(n.id(), perNodeCnt);
+
+                        assert perNodeCnt >= 0;
+                        assert remainder >= 0;
+
+                        if (remainder > 0) {
+                            int cnt = perNodeCnt + 1;
+
+                            if (oldAssigns != null) {
+                                Collection<UUID> used = new HashSet<>();
+
+                                // Avoid redundant moving of services.
+                                for (Map.Entry<UUID, Integer> e : oldAssigns.assigns().entrySet()) {
+                                    // Do not assign services to left nodes.
+                                    if (ctx.discovery().node(e.getKey()) == null)
+                                        continue;
+
+                                    // If old count and new count match, then reuse the assignment.
+                                    if (e.getValue() == cnt) {
+                                        cnts.put(e.getKey(), cnt);
+
+                                        used.add(e.getKey());
+
+                                        if (--remainder == 0)
+                                            break;
+                                    }
+                                }
+
+                                if (remainder > 0) {
+                                    List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
+
+                                    // Randomize.
+                                    Collections.shuffle(entries);
+
+                                    for (Map.Entry<UUID, Integer> e : entries) {
+                                        // Assign only the ones that have not been reused from previous assignments.
+                                        if (!used.contains(e.getKey())) {
+                                            if (e.getValue() < maxPerNodeCnt || maxPerNodeCnt == 0) {
+                                                e.setValue(e.getValue() + 1);
+
+                                                if (--remainder == 0)
+                                                    break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else {
+                                List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
+
+                                // Randomize.
+                                Collections.shuffle(entries);
+
+                                for (Map.Entry<UUID, Integer> e : entries) {
+                                    e.setValue(e.getValue() + 1);
+
+                                    if (--remainder == 0)
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                assigns.assigns(cnts);
+
+                return assigns;
+            }
+            catch (ClusterTopologyCheckedException e) {
+                if (log.isDebugEnabled())
+                    log.debug("Topology changed while reassigning (will retry): " + e.getMessage());
+
+                U.sleep(10);
+            }
+        }
+    }
+
+    /**
      * Redeploys local services based on assignments.
      *
-     * @param assigns Service assignments.
+     * @param assigns Assignments.
      */
     private void redeploy(GridServiceAssignments assigns) {
         redeploy(assigns.name(), assigns.configuration(), assigns.assigns(), assigns.cacheName(), assigns.affinityKey());
@@ -1234,7 +1386,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void createAndSendSingleAssingmentsMessage(ServicesDeploymentExchangeId exchId,
         final Map<String, Throwable> errors) {
-        ServicesSingleAssignmentsMessage msg = createSingleAssignmentsMessage(exchId, errors);
+        ServicesSingleMapMessage msg = createSingleAssignmentsMessage(exchId, errors);
 
         ClusterNode crd = coordinator();
 
@@ -1257,7 +1409,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param errors Deployment errors.
      * @return Services single assignments message.
      */
-    private ServicesSingleAssignmentsMessage createSingleAssignmentsMessage(ServicesDeploymentExchangeId exchId,
+    private ServicesSingleMapMessage createSingleAssignmentsMessage(ServicesDeploymentExchangeId exchId,
         Map<String, Throwable> errors) {
         Map<String, Integer> locAssings = new HashMap<>();
 
@@ -1266,7 +1418,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 locAssings.put(name, ctxs.size());
         });
 
-        ServicesSingleAssignmentsMessage msg = new ServicesSingleAssignmentsMessage(
+        ServicesSingleMapMessage msg = new ServicesSingleMapMessage(
             ctx.localNodeId(),
             exchId,
             locAssings
@@ -1293,9 +1445,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Discovery events listener.
+     * Topology listener.
      */
-    private class DiscoveryListener implements DiscoveryEventListener {
+    private class TopologyListener implements DiscoveryEventListener {
         /** If local node coordinator or not. */
         private volatile boolean crd = false;
 
@@ -1345,8 +1497,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
                         });
                     }
-                    else if (msg instanceof ServicesFullAssignmentsMessage) {
-                        final ServicesFullAssignmentsMessage msg0 = (ServicesFullAssignmentsMessage)msg;
+                    else if (msg instanceof ServicesFullMapMessage) {
+                        final ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
                         if (log.isDebugEnabled()) {
                             log.debug("Received services full assignments message: [locId=" + ctx.localNodeId() +
@@ -1359,7 +1511,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 processFullAssignment(msg0);
 
                                 if (!ctx.clientNode())
-                                    exchangeMgr.onReceiveFullAssignmentsMessage(msg0);
+                                    exchangeMgr.onReceiveFullMapMessage(msg0);
                             }
                         });
                     }
@@ -1421,13 +1573,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 return;
 
             try {
-                if (msg instanceof ServicesSingleAssignmentsMessage) {
+                if (msg instanceof ServicesSingleMapMessage) {
                     if (log.isDebugEnabled()) {
                         log.debug("Received services single assignment message, locId=" + ctx.localNodeId() +
                             ", msg=" + msg + ']');
                     }
 
-                    exchangeMgr.onReceiveSingleAssignmentsMessage((ServicesSingleAssignmentsMessage)msg);
+                    exchangeMgr.onReceiveSingleMapMessage((ServicesSingleMapMessage)msg);
                 }
             }
             finally {
@@ -1440,7 +1592,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param name Service name to undeploy.
      */
     private void undeploy(String name) {
-        srvcName.set(name);
+        svcName.set(name);
 
         Collection<ServiceContextImpl> ctxs;
 
@@ -1467,19 +1619,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             // Won't block ServiceProcessor stopping process.
             leaveBusy();
 
-            srvcName.set(null);
+            svcName.set(null);
 
             try {
                 run0();
             }
             catch (Throwable t) {
-                log.error("Error when executing service: " + srvcName.get(), t);
+                log.error("Error when executing service: " + svcName.get(), t);
 
                 if (t instanceof Error)
                     throw t;
             }
             finally {
-                srvcName.set(null);
+                svcName.set(null);
             }
         }
 
@@ -1492,7 +1644,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @param msg Services full assignments message.
      */
-    private void processFullAssignment(ServicesFullAssignmentsMessage msg) {
+    private void processFullAssignment(ServicesFullMapMessage msg) {
         try {
             Map<String, ServiceAssignmentsMap> fullAssigns = msg.assigns();
 
@@ -1685,12 +1837,5 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Map<String, GridServiceAssignments> assignments() {
         return Collections.unmodifiableMap(srvcsAssigns);
-    }
-
-    /**
-     * @return Services assignments function.
-     */
-    public ServiceAssignmentsFunction assignmentsFunction() {
-        return assignsFunc;
     }
 }

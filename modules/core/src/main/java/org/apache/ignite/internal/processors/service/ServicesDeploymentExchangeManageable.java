@@ -24,18 +24,18 @@ import java.util.UUID;
  */
 public interface ServicesDeploymentExchangeManageable {
     /**
-     * Handles received single services assignments message.
+     * Handles received single node services map message.
      *
-     * @param msg Single services assignments message.
+     * @param msg Single services map message.
      */
-    public void onReceiveSingleAssignmentsMessage(ServicesSingleAssignmentsMessage msg);
+    public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg);
 
     /**
-     * Handles received full services assignments message.
+     * Handles received full services map message.
      *
-     * @param msg Full services assignments message.
+     * @param msg Full services map message.
      */
-    public void onReceiveFullAssignmentsMessage(ServicesFullAssignmentsMessage msg);
+    public void onReceiveFullMapMessage(ServicesFullMapMessage msg);
 
     /**
      * Handles situations when node leaves topology.

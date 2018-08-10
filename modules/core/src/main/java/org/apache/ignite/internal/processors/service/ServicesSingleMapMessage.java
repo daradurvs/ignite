@@ -32,9 +32,9 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
 
 /**
- * Services single node assignments message.
+ * Services single node map message.
  */
-public class ServicesSingleAssignmentsMessage implements Message {
+public class ServicesSingleMapMessage implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -55,7 +55,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
     /**
      * Empty constructor for marshalling purposes.
      */
-    public ServicesSingleAssignmentsMessage() {
+    public ServicesSingleMapMessage() {
     }
 
     /**
@@ -63,7 +63,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
      * @param exchId Exchange id.
      * @param assigns Local services assignments.
      */
-    public ServicesSingleAssignmentsMessage(UUID snd, ServicesDeploymentExchangeId exchId,
+    public ServicesSingleMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
         Map<String, Integer> assigns) {
         this.snd = snd;
         this.exchId = exchId;
@@ -194,7 +194,7 @@ public class ServicesSingleAssignmentsMessage implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServicesSingleAssignmentsMessage.class);
+        return reader.afterMessageRead(ServicesSingleMapMessage.class);
     }
 
     /** {@inheritDoc} */
@@ -214,6 +214,6 @@ public class ServicesSingleAssignmentsMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesSingleAssignmentsMessage.class, this);
+        return S.toString(ServicesSingleMapMessage.class, this);
     }
 }

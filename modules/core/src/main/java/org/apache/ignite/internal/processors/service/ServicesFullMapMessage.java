@@ -31,9 +31,9 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Services full assignments message.
+ * Services full map message.
  */
-public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
+public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -59,7 +59,7 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
      * @param exchId Exchange id.
      * @param assigns Services assignments.
      */
-    public ServicesFullAssignmentsMessage(UUID snd, ServicesDeploymentExchangeId exchId, Map<String, ServiceAssignmentsMap> assigns) {
+    public ServicesFullMapMessage(UUID snd, ServicesDeploymentExchangeId exchId, Map<String, ServiceAssignmentsMap> assigns) {
         this.snd = snd;
         this.exchId = exchId;
         this.assigns = assigns;
@@ -131,6 +131,6 @@ public class ServicesFullAssignmentsMessage implements DiscoveryCustomMessage {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesFullAssignmentsMessage.class, this);
+        return S.toString(ServicesFullMapMessage.class, this);
     }
 }

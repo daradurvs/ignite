@@ -53,7 +53,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     private final ServicesDeploymentExchangeWorker exchWorker;
 
     /** Pending messages. */
-    private final List<ServicesSingleAssignmentsMessage> pendingMsgs = new ArrayList<>();
+    private final List<ServicesSingleMapMessage> pendingMsgs = new ArrayList<>();
 
     /** Mutex. */
     private final Object mux = new Object();
@@ -111,7 +111,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(
             ctx.service().assignments(),
-            ctx.service().assignmentsFunction(),
             ctx,
             evt,
             topVer);
@@ -128,7 +127,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveSingleAssignmentsMessage(ServicesSingleAssignmentsMessage msg) {
+    @Override public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg) {
         synchronized (mux) {
             ServicesDeploymentExchangeTask task = exchWorker.task;
 
@@ -139,14 +138,14 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             }
 
             if (task.exchangeId().equals(msg.exchangeId()))
-                task.onReceiveSingleAssignmentsMessage(msg);
+                task.onReceiveSingleMapMessage(msg);
             else
                 pendingMsgs.add(msg);
         }
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveFullAssignmentsMessage(ServicesFullAssignmentsMessage msg) {
+    @Override public void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
         ServicesDeploymentExchangeTask fut;
 
         synchronized (mux) {
@@ -178,14 +177,14 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                                 fut = exchWorker.tasksQueue.poll();
 
                                 if (fut != null)
-                                    fut.onReceiveFullAssignmentsMessage(msg);
+                                    fut.onReceiveFullMapMessage(msg);
                             }
                             while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
                         }
                     }
                 }
                 else {
-                    fut.onReceiveFullAssignmentsMessage(msg);
+                    fut.onReceiveFullMapMessage(msg);
 
                     if (isStopped)
                         exchWorker.tasksQueue.poll();
@@ -287,13 +286,13 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 while (true) {
                     try {
                         synchronized (mux) {
-                            Iterator<ServicesSingleAssignmentsMessage> it = pendingMsgs.iterator();
+                            Iterator<ServicesSingleMapMessage> it = pendingMsgs.iterator();
 
                             while (it.hasNext()) {
-                                ServicesSingleAssignmentsMessage msg = it.next();
+                                ServicesSingleMapMessage msg = it.next();
 
                                 if (task.exchangeId().equals(msg.exchangeId())) {
-                                    task.onReceiveSingleAssignmentsMessage(msg);
+                                    task.onReceiveSingleMapMessage(msg);
 
                                     it.remove();
                                 }

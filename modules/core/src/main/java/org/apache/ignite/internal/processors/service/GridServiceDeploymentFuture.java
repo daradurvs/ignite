@@ -26,11 +26,11 @@ import org.apache.ignite.services.ServiceConfiguration;
  * Service deployment future.
  */
 public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
-    /** Service configuration. */
+    /** */
     private final ServiceConfiguration cfg;
 
     /**
-     * @param cfg Service configuration.
+     * @param cfg Configuration.
      */
     public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
         this.cfg = cfg;

@@ -56,7 +56,7 @@ import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask {
     /** Single service messages to process. */
     @GridToStringInclude
-    private final Map<UUID, ServicesSingleAssignmentsMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
+    private final Map<UUID, ServicesSingleMapMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
 
     /** Expected services assignments. */
     private final Map<String, Map<UUID, Integer>> expAssigns = new HashMap<>();
@@ -70,9 +70,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** Services assignments. */
     private Map<String, GridServiceAssignments> srvcsAssigns;
-
-    /** Service assignments function. */
-    private final ServiceAssignmentsFunction assignsFunc;
 
     /** Kernal context. */
     private final GridKernalContext ctx;
@@ -96,16 +93,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /**
      * @param srvcsAssigns Services assignments.
-     * @param assignsFunc Services assignments function.
      * @param ctx Kernal context.
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
      */
     public ServicesDeploymentExchangeFutureTask(Map<String, GridServiceAssignments> srvcsAssigns,
-        ServiceAssignmentsFunction assignsFunc, GridKernalContext ctx, DiscoveryEvent evt,
+        GridKernalContext ctx, DiscoveryEvent evt,
         AffinityTopologyVersion evtTopVer) {
         this.srvcsAssigns = srvcsAssigns;
-        this.assignsFunc = assignsFunc;
         this.ctx = ctx;
         this.evt = evt;
         this.evtTopVer = evtTopVer;
@@ -197,7 +192,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 }
                 else {
                     try {
-                        srvcAssigns = assignsFunc.reassign(cfg, snd, topVer);
+                        srvcAssigns = ctx.service().reassign(cfg, snd, topVer);
                     }
                     catch (IgniteCheckedException e) {
                         th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
@@ -266,7 +261,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveSingleAssignmentsMessage(ServicesSingleAssignmentsMessage msg) {
+    @Override public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg) {
         synchronized (mux) {
             assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
@@ -282,7 +277,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveFullAssignmentsMessage(ServicesFullAssignmentsMessage msg) {
+    @Override public void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
         onDone();
     }
 
@@ -290,7 +285,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * Creates full assignments message and send it across over discovery.
      */
     private void onAllReceived() {
-        ServicesFullAssignmentsMessage msg = createFullAssignmentsMessage();
+        ServicesFullMapMessage msg = createFullAssignmentsMessage();
 
         sendCustomEvent(msg);
     }
@@ -300,7 +295,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      *
      * @return Services full assignments message.
      */
-    private ServicesFullAssignmentsMessage createFullAssignmentsMessage() {
+    private ServicesFullMapMessage createFullAssignmentsMessage() {
         synchronized (mux) {
             final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
 
@@ -358,7 +353,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 log.error("Failed to build services full assignments map.", t);
             }
 
-            ServicesFullAssignmentsMessage msg = new ServicesFullAssignmentsMessage(ctx.localNodeId(), exchId, assigns);
+            ServicesFullMapMessage msg = new ServicesFullMapMessage(ctx.localNodeId(), exchId, assigns);
 
             if (!fullErrors.isEmpty())
                 msg.errors(fullErrors);
@@ -383,7 +378,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             Throwable th = null;
 
             try {
-                newAssigns = assignsFunc.reassign(cfg, old.nodeId(), topVer);
+                newAssigns = ctx.service().reassign(cfg, old.nodeId(), topVer);
             }
             catch (Throwable e) {
                 log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);
