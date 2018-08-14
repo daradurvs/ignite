@@ -25,6 +25,7 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgnitePredicate;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
@@ -46,6 +47,9 @@ public class GridServiceAssignments implements Serializable {
     /** Assignments. */
     @GridToStringInclude
     private Map<UUID, Integer> assigns = Collections.emptyMap();
+
+    /** Service id. */
+    private IgniteUuid srvcId;
 
     /**
      * @param cfg Configuration.
@@ -126,6 +130,20 @@ public class GridServiceAssignments implements Serializable {
      */
     public void assigns(Map<UUID, Integer> assigns) {
         this.assigns = assigns;
+    }
+
+    /**
+     * @return Service id.
+     */
+    public IgniteUuid serviceId() {
+        return srvcId;
+    }
+
+    /**
+     * @param srvcId New service id.
+     */
+    public void serviceId(IgniteUuid srvcId) {
+        this.srvcId = srvcId;
     }
 
     /** {@inheritDoc} */

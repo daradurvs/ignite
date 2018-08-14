@@ -73,6 +73,7 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
 import org.apache.ignite.plugin.security.SecurityException;
 import org.apache.ignite.plugin.security.SecurityPermission;
@@ -116,13 +117,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     };
 
     /** Local service instances. */
-    private final Map<String, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
+    private final Map<IgniteUuid, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
 
     /** Deployment futures. */
-    private final ConcurrentMap<String, GridServiceDeploymentFuture> depFuts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<IgniteUuid, GridServiceDeploymentFuture> depFuts = new ConcurrentHashMap<>();
 
     /** Deployment futures. */
-    private final ConcurrentMap<String, GridFutureAdapter<?>> undepFuts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<IgniteUuid, GridFutureAdapter<?>> undepFuts = new ConcurrentHashMap<>();
 
     /** Deployment executor service. */
     private volatile ExecutorService depExe;
@@ -147,7 +148,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final GridMessageListener commLsnr = new CommunicationListener();
 
     /** Contains all services assignments, not only locally deployed. */
-    private final Map<String, GridServiceAssignments> srvcsAssigns = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<IgniteUuid, GridServiceAssignments> srvcsAssigns = new ConcurrentHashMap<>();
 
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
@@ -308,7 +309,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             InitialServicesData initData = (InitialServicesData)data.commonData();
 
             for (GridServiceAssignments assign : initData.assigns)
-                srvcsAssigns.put(assign.name(), assign);
+                srvcsAssigns.put(assign.serviceId(), assign);
         }
     }
 
@@ -359,8 +360,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param futs Futs.
      * @param err Exception.
      */
-    private void cancelFutures(ConcurrentMap<String, ? extends GridFutureAdapter<?>> futs, Exception err) {
-        for (Map.Entry<String, ? extends GridFutureAdapter<?>> entry : futs.entrySet()) {
+    private void cancelFutures(ConcurrentMap<IgniteUuid, ? extends GridFutureAdapter<?>> futs, Exception err) {
+        for (Map.Entry<IgniteUuid, ? extends GridFutureAdapter<?>> entry : futs.entrySet()) {
             GridFutureAdapter fut = entry.getValue();
 
             fut.onDone(err);
@@ -526,7 +527,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (failedFuts == null)
                     failedFuts = new ArrayList<>();
 
-                GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
+                GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, IgniteUuid.randomUuid());
 
                 fut.onDone(err);
 
@@ -577,14 +578,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             synchronized (mux) {
                 try {
-                    List<ServiceConfiguration> cfgsToDeploy = new ArrayList<>(cfgsCp.size());
+                    Collection<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
                     for (ServiceConfiguration cfg : cfgsCp) {
-                        String name = cfg.getName();
+                        GridServiceDeploymentFuture old = null;
 
-                        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg);
+                        for (Map.Entry<IgniteUuid, GridServiceDeploymentFuture> entry : depFuts.entrySet()) {
+                            if (entry.getValue().configuration().getName().equals(cfg.getName())) {
+                                old = entry.getValue();
 
-                        GridServiceDeploymentFuture old = depFuts.putIfAbsent(name, fut);
+                                break;
+                            }
+                        }
 
                         ServiceConfiguration oldDifCfg = null;
 
@@ -599,11 +604,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         }
 
                         if (oldDifCfg == null) {
-                            GridServiceAssignments assign = srvcsAssigns.get(name);
+                            IgniteUuid srvcId = lookupId(cfg);
 
-                            if (assign != null && !assign.configuration().equalsIgnoreNodeFilter(cfg))
-                                oldDifCfg = assign.configuration();
+                            if (srvcId != null) {
+                                GridServiceAssignments assign = srvcsAssigns.get(srvcId);
+
+                                if (assign != null && !assign.configuration().equalsIgnoreNodeFilter(cfg))
+                                    oldDifCfg = assign.configuration();
+                            }
                         }
+
+                        IgniteUuid srvcId = IgniteUuid.randomUuid();
+
+                        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, srvcId);
 
                         if (oldDifCfg != null) {
                             res.add(fut, false);
@@ -614,13 +627,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         else {
                             res.add(fut, true);
 
-                            cfgsToDeploy.add(cfg);
+                            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(
+                                ctx.localNodeId(), srvcId, cfg);
+
+                            reqs.add(req);
+
+                            depFuts.put(srvcId, fut);
                         }
                     }
 
-                    if (!cfgsToDeploy.isEmpty()) {
-                        ServicesDeploymentRequestMessage msg = new ServicesDeploymentRequestMessage(
-                            ctx.localNodeId(), cfgsToDeploy);
+                    if (!reqs.isEmpty()) {
+                        DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
 
                         ctx.discovery().sendCustomEvent(msg);
 
@@ -631,8 +648,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     break;
                 }
                 catch (IgniteException | IgniteCheckedException e) {
-                    for (String name : res.servicesToRollback())
-                        depFuts.remove(name).onDone(e);
+                    for (IgniteUuid id : res.servicesToRollback())
+                        depFuts.remove(id).onDone(e);
 
                     if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
                         if (log.isDebugEnabled())
@@ -653,8 +670,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 new IgniteClientDisconnectedCheckedException(ctx.cluster().clientReconnectFuture(),
                     "Failed to deploy services, client node disconnected: " + cfgs);
 
-            for (String name : res.servicesToRollback()) {
-                GridServiceDeploymentFuture fut = depFuts.remove(name);
+            for (IgniteUuid id : res.servicesToRollback()) {
+                GridServiceDeploymentFuture fut = depFuts.remove(id);
 
                 if (fut != null)
                     fut.onDone(err);
@@ -684,7 +701,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Future.
      */
-    @SuppressWarnings("unchecked")
     public IgniteInternalFuture<?> cancelAll() {
         return cancelAll(srvcsAssigns.keySet());
     }
@@ -693,24 +709,41 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param svcNames Name of service to deploy.
      * @return Future.
      */
-    @SuppressWarnings("unchecked")
     public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
-        Set<String> srvcsNamesCp = new TreeSet<>(svcNames);
+        Set<IgniteUuid> srvcsIds = new HashSet<>();
 
+        srvcsAssigns.forEach((id, assings) -> {
+            if (svcNames.contains(assings.name()))
+                srvcsIds.add(id);
+            else if (log.isDebugEnabled())
+                log.debug("Service id has not been found, name=" + assings.name());
+        });
+
+        return cancelAll(srvcsIds);
+    }
+
+    /**
+     * @param srvcsIds Services ids to cancel.
+     * @return Future.
+     */
+    @SuppressWarnings("unchecked")
+    private IgniteInternalFuture<?> cancelAll(Set<IgniteUuid> srvcsIds) {
         GridCompoundFuture res;
 
         while (true) {
             res = new GridCompoundFuture<>();
 
             synchronized (mux) {
-                Set<String> toRollback = new TreeSet<>();
+                Set<IgniteUuid> toRollback = new TreeSet<>();
 
-                Set<String> namesToCancel = new TreeSet<>();
+                List<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
                 try {
-                    for (String name : srvcsNamesCp) {
+                    for (IgniteUuid srvcId : srvcsIds) {
+                        GridServiceAssignments assigns = srvcsAssigns.get(srvcId);
+
                         try {
-                            ctx.security().authorize(name, SecurityPermission.SERVICE_CANCEL, null);
+                            ctx.security().authorize(assigns.name(), SecurityPermission.SERVICE_CANCEL, null);
                         }
                         catch (SecurityException e) {
                             res.add(new GridFinishedFuture<>(e));
@@ -720,7 +753,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         GridFutureAdapter<?> fut = new GridFutureAdapter<>();
 
-                        GridFutureAdapter<?> old = undepFuts.putIfAbsent(name, fut);
+                        GridFutureAdapter<?> old = undepFuts.putIfAbsent(srvcId, fut);
 
                         if (old != null) {
                             res.add(old);
@@ -730,20 +763,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         res.add(fut);
 
-                        if (!srvcsAssigns.containsKey(name)) {
+                        if (!srvcsAssigns.containsKey(srvcId)) {
                             fut.onDone();
 
                             continue;
                         }
 
-                        toRollback.add(name);
+                        toRollback.add(srvcId);
 
-                        namesToCancel.add(name);
+                        DynamicServiceChangeRequest req = DynamicServiceChangeRequest.undeploymentRequest(
+                            ctx.localNodeId(), srvcId);
+
+                        reqs.add(req);
                     }
 
-                    if (!namesToCancel.isEmpty()) {
-                        ServicesDeploymentRequestMessage msg = new ServicesDeploymentRequestMessage(
-                            ctx.localNodeId(), namesToCancel);
+                    if (!reqs.isEmpty()) {
+                        DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
 
                         ctx.discovery().sendCustomEvent(msg);
 
@@ -754,15 +789,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     break;
                 }
                 catch (IgniteException | IgniteCheckedException e) {
-                    for (String name : toRollback)
-                        undepFuts.remove(name).onDone(e);
+                    for (IgniteUuid id : toRollback)
+                        undepFuts.remove(id).onDone(e);
 
                     if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
                         if (log.isDebugEnabled())
                             log.debug("Topology changed while cancelling services (will retry): " + e.getMessage());
                     }
                     else {
-                        U.error(log, "Failed to undeploy services: " + srvcsNamesCp, e);
+                        U.error(log, "Failed to undeploy services: " + srvcsIds, e);
 
                         res.onDone(e);
 
@@ -783,7 +818,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Map<UUID, Integer> serviceTopology(String name) {
         synchronized (mux) {
-            GridServiceAssignments assign = srvcsAssigns.get(name);
+            IgniteUuid id = lookupId(name);
+
+            GridServiceAssignments assign = srvcsAssigns.get(id);
 
             if (assign == null) {
                 if (log.isDebugEnabled()) {
@@ -826,8 +863,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Collection<ServiceContextImpl> ctxs;
 
+        IgniteUuid id = lookupId(name);
+
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(name);
+            ctxs = locSvcs.get(id);
         }
 
         if (ctxs == null)
@@ -855,8 +894,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public ServiceContextImpl serviceContext(String name) {
         Collection<ServiceContextImpl> ctxs;
 
+        IgniteUuid id = lookupId(name);
+
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(name);
+            ctxs = locSvcs.get(id);
         }
 
         if (ctxs == null)
@@ -933,8 +974,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Collection<ServiceContextImpl> ctxs;
 
+        IgniteUuid id = lookupId(name);
+
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(name);
+            ctxs = locSvcs.get(id);
         }
 
         if (ctxs == null)
@@ -999,7 +1042,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 String name = cfg.getName();
 
-                GridServiceAssignments oldAssigns = srvcsAssigns.get(name);
+                IgniteUuid id = lookupId(name);
+
+                GridServiceAssignments oldAssigns = id != null ? srvcsAssigns.get(id) : null;
 
                 Map<UUID, Integer> cnts = new HashMap<>();
 
@@ -1129,11 +1174,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Collection<ServiceContextImpl> ctxs;
 
+        IgniteUuid id = lookupId(name);
+
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(name);
+            ctxs = locSvcs.get(id);
 
             if (ctxs == null)
-                locSvcs.put(name, ctxs = new ArrayList<>());
+                locSvcs.put(id, ctxs = new ArrayList<>());
         }
 
         Collection<ServiceContextImpl> toInit = new ArrayList<>();
@@ -1325,19 +1372,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void onAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
         try {
-            final Map<String, Throwable> errors = new HashMap<>();
+            final Map<IgniteUuid, Throwable> errors = new HashMap<>();
 
             synchronized (mux) {
-                req.assignments().forEach((name, assigns) -> deployIfNeeded(name, assigns, errors));
+                req.assignments().forEach((id, assigns) -> deployIfNeeded(id, assigns, errors));
 
                 req.servicesToUndeploy().forEach(this::undeploy);
 
                 for (GridServiceAssignments assigns : req.servicesToDeploy()) {
-                    String name = assigns.name();
+                    IgniteUuid id = assigns.serviceId();
 
-                    srvcsAssigns.putIfAbsent(name, assigns);
+                    srvcsAssigns.putIfAbsent(id, assigns);
 
-                    deployIfNeeded(name, assigns.assigns(), errors);
+                    deployIfNeeded(id, assigns.assigns(), errors);
                 }
 
                 req.servicesToUndeploy().forEach(this::undeploy);
@@ -1353,29 +1400,29 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Deploys service with given name if a number of local instances less than its number in given assignments.
      *
-     * @param name Service name.
+     * @param id Service id.
      * @param assigns Service assigns.
      * @param errors Deployment errors container to fill in.
      */
-    private void deployIfNeeded(String name, Map<UUID, Integer> assigns, Map<String, Throwable> errors) {
+    private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> assigns, Map<IgniteUuid, Throwable> errors) {
         Integer expNum = assigns.get(ctx.localNodeId());
 
         boolean needDeploy = false;
 
         if (expNum != null && expNum > 0) {
-            Collection<ServiceContextImpl> ctxs = locSvcs.get(name);
+            Collection<ServiceContextImpl> ctxs = locSvcs.get(id);
 
             needDeploy = (ctxs == null) || (ctxs.size() != expNum);
         }
 
         if (needDeploy) {
             try {
-                GridServiceAssignments old = srvcsAssigns.get(name);
+                GridServiceAssignments old = srvcsAssigns.get(id);
 
                 redeploy(old.name(), old.configuration(), assigns, old.cacheName(), old.affinityKey());
             }
             catch (Error | RuntimeException t) {
-                errors.put(name, t);
+                errors.put(id, t);
             }
         }
     }
@@ -1385,7 +1432,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param errors Deployment errors.
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        final Map<String, Throwable> errors) {
+        final Map<IgniteUuid, Throwable> errors) {
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
         ClusterNode crd = coordinator();
@@ -1410,12 +1457,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Services single map message.
      */
     private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        Map<String, Throwable> errors) {
-        Map<String, Integer> locAssings = new HashMap<>();
+        Map<IgniteUuid, Throwable> errors) {
+        Map<IgniteUuid, Integer> locAssings = new HashMap<>();
 
-        locSvcs.forEach((name, ctxs) -> {
+        locSvcs.forEach((id, ctxs) -> {
             if (!ctxs.isEmpty())
-                locAssings.put(name, ctxs.size());
+                locAssings.put(id, ctxs.size());
         });
 
         ServicesSingleMapMessage msg = new ServicesSingleMapMessage(
@@ -1425,13 +1472,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         );
 
         if (!errors.isEmpty()) {
-            Map<String, byte[]> errorsBytes = new HashMap<>();
+            Map<IgniteUuid, byte[]> errorsBytes = new HashMap<>();
 
-            errors.forEach((name, err) -> {
+            errors.forEach((id, err) -> {
                 try {
                     byte[] arr = U.marshal(ctx, err);
 
-                    errorsBytes.put(name, arr);
+                    errorsBytes.put(id, arr);
                 }
                 catch (IgniteCheckedException e) {
                     log.error("Failed to marshal a deployment exception: " + err.getMessage() + ']', e);
@@ -1473,7 +1520,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (evt instanceof DiscoveryCustomEvent) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                    if (msg instanceof ServicesDeploymentRequestMessage && !ctx.clientNode()) {
+                    if (msg instanceof DynamicServicesChangeRequestBatchMessage && !ctx.clientNode()) {
                         if (log.isDebugEnabled() && curCrd) {
                             log.debug("Received services change state request: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
@@ -1588,16 +1635,24 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /**
-     * @param name Name.
-     */
     private void undeploy(String name) {
         svcName.set(name);
+
+        IgniteUuid id = lookupId(name);
+
+        undeploy(id);
+    }
+
+    //    /**
+//     * @param name Name.
+//     */
+    private void undeploy(IgniteUuid id) {
+//        svcName.set(name);
 
         Collection<ServiceContextImpl> ctxs;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.remove(name);
+            ctxs = locSvcs.remove(id);
         }
 
         if (ctxs != null) {
@@ -1646,20 +1701,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void processFullMap(ServicesFullMapMessage msg) {
         try {
-            Map<String, ServiceAssignmentsMap> fullAssigns = msg.assigns();
+            Map<IgniteUuid, ServiceAssignmentsMap> fullAssigns = msg.assigns();
 
-            Map<String, Collection<byte[]>> fullErrors = msg.errors();
+            Map<IgniteUuid, Collection<byte[]>> fullErrors = msg.errors();
 
             synchronized (mux) {
-                fullErrors.forEach((name, errors) -> {
-                    GridServiceDeploymentFuture fut = depFuts.remove(name);
-
-                    if (fut != null)
-                        processDeploymentErrors(fut, errors);
-                });
-
-                fullAssigns.forEach((name, assigns) -> {
-                    GridServiceAssignments srvcAssigns = srvcsAssigns.get(name);
+                fullAssigns.forEach((id, assigns) -> {
+                    GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
 
                     if (srvcAssigns != null) {
                         srvcAssigns.topologyVersion(assigns.topologyVersion());
@@ -1668,9 +1716,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         Integer expNum = srvcAssigns.assigns().get(ctx.localNodeId());
 
                         if (expNum == null || expNum == 0)
-                            undeploy(name);
+                            undeploy(assigns.serviceId());
                         else {
-                            Collection ctxs = locSvcs.get(name);
+                            Collection ctxs = locSvcs.get(id);
 
                             if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size()))
                                 redeploy(srvcAssigns);
@@ -1680,35 +1728,50 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         log.debug("Unexpected state: service assignments are contained in full map, " +
                             "but are not contained in the local storage.");
                     }
-
-                    GridServiceDeploymentFuture fut = depFuts.remove(name);
-
-                    if (fut != null) {
-                        if (!srvcAssigns.configuration().equalsIgnoreNodeFilter(fut.configuration())) {
-                            fut.onDone(new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                                "different configuration) [deployed=" + srvcAssigns.configuration() +
-                                ", new=" + fut.configuration() + ']'));
-                        }
-                        else {
-                            Collection<byte[]> errors = fullErrors.get(name);
-
-                            if (errors == null)
-                                fut.onDone();
-                            else
-                                processDeploymentErrors(fut, errors);
-                        }
-                    }
                 });
 
-                Set<String> srvcsNames = fullAssigns.keySet();
+//                fullErrors.forEach((id, errors) -> {
+//                    GridServiceDeploymentFuture fut = depFuts.remove(id);
+//
+//                    if (fut != null)
+//                        processDeploymentErrors(fut, errors);
+//                });
 
-                srvcsAssigns.entrySet().removeIf(assign -> !srvcsNames.contains(assign.getKey()));
+                depFuts.entrySet().removeIf(e -> {
+                    IgniteUuid srvcId = e.getKey();
+                    GridServiceDeploymentFuture fut = e.getValue();
+
+                    Collection<byte[]> errors = fullErrors.get(srvcId);
+
+                    if (errors != null) {
+                        processDeploymentErrors(fut, errors);
+
+                        return true;
+                    }
+                    else {
+                        ServiceConfiguration cfg = fut.configuration();
+
+                        for (GridServiceAssignments assigns : srvcsAssigns.values()) {
+                            if (assigns.configuration().equalsIgnoreNodeFilter(cfg)) {
+                                fut.onDone();
+
+                                return true;
+                            }
+                        }
+                    }
+
+                    return false;
+                });
+
+                Set<IgniteUuid> srvcsIds = fullAssigns.keySet();
+
+                srvcsAssigns.entrySet().removeIf(assign -> !srvcsIds.contains(assign.getKey()));
 
                 undepFuts.entrySet().removeIf(e -> {
-                    String svcName = e.getKey();
+                    IgniteUuid srvcId = e.getKey();
                     GridFutureAdapter<?> fut = e.getValue();
 
-                    if (!srvcsNames.contains(svcName)) {
+                    if (!srvcsIds.contains(srvcId)) {
                         fut.onDone();
 
                         return true;
@@ -1777,6 +1840,30 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * @param cfg Service configuration.
+     * @return Service's id if exists, otherwise {@code null};
+     */
+    @Nullable private IgniteUuid lookupId(ServiceConfiguration cfg) {
+        return lookupId(p -> p.configuration().getName().equals(cfg.getName()));
+    }
+
+    /**
+     * @param name Service name;
+     * @return @return Service's id if exists, otherwise {@code null};
+     */
+    @Nullable private IgniteUuid lookupId(String name) {
+        return lookupId(p -> p.name().equals(name));
+    }
+
+    /**
+     * @param p Predicate to search.
+     * @return Service's id if exists, otherwise {@code null};
+     */
+    @Nullable private IgniteUuid lookupId(IgnitePredicate<GridServiceAssignments> p) {
+        return srvcsAssigns.search(20, (id, assigns) -> p.apply(assigns) ? id : null);
+    }
+
+    /**
      * @return Coordinator node or {@code null} if there are no coordinator.
      */
     @Nullable private ClusterNode coordinator() {
@@ -1835,7 +1922,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Unmodifiable map of current services assignments.
      */
-    public Map<String, GridServiceAssignments> assignments() {
+    public Map<IgniteUuid, GridServiceAssignments> assignments() {
         return Collections.unmodifiableMap(srvcsAssigns);
     }
 }

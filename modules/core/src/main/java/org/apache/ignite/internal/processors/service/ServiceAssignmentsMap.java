@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 
 /**
  * Single service assignments unit to send over network.
@@ -31,7 +32,7 @@ public class ServiceAssignmentsMap implements Serializable {
     private static final long serialVersionUID = 0L;
 
     /** Service name. */
-    private String name;
+    private IgniteUuid srvcId;
 
     /** Service assignments. */
     @GridToStringInclude
@@ -41,12 +42,12 @@ public class ServiceAssignmentsMap implements Serializable {
     private long topVer;
 
     /**
-     * @param name Service name.
+     * @param srvcId Service id.
      * @param assigns Service assignments.
      * @param topVer Topology version.
      */
-    public ServiceAssignmentsMap(String name, Map<UUID, Integer> assigns, long topVer) {
-        this.name = name;
+    public ServiceAssignmentsMap(IgniteUuid srvcId, Map<UUID, Integer> assigns, long topVer) {
+        this.srvcId = srvcId;
         this.assigns = assigns;
         this.topVer = topVer;
     }
@@ -66,10 +67,10 @@ public class ServiceAssignmentsMap implements Serializable {
     }
 
     /**
-     * @return Service name.
+     * @return Service id.
      */
-    public String name() {
-        return name;
+    public IgniteUuid serviceId() {
+        return srvcId;
     }
 
     /**

@@ -23,13 +23,14 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
+import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.IGNITE_UUID;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.INT;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.STRING;
 
 /**
  * Services single node map message.
@@ -40,11 +41,11 @@ public class ServicesSingleMapMessage implements Message {
 
     /** Local services assignments. */
     @GridToStringInclude
-    private Map<String, Integer> assigns;
+    private Map<IgniteUuid, Integer> assigns;
 
     /** Deployment errors. */
     @GridToStringInclude
-    private Map<String, byte[]> errors;
+    private Map<IgniteUuid, byte[]> errors;
 
     /** Sender id. */
     private UUID snd;
@@ -64,7 +65,7 @@ public class ServicesSingleMapMessage implements Message {
      * @param assigns Local services assignments.
      */
     public ServicesSingleMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
-        Map<String, Integer> assigns) {
+        Map<IgniteUuid, Integer> assigns) {
         this.snd = snd;
         this.exchId = exchId;
         this.assigns = assigns;
@@ -81,28 +82,28 @@ public class ServicesSingleMapMessage implements Message {
     /**
      * @return Single node services assignments.
      */
-    public Map<String, Integer> assigns() {
+    public Map<IgniteUuid, Integer> assigns() {
         return assigns;
     }
 
     /**
      * @param assigns Single node services assignments.
      */
-    public void assigns(Map<String, Integer> assigns) {
+    public void assigns(Map<IgniteUuid, Integer> assigns) {
         this.assigns = assigns;
     }
 
     /**
      * @return Deployment errors.
      */
-    public Map<String, byte[]> errors() {
+    public Map<IgniteUuid, byte[]> errors() {
         return errors;
     }
 
     /**
      * @param errors Deployment errors.
      */
-    public void errors(Map<String, byte[]> errors) {
+    public void errors(Map<IgniteUuid, byte[]> errors) {
         this.errors = errors;
     }
 
@@ -126,13 +127,13 @@ public class ServicesSingleMapMessage implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeMap("assigns", assigns, STRING, INT))
+                if (!writer.writeMap("assigns", assigns, IGNITE_UUID, INT))
                     return false;
 
                 writer.incrementState();
 
             case 1:
-                if (!writer.writeMap("errors", errors, STRING, BYTE_ARR))
+                if (!writer.writeMap("errors", errors, IGNITE_UUID, BYTE_ARR))
                     return false;
 
                 writer.incrementState();
@@ -162,7 +163,7 @@ public class ServicesSingleMapMessage implements Message {
 
         switch (reader.state()) {
             case 0:
-                assigns = reader.readMap("assigns", STRING, INT, false);
+                assigns = reader.readMap("assigns", IGNITE_UUID, INT, false);
 
                 if (!reader.isLastRead())
                     return false;
@@ -170,7 +171,7 @@ public class ServicesSingleMapMessage implements Message {
                 reader.incrementState();
 
             case 1:
-                errors = reader.readMap("errors", STRING, BYTE_ARR, false);
+                errors = reader.readMap("errors", IGNITE_UUID, BYTE_ARR, false);
 
                 if (!reader.isLastRead())
                     return false;

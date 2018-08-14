@@ -17,9 +17,6 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.ignite.IgniteCheckedException;
@@ -52,12 +49,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Exchange worker. */
     private final ServicesDeploymentExchangeWorker exchWorker;
 
-    /** Pending messages. */
-    private final List<ServicesSingleMapMessage> pendingMsgs = new ArrayList<>();
-
-    /** Mutex. */
-    private final Object mux = new Object();
-
     /** Indicates that worker is stopped. */
     private volatile boolean isStopped = true;
 
@@ -88,11 +79,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             exchWorker.tasksQueue.forEach(t -> t.complete(null, true));
 
             exchWorker.tasksQueue.clear();
-
-            if (log.isDebugEnabled() && !pendingMsgs.isEmpty())
-                log.debug("Exchange manager contained pending messages: [" + pendingMsgs + ']');
-
-            pendingMsgs.clear();
         }
         catch (Exception e) {
             log.error("Error occurred during stopping exchange worker.");
@@ -101,11 +87,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(
-            ctx.service().assignments(),
-            ctx,
-            evt,
-            topVer);
+        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, evt, topVer);
 
         if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
             onNodeLeft(evt.eventNode().id());
@@ -120,8 +102,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         if (task != null && task.exchangeId().equals(msg.exchangeId()))
             task.onReceiveSingleMapMessage(msg);
-        else
-            pendingMsgs.add(msg);
     }
 
     /** {@inheritDoc} */
@@ -251,18 +231,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                 while (true) {
                     try {
-                        Iterator<ServicesSingleMapMessage> it = pendingMsgs.iterator();
-
-                        while (it.hasNext()) {
-                            ServicesSingleMapMessage msg = it.next();
-
-                            if (task.exchangeId().equals(msg.exchangeId())) {
-                                task.onReceiveSingleMapMessage(msg);
-
-                                it.remove();
-                            }
-                        }
-
                         task.waitForComplete(timeout);
 
                         break;

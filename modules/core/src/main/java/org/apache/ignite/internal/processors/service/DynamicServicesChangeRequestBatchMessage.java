@@ -17,94 +17,45 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.Collection;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.services.ServiceConfiguration;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Services deployment request discovery message.
+ * Services changes requests batch discovery message.
  */
-public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage {
+public class DynamicServicesChangeRequestBatchMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
-    /** Deployment initiator id. */
-    private final UUID nodeId;
-
-    /** Services configurations to deploy. */
+    /** Change requests. */
     @GridToStringInclude
-    private final List<ServiceConfiguration> srvcsToDeploy;
-
-    /** Services names to undeploy. */
-    @GridToStringInclude
-    private final Set<String> srvcsToUndeploy;
+    private final Collection<DynamicServiceChangeRequest> reqs;
 
     /**
-     * @param nodeId Deployment initiator id.
-     * @param srvcsToDeploy Services configurations to deploy.
+     * @param reqs Change requests.
      */
-    public ServicesDeploymentRequestMessage(UUID nodeId, List<ServiceConfiguration> srvcsToDeploy) {
-        this(nodeId, srvcsToDeploy, Collections.emptySet());
+    public DynamicServicesChangeRequestBatchMessage(Collection<DynamicServiceChangeRequest> reqs) {
+        assert !F.isEmpty(reqs);
+
+        this.reqs = reqs;
     }
 
     /**
-     * @param nodeId Deployment initiator id.
-     * @param srvcsToUndeploy Services names to undeploy.
+     * @return Change requests.
      */
-    public ServicesDeploymentRequestMessage(UUID nodeId, Set<String> srvcsToUndeploy) {
-        this(nodeId, Collections.emptyList(), srvcsToUndeploy);
-    }
-
-    /**
-     * @param nodeId Deployment initiator id.
-     * @param srvcsToDeploy Services configurations to deploy.
-     * @param srvcsToUndeploy Services names to undeploy.
-     */
-    private ServicesDeploymentRequestMessage(
-        UUID nodeId,
-        List<ServiceConfiguration> srvcsToDeploy,
-        Set<String> srvcsToUndeploy
-    ) {
-        assert (srvcsToDeploy.isEmpty() && !srvcsToUndeploy.isEmpty()) ||
-            (!srvcsToDeploy.isEmpty() && srvcsToUndeploy.isEmpty());
-
-        this.nodeId = nodeId;
-        this.srvcsToDeploy = srvcsToDeploy;
-        this.srvcsToUndeploy = srvcsToUndeploy;
-    }
-
-    /**
-     * @return Deployment initiator id.
-     */
-    public UUID nodeId() {
-        return nodeId;
-    }
-
-    /**
-     * @return Services configurations to deploy.
-     */
-    public List<ServiceConfiguration> servicesToDeploy() {
-        return srvcsToDeploy;
-    }
-
-    /**
-     * @return Services names to undeploy.
-     */
-    public Set<String> servicesToUndeploy() {
-        return srvcsToUndeploy;
+    public Collection<DynamicServiceChangeRequest> requests() {
+        return reqs;
     }
 
     /** {@inheritDoc} */
@@ -137,6 +88,6 @@ public class ServicesDeploymentRequestMessage implements DiscoveryCustomMessage 
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesDeploymentRequestMessage.class, this);
+        return S.toString(DynamicServicesChangeRequestBatchMessage.class, this);
     }
 }

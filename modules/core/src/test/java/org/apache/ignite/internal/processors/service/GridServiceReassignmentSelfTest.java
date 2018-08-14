@@ -28,6 +28,7 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.testframework.GridTestUtils;
 
 /**
@@ -157,13 +158,29 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         long topVer = grid.context().discovery().topologyVersion();
 
-        GridTestUtils.waitForCondition(() -> {
-            GridServiceAssignments assigns = grid.context().service().assignments().get(SERVICE_NAME);
+        Map<IgniteUuid, GridServiceAssignments> assigns = grid.context().service().assignments();
 
-            return assigns.topologyVersion() == topVer;
+        IgniteUuid srvcId = null;
+
+        for (Map.Entry<IgniteUuid, GridServiceAssignments> e : assigns.entrySet()) {
+            if (e.getValue().name().contains(SERVICE_NAME)) {
+                srvcId = e.getKey();
+
+                break;
+            }
+        }
+
+        final IgniteUuid id = srvcId;
+
+        assertNotNull(id);
+
+        GridTestUtils.waitForCondition(() -> {
+            GridServiceAssignments srvcAssigns = grid.context().service().assignments().get(id);
+
+            return srvcAssigns.topologyVersion() == topVer;
         }, 5_000);
 
-        GridServiceAssignments assignments = grid.context().service().assignments().get(SERVICE_NAME);
+        GridServiceAssignments assignments = grid.context().service().assignments().get(id);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.cluster().nodes(), F.node2id());
 

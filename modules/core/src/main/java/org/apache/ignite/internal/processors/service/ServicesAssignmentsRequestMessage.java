@@ -51,7 +51,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
 
     /** New services assignments. */
     @GridToStringInclude
-    private Map<String, Map<UUID, Integer>> assigns;
+    private Map<IgniteUuid, Map<UUID, Integer>> srvcsToReassign;
 
     /** Services assignments to apply. */
     @GridToStringInclude
@@ -59,7 +59,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
 
     /** Services names to undeploy. */
     @GridToStringInclude
-    private Collection<String> srvcsToUndeploy;
+    private Collection<IgniteUuid> srvcsToUndeploy;
 
     /**
      * @param snd Sender id.
@@ -70,7 +70,7 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
         this.snd = snd;
         this.exchId = exchId;
         this.topVer = topVer;
-        this.assigns = Collections.emptyMap();
+        this.srvcsToReassign = Collections.emptyMap();
         this.srvcsToDeploy = Collections.emptySet();
         this.srvcsToUndeploy = Collections.emptySet();
     }
@@ -99,15 +99,15 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /**
      * @return Services assignments.
      */
-    public Map<String, Map<UUID, Integer>> assignments() {
-        return assigns;
+    public Map<IgniteUuid, Map<UUID, Integer>> assignments() {
+        return srvcsToReassign;
     }
 
     /**
      * @param assigns Services assignments.
      */
-    public void assignments(Map<String, Map<UUID, Integer>> assigns) {
-        this.assigns = assigns;
+    public void assignments(Map<IgniteUuid, Map<UUID, Integer>> assigns) {
+        this.srvcsToReassign = assigns;
     }
 
     /**
@@ -127,14 +127,14 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /**
      * @return Services names to undeploy.
      */
-    public Collection<String> servicesToUndeploy() {
+    public Collection<IgniteUuid> servicesToUndeploy() {
         return srvcsToUndeploy;
     }
 
     /**
      * @param undepSrvcsNames Services names to undeploy.
      */
-    public void servicesToUndeploy(Collection<String> undepSrvcsNames) {
+    public void servicesToUndeploy(Collection<IgniteUuid> undepSrvcsNames) {
         this.srvcsToUndeploy = undepSrvcsNames;
     }
 

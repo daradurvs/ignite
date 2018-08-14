@@ -17,9 +17,9 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.Objects;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
@@ -29,11 +29,16 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     /** */
     private final ServiceConfiguration cfg;
 
+    /** */
+    private final IgniteUuid srvcId;
+
     /**
      * @param cfg Configuration.
+     * @param srvcId Service id.
      */
-    public GridServiceDeploymentFuture(ServiceConfiguration cfg) {
+    public GridServiceDeploymentFuture(ServiceConfiguration cfg, IgniteUuid srvcId) {
         this.cfg = cfg;
+        this.srvcId = srvcId;
     }
 
     /**
@@ -43,22 +48,11 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
         return cfg;
     }
 
-    /** {@inheritDoc} */
-    @Override public boolean equals(Object o) {
-        if (this == o)
-            return true;
-
-        if (o == null || getClass() != o.getClass())
-            return false;
-
-        GridServiceDeploymentFuture fut = (GridServiceDeploymentFuture)o;
-
-        return cfg.equalsIgnoreNodeFilter(fut.cfg);
-    }
-
-    /** {@inheritDoc} */
-    @Override public int hashCode() {
-        return Objects.hash(cfg);
+    /**
+     * @return Service id.
+     */
+    public IgniteUuid serviceId() {
+        return srvcId;
     }
 
     /** {@inheritDoc} */

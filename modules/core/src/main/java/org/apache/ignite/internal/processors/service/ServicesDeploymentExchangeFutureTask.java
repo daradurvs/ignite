@@ -42,6 +42,7 @@ import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.jetbrains.annotations.Nullable;
 
@@ -59,17 +60,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private final Map<UUID, ServicesSingleMapMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
 
     /** Expected services assignments. */
-    private final Map<String, Map<UUID, Integer>> expAssigns = new HashMap<>();
+    private final Map<IgniteUuid, Map<UUID, Integer>> expAssigns = new HashMap<>();
 
     /** Deployment errors. */
     @GridToStringInclude
-    private final Map<String, Throwable> depErrors = new HashMap<>();
+    private final Map<IgniteUuid, Throwable> depErrors = new HashMap<>();
 
     /** Mutex. */
     private final Object mux = new Object();
 
     /** Services assignments. */
-    private Map<String, GridServiceAssignments> srvcsAssigns;
+    private final Map<IgniteUuid, GridServiceAssignments> srvcsAssigns;
 
     /** Kernal context. */
     private final GridKernalContext ctx;
@@ -92,18 +93,16 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private final Set<UUID> remaining = new HashSet<>();
 
     /**
-     * @param srvcsAssigns Services assignments.
      * @param ctx Kernal context.
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
      */
-    public ServicesDeploymentExchangeFutureTask(Map<String, GridServiceAssignments> srvcsAssigns,
-        GridKernalContext ctx, DiscoveryEvent evt,
+    public ServicesDeploymentExchangeFutureTask(GridKernalContext ctx, DiscoveryEvent evt,
         AffinityTopologyVersion evtTopVer) {
-        this.srvcsAssigns = srvcsAssigns;
         this.ctx = ctx;
         this.evt = evt;
         this.evtTopVer = evtTopVer;
+        this.srvcsAssigns = ctx.service().assignments();
         this.exchId = new ServicesDeploymentExchangeId(evt);
         this.log = ctx.log(getClass());
     }
@@ -130,8 +129,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (evt instanceof DiscoveryCustomEvent) {
                 DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                if (msg instanceof ServicesDeploymentRequestMessage)
-                    onDeploymentRequest(evt.eventNode().id(), (ServicesDeploymentRequestMessage)msg, evtTopVer);
+                if (msg instanceof DynamicServicesChangeRequestBatchMessage)
+                    onServiceChangeRequest(evt.eventNode().id(), (DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
                 else if (msg instanceof CacheAffinityChangeMessage)
@@ -172,22 +171,38 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /**
      * @param snd Sender id.
-     * @param req Services deployment request.
+     * @param batch Set of requests to change service.
      * @param topVer Topology version.
      */
-    private void onDeploymentRequest(UUID snd, ServicesDeploymentRequestMessage req, AffinityTopologyVersion topVer) {
+    private void onServiceChangeRequest(UUID snd, DynamicServicesChangeRequestBatchMessage batch,
+        AffinityTopologyVersion topVer) {
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId,
             evtTopVer.topologyVersion());
 
-        if (!req.servicesToDeploy().isEmpty()) {
-            Collection<ServiceConfiguration> cfgs = req.servicesToDeploy();
+        Collection<GridServiceAssignments> srvcsToDeploy = new ArrayList<>();
 
-            Collection<GridServiceAssignments> assigns = new ArrayList<>(cfgs.size());
+        Collection<IgniteUuid> srvcsToUndeploy = new ArrayList<>();
 
-            for (ServiceConfiguration cfg : cfgs) {
-                GridServiceAssignments srvcAssigns = srvcsAssigns.get(cfg.getName());
+        for (DynamicServiceChangeRequest req : batch.requests()) {
+            if (req.deploy()) {
+                ServiceConfiguration cfg = req.configuration();
+
+                GridServiceAssignments srvcAssigns = srvcsAssigns.get(req.serviceId());
 
                 Throwable th = null;
+
+                if (srvcAssigns != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+                    th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
+                        ", assigns=" + srvcAssigns);
+                }
+
+                for (GridServiceAssignments assigns : srvcsAssigns.values()) {
+                    if (assigns.name().equals(cfg.getName())) {
+                        srvcAssigns = assigns;
+
+                        break;
+                    }
+                }
 
                 if (srvcAssigns != null && !srvcAssigns.configuration().equalsIgnoreNodeFilter(cfg)) {
                     th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
@@ -195,7 +210,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 }
                 else {
                     try {
+                        IgniteUuid srvcId = srvcAssigns != null ? srvcAssigns.serviceId() : req.serviceId();
+
                         srvcAssigns = ctx.service().reassign(cfg, snd, topVer);
+
+                        srvcAssigns.serviceId(srvcId);
                     }
                     catch (IgniteCheckedException e) {
                         th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
@@ -208,7 +227,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (th != null) {
                     log.error(th.getMessage(), th);
 
-                    depErrors.put(cfg.getName(), th);
+                    depErrors.put(req.serviceId(), th);
 
                     continue;
                 }
@@ -216,13 +235,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (log.isDebugEnabled())
                     log.debug("Calculated service assignments: " + srvcAssigns);
 
-                assigns.add(srvcAssigns);
+                srvcsToDeploy.add(srvcAssigns);
             }
-
-            msg.servicesToDeploy(assigns);
+            else if (req.undeploy())
+                srvcsToUndeploy.add(req.serviceId());
         }
-        else
-            msg.servicesToUndeploy(req.servicesToUndeploy());
+
+        if (!srvcsToDeploy.isEmpty())
+            msg.servicesToDeploy(srvcsToDeploy);
+
+        if (!srvcsToUndeploy.isEmpty())
+            msg.servicesToUndeploy(srvcsToUndeploy);
 
         sendCustomEvent(msg);
     }
@@ -239,11 +262,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 cacheToStop.add(chReq.cacheName());
         }
 
-        Set<String> srvcsToUndeploy = new HashSet<>();
+        Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
-        srvcsAssigns.forEach((name, assigns) -> {
+        srvcsAssigns.forEach((id, assigns) -> {
             if (cacheToStop.contains(assigns.cacheName()))
-                srvcsToUndeploy.add(name);
+                srvcsToUndeploy.add(id);
         });
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(),
@@ -299,18 +322,18 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @return Services full assignments message.
      */
     private ServicesFullMapMessage createFullAssignmentsMessage() {
-        final Map<String, ServiceAssignmentsMap> assigns = new HashMap<>();
+        final Map<IgniteUuid, ServiceAssignmentsMap> assigns = new HashMap<>();
 
-        final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
+        final Map<IgniteUuid, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
-        final Map<String, Collection<byte[]>> fullErrors = new HashMap<>();
+        final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
 
         singleAssignsMsgs.forEach((nodeId, msg) -> {
-            msg.assigns().forEach((name, num) -> {
+            msg.assigns().forEach((id, num) -> {
                 if (num != null && num != 0) {
-                    Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(name, m -> new HashMap<>());
+                    Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(id, m -> new HashMap<>());
 
-                    Map<UUID, Integer> expSrvcAssigns = expAssigns.get(name);
+                    Map<UUID, Integer> expSrvcAssigns = expAssigns.get(id);
 
                     if (expSrvcAssigns != null) {
                         Integer expNum = expSrvcAssigns.get(nodeId);
@@ -325,18 +348,18 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 }
             });
 
-            msg.errors().forEach((name, err) -> {
-                Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(name, e -> new ArrayList<>());
+            msg.errors().forEach((id, err) -> {
+                Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(id, e -> new ArrayList<>());
 
                 srvcErrors.add(err);
             });
         });
 
-        fullAssigns.forEach((name, srvcAssigns) -> {
-            assigns.put(name, new ServiceAssignmentsMap(name, srvcAssigns, evt.topologyVersion()));
+        fullAssigns.forEach((id, srvcAssigns) -> {
+            assigns.put(id, new ServiceAssignmentsMap(id, srvcAssigns, evt.topologyVersion()));
         });
 
-        depErrors.forEach((name, err) -> {
+        depErrors.forEach((depId, err) -> {
             byte[] arr = null;
 
             try {
@@ -347,7 +370,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
 
             if (arr != null)
-                fullErrors.putIfAbsent(name, Collections.singleton(arr));
+                fullErrors.putIfAbsent(depId, Collections.singleton(arr));
         });
 
         ServicesFullMapMessage msg = new ServicesFullMapMessage(ctx.localNodeId(), exchId, assigns);
@@ -362,11 +385,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private ServicesAssignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer) {
-        final Map<String, Map<UUID, Integer>> fullAssigns = new HashMap<>();
+        final Map<IgniteUuid, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
-        final Set<String> servicesToUndeploy = new HashSet<>();
+        final Set<IgniteUuid> servicesToUndeploy = new HashSet<>();
 
-        srvcsAssigns.forEach((name, old) -> {
+        srvcsAssigns.forEach((srvcId, old) -> {
             ServiceConfiguration cfg = old.configuration();
 
             GridServiceAssignments newAssigns = null;
@@ -375,6 +398,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
             try {
                 newAssigns = ctx.service().reassign(cfg, old.nodeId(), topVer);
+
+                newAssigns.serviceId(old.serviceId());
             }
             catch (Throwable e) {
                 log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);
@@ -382,11 +407,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 th = e;
             }
 
-            if (th == null && newAssigns != null && !newAssigns.assigns().isEmpty()) {
+            if (th == null && !newAssigns.assigns().isEmpty()) {
                 if (log.isDebugEnabled())
                     log.debug("Calculated service assignments: " + newAssigns.assigns());
 
-                fullAssigns.put(name, newAssigns.assigns());
+                fullAssigns.put(srvcId, newAssigns.assigns());
             }
             else if (cfg.policy() == IGNORE) {
                 Map<UUID, Integer> assigns = new HashMap<>();
@@ -397,12 +422,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 });
 
                 if (!assigns.isEmpty())
-                    fullAssigns.put(name, assigns);
+                    fullAssigns.put(srvcId, assigns);
                 else
-                    servicesToUndeploy.add(name);
+                    servicesToUndeploy.add(srvcId);
             }
             else
-                servicesToUndeploy.add(name);
+                servicesToUndeploy.add(srvcId);
         });
 
         expAssigns.putAll(fullAssigns);
