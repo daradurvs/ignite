@@ -25,45 +25,31 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 
 /**
- * Single service assignments unit to send over network.
+ * Single service deployments.
  */
-public class ServiceAssignmentsMap implements Serializable {
+public class ServiceDeploymentsMap implements Serializable {
     /** */
     private static final long serialVersionUID = 0L;
 
     /** Service name. */
     private IgniteUuid srvcId;
 
-    /** Service assignments. */
+    /** Service topology snapshot. */
     @GridToStringInclude
-    private Map<UUID, Integer> assigns;
+    private Map<UUID, Integer> top;
 
     /** Topology version. */
     private long topVer;
 
     /**
      * @param srvcId Service id.
-     * @param assigns Service assignments.
+     * @param top Service topology snapshot.
      * @param topVer Topology version.
      */
-    public ServiceAssignmentsMap(IgniteUuid srvcId, Map<UUID, Integer> assigns, long topVer) {
+    public ServiceDeploymentsMap(IgniteUuid srvcId, Map<UUID, Integer> top, long topVer) {
         this.srvcId = srvcId;
-        this.assigns = assigns;
+        this.top = top;
         this.topVer = topVer;
-    }
-
-    /**
-     * @return Service assignments.
-     */
-    public Map<UUID, Integer> assigns() {
-        return assigns;
-    }
-
-    /**
-     * @param assigns Service assignments.
-     */
-    public void assigns(Map<UUID, Integer> assigns) {
-        this.assigns = assigns;
     }
 
     /**
@@ -80,8 +66,15 @@ public class ServiceAssignmentsMap implements Serializable {
         return topVer;
     }
 
+    /**
+     * @return Service topology snapshot.
+     */
+    public Map<UUID, Integer> topologySnapshot() {
+        return top;
+    }
+
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServiceAssignmentsMap.class, this);
+        return S.toString(ServiceDeploymentsMap.class, this);
     }
 }

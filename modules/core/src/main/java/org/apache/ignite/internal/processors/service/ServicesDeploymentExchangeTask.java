@@ -56,6 +56,13 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
     public void complete(@Nullable Throwable err, boolean cancel);
 
     /**
+     * Returns if the task completed.
+     *
+     * @return {@code true} if the task completed, otherwise {@code false}.
+     */
+    public boolean isComplete();
+
+    /**
      * Synchronously waits for completion of the task for up to the given timeout.
      *
      * @param timeout The maximum time to wait in milliseconds.

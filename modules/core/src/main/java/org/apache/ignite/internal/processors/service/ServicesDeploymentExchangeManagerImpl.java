@@ -242,7 +242,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                         log.error("Error occurred during waiting for exchange future completion " +
                             "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
 
-                        if (isStopped)
+                        if (isStopped || task.isComplete())
                             return;
 
                         for (UUID uuid : task.remaining()) {

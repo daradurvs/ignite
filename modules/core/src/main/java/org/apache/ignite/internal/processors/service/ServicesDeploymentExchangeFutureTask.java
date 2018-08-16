@@ -72,6 +72,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Services assignments. */
     private final Map<IgniteUuid, GridServiceAssignments> srvcsAssigns;
 
+    /** Services deployments. */
+    private final Map<IgniteUuid, ServiceDeploymentsMap> srvcsDeps;
+
     /** Kernal context. */
     private final GridKernalContext ctx;
 
@@ -103,6 +106,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         this.evt = evt;
         this.evtTopVer = evtTopVer;
         this.srvcsAssigns = ctx.service().assignments();
+        this.srvcsDeps = ctx.service().deployments();
         this.exchId = new ServicesDeploymentExchangeId(evt);
         this.log = ctx.log(getClass());
     }
@@ -187,14 +191,16 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (req.deploy()) {
                 ServiceConfiguration cfg = req.configuration();
 
-                GridServiceAssignments srvcAssigns = srvcsAssigns.get(req.serviceId());
+                ServiceDeploymentsMap srvcDep = srvcsDeps.get(req.serviceId());
 
                 Throwable th = null;
 
-                if (srvcAssigns != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+                if (srvcDep != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
                     th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
-                        ", assigns=" + srvcAssigns);
+                        ", assigns=" + srvcDep);
                 }
+
+                GridServiceAssignments srvcAssigns = null;
 
                 for (GridServiceAssignments assigns : srvcsAssigns.values()) {
                     if (assigns.name().equals(cfg.getName())) {
@@ -311,18 +317,18 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * Creates full assignments message and send it across over discovery.
      */
     private void onAllReceived() {
-        ServicesFullMapMessage msg = createFullAssignmentsMessage();
+        ServicesFullMapMessage msg = createFullMapMessage();
 
         sendCustomEvent(msg);
     }
 
     /**
-     * Processes single assignments messages to build full assignments message.
+     * Processes single assignments messages to build full map message.
      *
-     * @return Services full assignments message.
+     * @return Services full map message.
      */
-    private ServicesFullMapMessage createFullAssignmentsMessage() {
-        final Map<IgniteUuid, ServiceAssignmentsMap> assigns = new HashMap<>();
+    private ServicesFullMapMessage createFullMapMessage() {
+        final Map<IgniteUuid, ServiceDeploymentsMap> assigns = new HashMap<>();
 
         final Map<IgniteUuid, Map<UUID, Integer>> fullAssigns = new HashMap<>();
 
@@ -356,7 +362,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         });
 
         fullAssigns.forEach((id, srvcAssigns) -> {
-            assigns.put(id, new ServiceAssignmentsMap(id, srvcAssigns, evt.topologyVersion()));
+            assigns.put(id, new ServiceDeploymentsMap(id, srvcAssigns, evt.topologyVersion()));
         });
 
         depErrors.forEach((depId, err) -> {
@@ -478,6 +484,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** {@inheritDoc} */
     @Override public void complete(@Nullable Throwable err, boolean cancel) {
         onDone(null, err, cancel);
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean isComplete() {
+        return isDone();
     }
 
     /** {@inheritDoc} */

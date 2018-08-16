@@ -48,7 +48,7 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
 
     /** Cluster services assignments. */
     @GridToStringInclude
-    private final Map<IgniteUuid, ServiceAssignmentsMap> assigns;
+    private final Map<IgniteUuid, ServiceDeploymentsMap> assigns;
 
     /** Services deployments errors. */
     @GridToStringInclude
@@ -60,7 +60,7 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
      * @param assigns Services assignments.
      */
     public ServicesFullMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, ServiceAssignmentsMap> assigns) {
+        Map<IgniteUuid, ServiceDeploymentsMap> assigns) {
         this.snd = snd;
         this.exchId = exchId;
         this.assigns = assigns;
@@ -98,7 +98,7 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     /**
      * @return Local services assignments.
      */
-    public Map<IgniteUuid, ServiceAssignmentsMap> assigns() {
+    public Map<IgniteUuid, ServiceDeploymentsMap> assigns() {
         return assigns;
     }
 
