@@ -47,7 +47,6 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
      */
     public ServiceDescriptorImpl(GridServiceAssignments assigns) {
         this.assigns = assigns;
-        this.top = assigns.assigns();
     }
 
     /** {@inheritDoc} */

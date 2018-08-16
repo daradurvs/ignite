@@ -362,7 +362,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         });
 
         fullAssigns.forEach((id, srvcAssigns) -> {
-            assigns.put(id, new ServiceDeploymentsMap(id, srvcAssigns, evt.topologyVersion()));
+            String name = srvcsAssigns.get(id).name();
+
+            assigns.put(id, new ServiceDeploymentsMap(id, name, srvcAssigns, evt.topologyVersion()));
         });
 
         depErrors.forEach((depId, err) -> {

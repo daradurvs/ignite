@@ -156,6 +156,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
+    /** */
+    private final Object mux = new Object();
+
     /**
      * @param ctx Kernal context.
      */
@@ -205,13 +208,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
-        srvcsDeps.forEach((id, dep) -> {
-            GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
-
-            ServiceConfiguration cfg = srvcAssigns.configuration();
-
-            redeploy(id, cfg, dep.topologySnapshot(), cfg.getCacheName(), cfg.getAffinityKey());
-        });
+        for (GridServiceAssignments assigns : srvcsAssigns.values())
+            redeploy(assigns);
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -610,7 +608,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     }
 
                     if (oldDifCfg == null) {
-                        IgniteUuid srvcId = lookupId(cfg);
+                        IgniteUuid srvcId = lookupId(cfg.getName());
 
                         if (srvcId != null) {
                             GridServiceAssignments assign = srvcsAssigns.get(srvcId);
@@ -817,14 +815,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /**
      * @param name Service name.
+     * @param timeout If greater than 0 limits task execution time. Cannot be negative.
      * @return Service topology.
+     * @throws IgniteCheckedException On error.
      */
-    public Map<UUID, Integer> serviceTopology(String name) {
+    public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
         IgniteUuid id = lookupId(name);
 
-        ServiceDeploymentsMap dep = srvcsDeps.get(id);
-
-        if (dep == null) {
+        if (id == null) {
             if (log.isDebugEnabled()) {
                 log.debug("Requested service assignments have not been found : [" + name +
                     ", locId=" + ctx.localNodeId() +
@@ -834,7 +832,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return null;
         }
 
-        return dep.topologySnapshot();
+        ServiceDeploymentsMap dep = srvcsDeps.get(id);
+
+        synchronized (mux) {
+            if (dep == null) {
+                try {
+                    mux.wait(timeout);
+                }
+                catch (InterruptedException e) {
+                    throw new IgniteInterruptedCheckedException(e);
+                }
+
+                dep = srvcsDeps.get(id);
+            }
+        }
+
+        return dep != null ? dep.topologySnapshot() : null;
     }
 
     /**
@@ -843,15 +856,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
-        srvcsDeps.forEach((id, dep) -> {
-            GridServiceAssignments assigns = srvcsAssigns.get(id);
-
+        for (GridServiceAssignments assigns : srvcsAssigns.values()) {
             ServiceDescriptorImpl desc = new ServiceDescriptorImpl(assigns);
 
-            desc.topologySnapshot(dep.topologySnapshot());
+            ServiceDeploymentsMap dep = srvcsDeps.get(assigns.serviceId());
+
+            if (dep != null)
+                desc.topologySnapshot(dep.topologySnapshot());
 
             descs.add(desc);
-        });
+        }
 
         return descs;
     }
@@ -1149,6 +1163,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 U.sleep(10);
             }
         }
+    }
+
+    /**
+     * Redeploys local services based on assignments.
+     *
+     * @param assigns Assignments.
+     */
+    private void redeploy(GridServiceAssignments assigns) {
+        redeploy(assigns.serviceId(), assigns.configuration(), assigns.assigns(), assigns.cacheName(), assigns.affinityKey());
     }
 
     /**
@@ -1688,12 +1711,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             Map<IgniteUuid, Collection<byte[]>> fullErrors = msg.errors();
 
-            Set<IgniteUuid> srvcsIds = fullDeps.keySet();
-
-            srvcsDeps.putAll(fullDeps);
-            srvcsDeps.entrySet().removeIf(dep -> !srvcsIds.contains(dep.getKey()));
-
             fullDeps.forEach((id, dep) -> {
+                GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
+
+                srvcAssigns.topologyVersion(dep.topologyVersion());
+                srvcAssigns.assigns(dep.topologySnapshot());
+
                 Integer expNum = dep.topologySnapshot().get(ctx.localNodeId());
 
                 if (expNum == null || expNum == 0)
@@ -1702,14 +1725,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     Collection ctxs = locSvcs.get(id);
 
                     if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size())) {
-                        GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
-
                         ServiceConfiguration cfg = srvcAssigns.configuration();
 
                         redeploy(id, cfg, dep.topologySnapshot(), cfg.getCacheName(), cfg.getAffinityKey());
                     }
                 }
             });
+
+            Set<IgniteUuid> srvcsIds = fullDeps.keySet();
+
+            synchronized (mux) {
+                srvcsDeps.putAll(fullDeps);
+                srvcsDeps.entrySet().removeIf(dep -> !srvcsIds.contains(dep.getKey()));
+
+                mux.notifyAll();
+            }
 
             srvcsAssigns.entrySet().removeIf(assign -> !srvcsIds.contains(assign.getKey()));
 
@@ -1811,18 +1841,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param cfg Service configuration.
-     * @return Service's id if exists, otherwise {@code null};
-     */
-    @Nullable private IgniteUuid lookupId(ServiceConfiguration cfg) {
-        return lookupId(p -> p.configuration().getName().equals(cfg.getName()));
-    }
-
-    /**
      * @param name Service name;
      * @return @return Service's id if exists, otherwise {@code null};
      */
-    @Nullable private IgniteUuid lookupId(String name) {
+    @Nullable public IgniteUuid lookupId(String name) {
         return lookupId(p -> p.name().equals(name));
     }
 
@@ -1831,7 +1853,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Service's id if exists, otherwise {@code null};
      */
     @Nullable private IgniteUuid lookupId(IgnitePredicate<GridServiceAssignments> p) {
-        return srvcsAssigns.search(20, (id, assigns) -> p.apply(assigns) ? id : null);
+        return srvcsAssigns.search(20, (id, deps) -> p.apply(deps) ? id : null);
     }
 
     /**
