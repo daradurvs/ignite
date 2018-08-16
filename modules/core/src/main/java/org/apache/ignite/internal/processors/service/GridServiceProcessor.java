@@ -584,9 +584,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 for (ServiceConfiguration cfg : cfgsCp) {
                     GridServiceDeploymentFuture old = null;
 
-                    for (Map.Entry<IgniteUuid, GridServiceDeploymentFuture> entry : depFuts.entrySet()) {
-                        if (entry.getValue().configuration().getName().equals(cfg.getName())) {
-                            old = entry.getValue();
+                    for (GridServiceDeploymentFuture fut : depFuts.values()) {
+                        if (fut.configuration().getName().equals(cfg.getName())) {
+                            old = fut;
 
                             break;
                         }
