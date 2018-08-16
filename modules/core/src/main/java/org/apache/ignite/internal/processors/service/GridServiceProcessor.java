@@ -205,8 +205,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
-        if (!srvcsAssigns.isEmpty())
-            srvcsAssigns.values().forEach(this::redeploy);
+        srvcsDeps.forEach((id, dep) -> {
+            GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
+
+            ServiceConfiguration cfg = srvcAssigns.configuration();
+
+            redeploy(id, cfg, dep.topologySnapshot(), cfg.getCacheName(), cfg.getAffinityKey());
+        });
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -1149,31 +1154,22 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Redeploys local services based on assignments.
      *
-     * @param assigns Assignments.
-     */
-    private void redeploy(GridServiceAssignments assigns) {
-        redeploy(assigns.name(), assigns.configuration(), assigns.assigns(), assigns.cacheName(), assigns.affinityKey());
-    }
-
-    /**
-     * Redeploys local services based on assignments.
-     *
-     * @param name Service name.
+     * @param id Service id.
      * @param cfg Service configuration.
      * @param assigns Service assignments.
      * @param cacheName Cache name
      * @param affKey Affinity key.
      */
-    private void redeploy(String name, ServiceConfiguration cfg, Map<UUID, Integer> assigns, String cacheName,
+    private void redeploy(IgniteUuid id, ServiceConfiguration cfg, Map<UUID, Integer> assigns, String cacheName,
         Object affKey) {
+        String name = cfg.getName();
+
         Integer assignCnt = assigns.get(ctx.localNodeId());
 
         if (assignCnt == null)
             assignCnt = 0;
 
         Collection<ServiceContextImpl> ctxs;
-
-        IgniteUuid id = lookupId(name);
 
         synchronized (locSvcs) {
             ctxs = locSvcs.get(id);
@@ -1611,7 +1607,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             try {
                 GridServiceAssignments old = srvcsAssigns.get(id);
 
-                redeploy(old.name(), old.configuration(), assigns, old.cacheName(), old.affinityKey());
+                redeploy(id, old.configuration(), assigns, old.cacheName(), old.affinityKey());
             }
             catch (Error | RuntimeException t) {
                 errors.put(id, t);
@@ -1692,34 +1688,28 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             Map<IgniteUuid, Collection<byte[]>> fullErrors = msg.errors();
 
-            fullDeps.forEach((id, dep) -> {
-                GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
-
-                if (srvcAssigns != null) {
-                    srvcAssigns.topologyVersion(dep.topologyVersion());
-                    srvcAssigns.assigns(dep.topologySnapshot());
-
-                    Integer expNum = srvcAssigns.assigns().get(ctx.localNodeId());
-
-                    if (expNum == null || expNum == 0)
-                        undeploy(dep.serviceId());
-                    else {
-                        Collection ctxs = locSvcs.get(id);
-
-                        if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size()))
-                            redeploy(srvcAssigns);
-                    }
-                }
-                else if (log.isDebugEnabled()) {
-                    log.debug("Unexpected state: service assignments are contained in full map, " +
-                        "but are not contained in the local storage.");
-                }
-            });
-
             Set<IgniteUuid> srvcsIds = fullDeps.keySet();
 
             srvcsDeps.putAll(fullDeps);
             srvcsDeps.entrySet().removeIf(dep -> !srvcsIds.contains(dep.getKey()));
+
+            fullDeps.forEach((id, dep) -> {
+                Integer expNum = dep.topologySnapshot().get(ctx.localNodeId());
+
+                if (expNum == null || expNum == 0)
+                    undeploy(dep.serviceId());
+                else {
+                    Collection ctxs = locSvcs.get(id);
+
+                    if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size())) {
+                        GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
+
+                        ServiceConfiguration cfg = srvcAssigns.configuration();
+
+                        redeploy(id, cfg, dep.topologySnapshot(), cfg.getCacheName(), cfg.getAffinityKey());
+                    }
+                }
+            });
 
             srvcsAssigns.entrySet().removeIf(assign -> !srvcsIds.contains(assign.getKey()));
 
