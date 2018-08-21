@@ -41,10 +41,10 @@ public class DynamicServiceChangeRequest implements Serializable {
     /** Service id. */
     private IgniteUuid srvcId;
 
-    /** Service configuration. */
+    /** Service configuration. May be {@code null} in case of undeploy. */
     private ServiceConfiguration cfg;
 
-    /** Change actions flags. */
+    /** Change’s types flags. */
     private byte flags;
 
     /**
