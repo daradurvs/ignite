@@ -631,8 +631,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     else {
                         res.add(fut, true);
 
-                        DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(
-                            ctx.localNodeId(), srvcId, cfg);
+                        DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
 
                         reqs.add(req);
 
@@ -773,8 +772,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     toRollback.add(srvcId);
 
-                    DynamicServiceChangeRequest req = DynamicServiceChangeRequest.undeploymentRequest(
-                        ctx.localNodeId(), srvcId);
+                    DynamicServiceChangeRequest req = DynamicServiceChangeRequest.undeploymentRequest(srvcId);
 
                     reqs.add(req);
                 }

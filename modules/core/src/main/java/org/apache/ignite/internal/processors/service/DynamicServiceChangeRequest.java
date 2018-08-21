@@ -18,23 +18,25 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.io.Serializable;
-import java.util.UUID;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
- * Service deployment/undeployment request.
+ * Service change state request.
  */
 public class DynamicServiceChangeRequest implements Serializable {
     /** */
     private static final long serialVersionUID = 0L;
 
+    /** Deploy service flag mask. */
+    private static final int SERVICE_DEPLOY_FLAG_MASK = 0x01;
+
+    /** Undeploy service flag mask. */
+    private static final int SERVICE_UNDEPLOY_FLAG_MASK = 0x02;
+
     /** Request id. */
     private IgniteUuid reqId = IgniteUuid.randomUuid();
-
-    /** Change's initiator id. */
-    private UUID nodeId;
 
     /** Service id. */
     private IgniteUuid srvcId;
@@ -42,46 +44,38 @@ public class DynamicServiceChangeRequest implements Serializable {
     /** Service configuration. */
     private ServiceConfiguration cfg;
 
-    /** If this is deployment request. */
-    private boolean deploy;
-
-    /** If this is undeployment request. */
-    private boolean undeploy;
+    /** Change actions flags. */
+    private byte flags;
 
     /**
-     * @param nodeId Change's initiator id.
      * @param srvcId Service id.
      */
-    public DynamicServiceChangeRequest(UUID nodeId, IgniteUuid srvcId) {
-        this.nodeId = nodeId;
+    public DynamicServiceChangeRequest(IgniteUuid srvcId) {
         this.srvcId = srvcId;
     }
 
     /**
-     * @param nodeId Change's initiator id.
      * @param srvcId Service id.
      * @param cfg Service configuration.
      * @return Deployment request.
      */
-    public static DynamicServiceChangeRequest deploymentRequest(UUID nodeId, IgniteUuid srvcId,
-        ServiceConfiguration cfg) {
-        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(nodeId, srvcId);
+    public static DynamicServiceChangeRequest deploymentRequest(IgniteUuid srvcId, ServiceConfiguration cfg) {
+        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(srvcId);
 
         req.configuration(cfg);
-        req.deploy(true);
+        req.markDeploy();
 
         return req;
     }
 
     /**
-     * @param nodeId Change's initiator id.
      * @param srvcId Service id.
      * @return Deployment request.
      */
-    public static DynamicServiceChangeRequest undeploymentRequest(UUID nodeId, IgniteUuid srvcId) {
-        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(nodeId, srvcId);
+    public static DynamicServiceChangeRequest undeploymentRequest(IgniteUuid srvcId) {
+        DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(srvcId);
 
-        req.undeploy(true);
+        req.markUndeploy();
 
         return req;
     }
@@ -91,27 +85,6 @@ public class DynamicServiceChangeRequest implements Serializable {
      */
     public IgniteUuid requestId() {
         return reqId;
-    }
-
-    /**
-     * @param reqId New request id.
-     */
-    public void requestId(IgniteUuid reqId) {
-        this.reqId = reqId;
-    }
-
-    /**
-     * @return Change's initiator id.
-     */
-    public UUID nodeId() {
-        return nodeId;
-    }
-
-    /**
-     * @param nodeId New change's initiator id.
-     */
-    public void nodeId(UUID nodeId) {
-        this.nodeId = nodeId;
     }
 
     /**
@@ -143,31 +116,31 @@ public class DynamicServiceChangeRequest implements Serializable {
     }
 
     /**
-     * @return If this is deployment request.
+     * Marks the message's action as deploy service.
      */
-    public boolean deploy() {
-        return deploy;
+    public void markDeploy() {
+        flags |= SERVICE_DEPLOY_FLAG_MASK;
     }
 
     /**
-     * @param deploy New deployment request flag.
+     * @return If this is deployment request.
      */
-    public void deploy(boolean deploy) {
-        this.deploy = deploy;
+    public boolean deploy() {
+        return (flags & SERVICE_DEPLOY_FLAG_MASK) != 0;
+    }
+
+    /**
+     * Marks the message's action as undeploy service.
+     */
+    public void markUndeploy() {
+        flags |= SERVICE_UNDEPLOY_FLAG_MASK;
     }
 
     /**
      * @return If this is undeployment request.
      */
     public boolean undeploy() {
-        return undeploy;
-    }
-
-    /**
-     * @param undeploy New undeployment request flag.
-     */
-    public void undeploy(boolean undeploy) {
-        this.undeploy = undeploy;
+        return (flags & SERVICE_UNDEPLOY_FLAG_MASK) != 0;
     }
 
     /** {@inheritDoc} */
