@@ -328,19 +328,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @return Services full map message.
      */
     private ServicesFullMapMessage createFullMapMessage() {
-        final Map<IgniteUuid, ServiceDeploymentsMap> assigns = new HashMap<>();
-
-        final Map<IgniteUuid, Map<UUID, Integer>> fullAssigns = new HashMap<>();
-
-        final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
+        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
 
         singleAssignsMsgs.forEach((nodeId, msg) -> {
             msg.results().forEach((id, res) -> {
+                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
+
                 int num = res.count();
 
                 if (num != 0) {
-                    Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(id, m -> new HashMap<>());
-
                     Map<UUID, Integer> expSrvcAssigns = expAssigns.get(id);
 
                     if (expSrvcAssigns != null) {
@@ -351,25 +347,18 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         else if (expNum < num)
                             num = expNum;
                     }
-
-                    srvcAssigns.put(nodeId, num);
                 }
 
-                for (byte[] bytes : res.errors()) {
-                    Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(id, e -> new ArrayList<>());
+                ServiceSingleDeploymentsResults singleDepRes = new ServiceSingleDeploymentsResults(num);
 
-                    srvcErrors.add(bytes);
-                }
+                if (!res.errors().isEmpty())
+                    singleDepRes.errors(res.errors());
+
+                depResults.put(nodeId, singleDepRes);
             });
         });
 
-        fullAssigns.forEach((id, srvcAssigns) -> {
-            String name = srvcsAssigns.get(id).name();
-
-            assigns.put(id, new ServiceDeploymentsMap(id, name, srvcAssigns, evt.topologyVersion()));
-        });
-
-        depErrors.forEach((depId, err) -> {
+        depErrors.forEach((id, err) -> {
             byte[] arr = null;
 
             try {
@@ -379,16 +368,32 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 log.error("Failed to marshal reassignments error.", e);
             }
 
-            if (arr != null)
-                fullErrors.putIfAbsent(depId, Collections.singleton(arr));
+            if (arr != null) {
+                Collection<byte[]> srvcErrors = new ArrayList<>(1);
+
+                srvcErrors.add(arr);
+
+                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
+
+                ServiceSingleDeploymentsResults singleDepRes = depResults.computeIfAbsent(
+                    ctx.localNodeId(), r -> new ServiceSingleDeploymentsResults(0));
+
+                if (singleDepRes.errors().isEmpty())
+                    singleDepRes.errors(srvcErrors);
+                else
+                    singleDepRes.errors().addAll(srvcErrors);
+            }
         });
 
-        ServicesFullMapMessage msg = new ServicesFullMapMessage(ctx.localNodeId(), exchId, assigns);
+        final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
 
-        if (!fullErrors.isEmpty())
-            msg.errors(fullErrors);
+        results.forEach((srvcId, dep) -> {
+            ServiceFullDeploymentsResults res = new ServiceFullDeploymentsResults(srvcId, dep);
 
-        return msg;
+            fullResults.add(res);
+        });
+
+        return new ServicesFullMapMessage(ctx.localNodeId(), exchId, fullResults);
     }
 
     /**
@@ -500,11 +505,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         get(timeout);
     }
 
-    /**
-     * @return Cause discovery event.
-     */
-    public DiscoveryEvent event() {
+    /** {@inheritDoc} */
+    @Override public DiscoveryEvent event() {
         return evt;
+    }
+
+    /** {@inheritDoc} */
+    @Override public AffinityTopologyVersion topologyVersion() {
+        return evtTopVer;
     }
 
     /** {@inheritDoc} */

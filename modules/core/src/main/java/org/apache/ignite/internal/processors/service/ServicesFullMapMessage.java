@@ -18,8 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.Collection;
-import java.util.Collections;
-import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
@@ -46,26 +44,22 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     /** Exchange id. */
     private final ServicesDeploymentExchangeId exchId;
 
-    /** Cluster services assignments. */
+    /** Services deployments results. */
     @GridToStringInclude
-    private final Map<IgniteUuid, ServiceDeploymentsMap> assigns;
-
-    /** Services deployments errors. */
-    @GridToStringInclude
-    private Map<IgniteUuid, Collection<byte[]>> errors;
+    private Collection<ServiceFullDeploymentsResults> results;
 
     /**
      * @param snd Sender id.
      * @param exchId Exchange id.
-     * @param assigns Services assignments.
+     * @param results Services deployments results.
      */
     public ServicesFullMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, ServiceDeploymentsMap> assigns) {
+        Collection<ServiceFullDeploymentsResults> results) {
         this.snd = snd;
         this.exchId = exchId;
-        this.assigns = assigns;
-        this.errors = Collections.emptyMap();
+        this.results = results;
     }
+
 
     /**
      * @return Sender id.
@@ -82,24 +76,10 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     }
 
     /**
-     * @return Services deployments errors.
+     * @return Services deployments results.
      */
-    public Map<IgniteUuid, Collection<byte[]>> errors() {
-        return errors;
-    }
-
-    /**
-     * @param errors Services deployments errors.
-     */
-    public void errors(Map<IgniteUuid, Collection<byte[]>> errors) {
-        this.errors = errors;
-    }
-
-    /**
-     * @return Local services assignments.
-     */
-    public Map<IgniteUuid, ServiceDeploymentsMap> assigns() {
-        return assigns;
+    public Collection<ServiceFullDeploymentsResults> results() {
+        return results;
     }
 
     /** {@inheritDoc} */

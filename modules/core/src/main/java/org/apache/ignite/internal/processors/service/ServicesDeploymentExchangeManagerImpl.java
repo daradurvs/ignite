@@ -52,6 +52,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Indicates that worker is stopped. */
     private volatile boolean isStopped = true;
 
+    /** */
+    private volatile AffinityTopologyVersion readyTopVer = AffinityTopologyVersion.NONE;
+
     /**
      * @param ctx Grid kernal context.
      */
@@ -83,6 +86,11 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         catch (Exception e) {
             log.error("Error occurred during stopping exchange worker.");
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override public AffinityTopologyVersion readyTopologyVersion() {
+        return readyTopVer;
     }
 
     /** {@inheritDoc} */
@@ -232,6 +240,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 while (true) {
                     try {
                         task.waitForComplete(timeout);
+
+                        readyTopVer = task.topologyVersion();
 
                         break;
                     }

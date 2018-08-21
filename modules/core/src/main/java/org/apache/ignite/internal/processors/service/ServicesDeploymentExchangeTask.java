@@ -20,6 +20,8 @@ package org.apache.ignite.internal.processors.service;
 import java.util.Collection;
 import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.events.DiscoveryEvent;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -69,4 +71,14 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
      * @throws IgniteCheckedException In case of an error.
      */
     public void waitForComplete(long timeout) throws IgniteCheckedException;
+
+    /**
+     * @return Cause discovery event.
+     */
+    public DiscoveryEvent event();
+
+    /**
+     * @return Cause of exchange topology version.
+     */
+    public AffinityTopologyVersion topologyVersion();
 }

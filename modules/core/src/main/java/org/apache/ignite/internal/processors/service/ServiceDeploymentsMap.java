@@ -41,20 +41,15 @@ public class ServiceDeploymentsMap implements Serializable {
     @GridToStringInclude
     private Map<UUID, Integer> top;
 
-    /** Topology version. */
-    private long topVer;
-
     /**
      * @param srvcId Service id.
      * @param name Service name.
      * @param top Service topology snapshot.
-     * @param topVer Topology version.
      */
-    public ServiceDeploymentsMap(IgniteUuid srvcId, String name, Map<UUID, Integer> top, long topVer) {
+    public ServiceDeploymentsMap(IgniteUuid srvcId, String name, Map<UUID, Integer> top) {
         this.srvcId = srvcId;
         this.name = name;
         this.top = top;
-        this.topVer = topVer;
     }
 
     /**
@@ -69,13 +64,6 @@ public class ServiceDeploymentsMap implements Serializable {
      */
     public String name() {
         return name;
-    }
-
-    /**
-     * @return Topology version.
-     */
-    public long topologyVersion() {
-        return topVer;
     }
 
     /**

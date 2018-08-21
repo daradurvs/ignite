@@ -26,6 +26,7 @@ import java.util.concurrent.CountDownLatch;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
@@ -156,18 +157,16 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
     private boolean checkServices(int total, int maxPerNode, int gridIdx, boolean lastTry) throws Exception {
         IgniteEx grid = grid(gridIdx);
 
-        long topVer = grid.context().discovery().topologyVersion();
-
-        Map<IgniteUuid, GridServiceAssignments> assigns = grid.context().service().assignments();
+        AffinityTopologyVersion topVer = grid.context().discovery().topologyVersionEx();
 
         IgniteUuid id = grid.context().service().lookupId(SERVICE_NAME);
 
         assertNotNull(id);
 
         GridTestUtils.waitForCondition(() -> {
-            ServiceDeploymentsMap srvcDeps = grid.context().service().deployments().get(id);
+            AffinityTopologyVersion readyTopVer = grid.context().service().exchange().readyTopologyVersion();
 
-            return srvcDeps.topologyVersion() == topVer;
+            return topVer.compareTo(readyTopVer) <= 0;
         }, 5_000);
 
         ServiceDeploymentsMap srvcDep = grid.context().service().deployments().get(id);

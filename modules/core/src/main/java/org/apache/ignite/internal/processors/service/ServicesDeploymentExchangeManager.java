@@ -41,4 +41,9 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
      * Stops processing of services deployments exchange tasks.
      */
     public void stopProcessing();
+
+    /**
+     * @return Ready topology version.
+     */
+    public AffinityTopologyVersion readyTopologyVersion();
 }

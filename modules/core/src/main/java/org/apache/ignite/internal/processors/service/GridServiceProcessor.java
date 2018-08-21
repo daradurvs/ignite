@@ -1705,30 +1705,63 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void processFullMap(ServicesFullMapMessage msg) {
         try {
-            Map<IgniteUuid, ServiceDeploymentsMap> fullDeps = msg.assigns();
+            Collection<ServiceFullDeploymentsResults> results = msg.results();
 
-            Map<IgniteUuid, Collection<byte[]>> fullErrors = msg.errors();
+            Map<IgniteUuid, ServiceDeploymentsMap> fullDeps = new HashMap<>();
 
-            fullDeps.forEach((id, dep) -> {
-                GridServiceAssignments srvcAssigns = srvcsAssigns.get(id);
+            Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
 
-                srvcAssigns.topologyVersion(dep.topologyVersion());
-                srvcAssigns.assigns(dep.topologySnapshot());
+            for (ServiceFullDeploymentsResults res : results) {
+                IgniteUuid srvcId = res.serviceId();
+                Map<UUID, ServiceSingleDeploymentsResults> dep = res.results();
 
-                Integer expNum = dep.topologySnapshot().get(ctx.localNodeId());
+                Map<UUID, Integer> topSnap = new HashMap<>();
 
-                if (expNum == null || expNum == 0)
-                    undeploy(dep.serviceId());
-                else {
-                    Collection ctxs = locSvcs.get(id);
+                Collection<byte[]> errors = new ArrayList<>();
 
-                    if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size())) {
-                        ServiceConfiguration cfg = srvcAssigns.configuration();
+                dep.forEach((nodeId, depRes) -> {
+                    int cnt = depRes.count();
 
-                        redeploy(id, cfg, dep.topologySnapshot(), cfg.getCacheName(), cfg.getAffinityKey());
+                    if (cnt > 0)
+                        topSnap.put(nodeId, cnt);
+
+                    if (!depRes.errors().isEmpty())
+                        errors.addAll(depRes.errors());
+                });
+
+                GridServiceAssignments srvcAssigns = srvcsAssigns.get(srvcId);
+
+                if (srvcAssigns != null) {
+                    srvcAssigns.assigns(topSnap);
+
+                    Integer expNum = topSnap.get(ctx.localNodeId());
+
+                    if (expNum == null || expNum == 0)
+                        undeploy(srvcId);
+                    else {
+                        Collection ctxs = locSvcs.get(srvcId);
+
+//                    if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size())) {
+                        if (ctxs != null && expNum < ctxs.size()) { // Undeploy exceed instances
+                            ServiceConfiguration cfg = srvcAssigns.configuration();
+
+                            redeploy(srvcId, cfg, topSnap, cfg.getCacheName(), cfg.getAffinityKey());
+                        }
+                    }
+
+                    if (!topSnap.isEmpty()) {
+                        ServiceDeploymentsMap depMap = new ServiceDeploymentsMap(srvcId, srvcAssigns.name(), topSnap);
+
+                        fullDeps.put(srvcId, depMap);
                     }
                 }
-            });
+
+                if (!errors.isEmpty()) {
+                    Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
+
+                    srvcErrors.addAll(errors);
+                }
+            }
 
             Set<IgniteUuid> srvcsIds = fullDeps.keySet();
 
@@ -1927,5 +1960,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public Map<IgniteUuid, ServiceDeploymentsMap> deployments() {
         return Collections.unmodifiableMap(srvcsDeps);
+    }
+
+    /**
+     * @return Services deployment exchange manager.
+     */
+    public ServicesDeploymentExchangeManager exchange() {
+        return exchangeMgr;
     }
 }
