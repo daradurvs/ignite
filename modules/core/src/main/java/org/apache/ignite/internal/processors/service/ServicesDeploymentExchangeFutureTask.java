@@ -297,8 +297,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
         synchronized (mux) {
-            if (remaining.remove(msg.senderId())) {
-                singleAssignsMsgs.put(msg.senderId(), msg);
+            if (remaining.remove(msg.sender())) {
+                singleAssignsMsgs.put(msg.sender(), msg);
 
                 if (remaining.isEmpty())
                     onAllReceived();
@@ -335,8 +335,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
 
         singleAssignsMsgs.forEach((nodeId, msg) -> {
-            msg.assigns().forEach((id, num) -> {
-                if (num != null && num != 0) {
+            msg.results().forEach((id, res) -> {
+                int num = res.count();
+
+                if (num != 0) {
                     Map<UUID, Integer> srvcAssigns = fullAssigns.computeIfAbsent(id, m -> new HashMap<>());
 
                     Map<UUID, Integer> expSrvcAssigns = expAssigns.get(id);
@@ -352,12 +354,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                     srvcAssigns.put(nodeId, num);
                 }
-            });
 
-            msg.errors().forEach((id, err) -> {
-                Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(id, e -> new ArrayList<>());
+                for (byte[] bytes : res.errors()) {
+                    Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(id, e -> new ArrayList<>());
 
-                srvcErrors.add(err);
+                    srvcErrors.add(bytes);
+                }
             });
         });
 

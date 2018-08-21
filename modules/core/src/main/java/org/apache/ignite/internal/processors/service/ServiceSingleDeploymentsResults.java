@@ -18,73 +18,67 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
-import java.util.Map;
-import java.util.UUID;
-import org.apache.ignite.internal.util.tostring.GridToStringInclude;
+import java.util.Collection;
+import java.util.Collections;
 import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.IGNITE_UUID;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
+import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
 
 /**
- * Services single node map message.
+ * Service single deployments results.
  */
-public class ServicesSingleMapMessage implements Message {
+public class ServiceSingleDeploymentsResults implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Sender id. */
-    private UUID snd;
+    /** Count of service's instances. */
+    private int cnt;
 
-    /** Exchange id. */
-    @GridToStringInclude
-    private ServicesDeploymentExchangeId exchId;
-
-    /** Services deployments results. */
-    @GridToStringInclude
-    private Map<IgniteUuid, ServiceSingleDeploymentsResults> results;
+    /** Serialized exceptions. */
+    private Collection<byte[]> errors = Collections.emptyList();
 
     /**
      * Empty constructor for marshalling purposes.
      */
-    public ServicesSingleMapMessage() {
+    public ServiceSingleDeploymentsResults() {
     }
 
     /**
-     * @param snd Sender id.
-     * @param exchId Exchange id.
-     * @param results Services deployments results.
+     * @param cnt Count of service's instances.
      */
-    public ServicesSingleMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, ServiceSingleDeploymentsResults> results) {
-        this.snd = snd;
-        this.exchId = exchId;
-        this.results = results;
+    public ServiceSingleDeploymentsResults(int cnt) {
+        this.cnt = cnt;
     }
 
     /**
-     * @return Sender id.
+     * @return Count of service's instances.
      */
-    public UUID sender() {
-        return snd;
+    public int count() {
+        return cnt;
     }
 
     /**
-     * @return Services deployments results.
+     * @param cnt Count of service's instances.
      */
-    public Map<IgniteUuid, ServiceSingleDeploymentsResults> results() {
-        return results;
+    public void count(int cnt) {
+        this.cnt = cnt;
     }
 
     /**
-     * @return Exchange id.
+     * @return Serialized exceptions.
      */
-    public ServicesDeploymentExchangeId exchangeId() {
-        return exchId;
+    public Collection<byte[]> errors() {
+        return errors;
+    }
+
+    /**
+     * @param errors Serialized exceptions.
+     */
+    public void errors(Collection<byte[]> errors) {
+        this.errors = errors;
     }
 
     /** {@inheritDoc} */
@@ -100,19 +94,13 @@ public class ServicesSingleMapMessage implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeUuid("snd", snd))
+                if (!writer.writeInt("cnt", cnt))
                     return false;
 
                 writer.incrementState();
 
             case 1:
-                if (!writer.writeMessage("exchId", exchId))
-                    return false;
-
-                writer.incrementState();
-
-            case 2:
-                if (!writer.writeMap("results", results, IGNITE_UUID, MSG))
+                if (!writer.writeCollection("errors", errors, BYTE_ARR))
                     return false;
 
                 writer.incrementState();
@@ -130,7 +118,7 @@ public class ServicesSingleMapMessage implements Message {
 
         switch (reader.state()) {
             case 0:
-                snd = reader.readUuid("snd");
+                cnt = reader.readInt("cnt");
 
                 if (!reader.isLastRead())
                     return false;
@@ -138,15 +126,7 @@ public class ServicesSingleMapMessage implements Message {
                 reader.incrementState();
 
             case 1:
-                exchId = reader.readMessage("exchId");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 2:
-                results = reader.readMap("results", IGNITE_UUID, MSG, false);
+                errors = reader.readCollection("errors", BYTE_ARR);
 
                 if (!reader.isLastRead())
                     return false;
@@ -154,17 +134,17 @@ public class ServicesSingleMapMessage implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServicesSingleMapMessage.class);
+        return reader.afterMessageRead(ServiceSingleDeploymentsResults.class);
     }
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 136;
+        return 138;
     }
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 4;
+        return 2;
     }
 
     /** {@inheritDoc} */
@@ -174,6 +154,6 @@ public class ServicesSingleMapMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesSingleMapMessage.class, this);
+        return S.toString(ServiceSingleDeploymentsResults.class, this);
     }
 }

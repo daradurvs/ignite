@@ -1583,7 +1583,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     private void onAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
         try {
-            final Map<IgniteUuid, Throwable> errors = new HashMap<>();
+            final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
             req.assignments().forEach((id, assigns) -> deployIfNeeded(id, assigns, errors));
 
@@ -1613,7 +1613,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param assigns Service assigns.
      * @param errors Deployment errors container to fill in.
      */
-    private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> assigns, Map<IgniteUuid, Throwable> errors) {
+    private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> assigns,
+        Map<IgniteUuid, Collection<Throwable>> errors) {
         Integer expNum = assigns.get(ctx.localNodeId());
 
         boolean needDeploy = false;
@@ -1631,7 +1632,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 redeploy(id, old.configuration(), assigns, old.cacheName(), old.affinityKey());
             }
             catch (Error | RuntimeException t) {
-                errors.put(id, t);
+                Collection<Throwable> err = errors.computeIfAbsent(id, e -> new ArrayList<>());
+
+                err.add(t);
             }
         }
     }
@@ -1641,7 +1644,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param errors Deployment errors.
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        final Map<IgniteUuid, Throwable> errors) {
+        final Map<IgniteUuid, Collection<Throwable>> errors) {
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
         ClusterNode crd = coordinator();
@@ -1666,38 +1669,35 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Services single map message.
      */
     private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, Throwable> errors) {
-        Map<IgniteUuid, Integer> locAssings = new HashMap<>();
+        Map<IgniteUuid, Collection<Throwable>> errors) {
+        Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
 
         locSvcs.forEach((id, ctxs) -> {
-            if (!ctxs.isEmpty())
-                locAssings.put(id, ctxs.size());
+            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(ctxs.size());
+
+            Collection<Throwable> err = errors.get(id);
+
+            if (err != null && !err.isEmpty()) {
+                Collection<byte[]> errorsBytes = new ArrayList<>();
+
+                for (Throwable th : err) {
+                    try {
+                        byte[] arr = U.marshal(ctx, th);
+
+                        errorsBytes.add(arr);
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error("Failed to marshal a deployment exception: " + th.getMessage() + ']', e);
+                    }
+                }
+
+                depRes.errors(errorsBytes);
+            }
+
+            results.put(id, depRes);
         });
 
-        ServicesSingleMapMessage msg = new ServicesSingleMapMessage(
-            ctx.localNodeId(),
-            exchId,
-            locAssings
-        );
-
-        if (!errors.isEmpty()) {
-            Map<IgniteUuid, byte[]> errorsBytes = new HashMap<>();
-
-            errors.forEach((id, err) -> {
-                try {
-                    byte[] arr = U.marshal(ctx, err);
-
-                    errorsBytes.put(id, arr);
-                }
-                catch (IgniteCheckedException e) {
-                    log.error("Failed to marshal a deployment exception: " + err.getMessage() + ']', e);
-                }
-            });
-
-            msg.errors(errorsBytes);
-        }
-
-        return msg;
+        return new ServicesSingleMapMessage(ctx.localNodeId(), exchId, results);
     }
 
     /**
