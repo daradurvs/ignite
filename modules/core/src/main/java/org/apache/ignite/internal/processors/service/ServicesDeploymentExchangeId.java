@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
@@ -39,11 +40,11 @@ public class ServicesDeploymentExchangeId implements Message {
     /** Event node id. */
     private UUID nodeId;
 
-    /** Topology version. */
-    private long topVer;
-
     /** Event type. */
     private int evtType;
+
+    /** Topology version. */
+    private AffinityTopologyVersion topVer;
 
     /** Requests id. */
     private IgniteUuid reqId;
@@ -56,11 +57,12 @@ public class ServicesDeploymentExchangeId implements Message {
 
     /**
      * @param evt Cause discovery event.
+     * @param topVer Topology version.
      */
-    public ServicesDeploymentExchangeId(DiscoveryEvent evt) {
+    public ServicesDeploymentExchangeId(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         this.nodeId = evt.eventNode().id();
-        this.topVer = evt.topologyVersion();
         this.evtType = evt.type();
+        this.topVer = topVer;
 
         if (evt instanceof DiscoveryCustomEvent)
             this.reqId = ((DiscoveryCustomEvent)evt).customMessage().id();
@@ -78,7 +80,7 @@ public class ServicesDeploymentExchangeId implements Message {
     /**
      * @return Topology version.
      */
-    public long topologyVersion() {
+    public AffinityTopologyVersion topologyVersion() {
         return topVer;
     }
 
@@ -115,13 +117,13 @@ public class ServicesDeploymentExchangeId implements Message {
                 writer.incrementState();
 
             case 1:
-                if (!writer.writeLong("topVer", topVer))
+                if (!writer.writeInt("evtType", evtType))
                     return false;
 
                 writer.incrementState();
 
             case 2:
-                if (!writer.writeInt("evtType", evtType))
+                if (!writer.writeMessage("topVer", topVer))
                     return false;
 
                 writer.incrementState();
@@ -153,7 +155,7 @@ public class ServicesDeploymentExchangeId implements Message {
                 reader.incrementState();
 
             case 1:
-                topVer = reader.readLong("topVer");
+                evtType = reader.readInt("evtType");
 
                 if (!reader.isLastRead())
                     return false;
@@ -161,7 +163,7 @@ public class ServicesDeploymentExchangeId implements Message {
                 reader.incrementState();
 
             case 2:
-                evtType = reader.readInt("evtType");
+                topVer = reader.readMessage("topVer");
 
                 if (!reader.isLastRead())
                     return false;
@@ -205,7 +207,7 @@ public class ServicesDeploymentExchangeId implements Message {
 
         ServicesDeploymentExchangeId id = (ServicesDeploymentExchangeId)o;
 
-        return topVer == id.topVer && evtType == id.evtType &&
+        return F.eq(topVer, id.topVer) && evtType == id.evtType &&
             F.eq(nodeId, id.nodeId) && F.eq(reqId, id.reqId);
     }
 

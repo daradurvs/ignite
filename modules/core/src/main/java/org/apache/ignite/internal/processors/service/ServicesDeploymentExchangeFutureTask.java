@@ -107,7 +107,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         this.evtTopVer = evtTopVer;
         this.srvcsAssigns = ctx.service().assignments();
         this.srvcsDeps = ctx.service().deployments();
-        this.exchId = new ServicesDeploymentExchangeId(evt);
+        this.exchId = new ServicesDeploymentExchangeId(evt, evtTopVer);
         this.log = ctx.log(getClass());
     }
 
