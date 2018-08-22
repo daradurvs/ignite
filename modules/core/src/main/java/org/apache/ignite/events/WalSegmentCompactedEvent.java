@@ -15,39 +15,32 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.pagemem.wal;
+package org.apache.ignite.events;
 
-import java.io.IOException;
-import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.internal.InvalidEnvironmentException;
+import java.io.File;
+import org.apache.ignite.cluster.ClusterNode;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Exception is needed to distinguish WAL manager & page store critical I/O errors.
+ * Event indicates the completion of WAL segment compaction.
+ * <p>
+ * {@link #getArchiveFile()} corresponds to compacted file.
  */
-public class StorageException extends IgniteCheckedException implements InvalidEnvironmentException {
+public class WalSegmentCompactedEvent extends WalSegmentArchivedEvent {
     /** */
     private static final long serialVersionUID = 0L;
 
     /**
-     * @param msg Error message.
-     * @param cause Error cause.
+     * Creates WAL segment compaction event.
+     *
+     * @param node Node.
+     * @param absWalSegmentIdx Absolute wal segment index.
+     * @param archiveFile Compacted archive file.
      */
-    public StorageException(String msg, @NotNull IOException cause) {
-        super(msg, cause);
-    }
-
-    /**
-     * @param e Cause exception.
-     */
-    public StorageException(IOException e) {
-        super(e);
-    }
-
-    /**
-     * @param msg Error message
-     */
-    public StorageException(String msg) {
-        super(msg);
+    public WalSegmentCompactedEvent(
+        @NotNull final ClusterNode node,
+        final long absWalSegmentIdx,
+        final File archiveFile) {
+        super(node, absWalSegmentIdx, archiveFile, EventType.EVT_WAL_SEGMENT_COMPACTED);
     }
 }
