@@ -252,8 +252,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     continue;
                 }
 
-                if (log.isDebugEnabled())
-                    log.debug("Calculated service assignments: " + srvcAssigns);
+                if (log.isDebugEnabled()) {
+                    log.debug("Calculated service assignments" +
+                        ", srvcId=" + srvcAssigns +
+                        ", top=" + srvcAssigns.assigns());
+                }
 
                 srvcsToDeploy.put(srvcAssigns.serviceId(), srvcAssigns.assigns());
             }
@@ -353,13 +356,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
 
         singleMapMsgs.forEach((nodeId, msg) -> {
-            msg.results().forEach((id, res) -> {
-                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
+            msg.results().forEach((srvcId, res) -> {
+                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(srvcId, r -> new HashMap<>());
 
                 int num = res.count();
 
                 if (num != 0) {
-                    Map<UUID, Integer> expSrvcAssigns = expDeps.get(id);
+                    Map<UUID, Integer> expSrvcAssigns = expDeps.get(srvcId);
 
                     if (expSrvcAssigns != null) {
                         Integer expNum = expSrvcAssigns.get(nodeId);

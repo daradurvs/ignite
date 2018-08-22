@@ -311,10 +311,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         InitialServicesData initData = (InitialServicesData)data.commonData();
 
         for (GridServiceAssignments assign : initData.srvcsAssigns)
-            srvcsAssigns.put(assign.serviceId(), assign);
+            srvcsAssigns.putIfAbsent(assign.serviceId(), assign);
 
         for (ServiceDeploymentsMap dep : initData.srvcsDeps)
-            srvcsDeps.put(dep.serviceId(), dep);
+            srvcsDeps.putIfAbsent(dep.serviceId(), dep);
 
         exchMgr.insertToBegin(initData.exchQueue);
     }
@@ -1590,7 +1590,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             final ServicesDeploymentExchangeId exchId = req.exchangeId();
 
-            req.servicesToDeploy().forEach((srvcId, assigns) -> {
+            req.servicesToDeploy().forEach((srvcId, top) -> {
                 GridServiceAssignments srvcAssigns = srvcsAssigns.get(srvcId);
 
                 if (srvcAssigns == null) {
@@ -1608,13 +1608,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     srvcAssigns = new GridServiceAssignments(cfg, exchTask.event().eventNode().id());
 
-                    srvcAssigns.assigns(assigns);
                     srvcAssigns.serviceId(srvcId);
+                    srvcAssigns.assigns(top);
 
                     srvcsAssigns.put(srvcId, srvcAssigns);
                 }
+                else
+                    srvcAssigns.assigns(top);
 
-                deployIfNeeded(srvcId, assigns, errors);
+                deployIfNeeded(srvcId, top, errors);
             });
 
             req.servicesToUndeploy().forEach(this::undeploy);
@@ -1779,7 +1781,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         errors.addAll(depRes.errors());
                 });
 
+                if (!topSnap.isEmpty()) {
+                    ServiceDeploymentsMap depMap = new ServiceDeploymentsMap(srvcId, topSnap);
+
+                    fullDeps.put(srvcId, depMap);
+                }
+
                 GridServiceAssignments srvcAssigns = srvcsAssigns.get(srvcId);
+
+                if (!errors.isEmpty()) {
+                    Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
+
+                    srvcErrors.addAll(errors);
+                }
 
                 if (srvcAssigns != null) {
                     srvcAssigns.assigns(topSnap);
@@ -1791,25 +1805,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     else {
                         Collection ctxs = locSvcs.get(srvcId);
 
-//                    if ((ctxs == null && expNum > 0) || (ctxs != null && expNum != ctxs.size())) {
                         if (ctxs != null && expNum < ctxs.size()) { // Undeploy exceed instances
                             ServiceConfiguration cfg = srvcAssigns.configuration();
 
                             redeploy(srvcId, cfg, topSnap, cfg.getCacheName(), cfg.getAffinityKey());
                         }
                     }
-
-                    if (!topSnap.isEmpty()) {
-                        ServiceDeploymentsMap depMap = new ServiceDeploymentsMap(srvcId, srvcAssigns.name(), topSnap);
-
-                        fullDeps.put(srvcId, depMap);
-                    }
-                }
-
-                if (!errors.isEmpty()) {
-                    Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
-
-                    srvcErrors.addAll(errors);
                 }
             }
 
@@ -1864,13 +1865,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             });
 
             if (log.isDebugEnabled() && (!depFuts.isEmpty() || !undepFuts.isEmpty())) {
-                log.debug("Detected incomplete futures, after full map processing: " + fullDeps);
-
-                if (!depFuts.isEmpty())
-                    log.debug("Deployment futures: " + depFuts);
-
-                if (!undepFuts.isEmpty())
-                    log.debug("Undeployment futures: " + undepFuts);
+                log.debug("Detected incomplete futures, after full map processing, deps=" + fullDeps +
+                    (!depFuts.isEmpty() ? ", depFuts=" + depFuts : "") +
+                    (!undepFuts.isEmpty() ? ", undepFuts=" + undepFuts.keySet() : "")
+                );
             }
         }
         catch (Exception e) {
