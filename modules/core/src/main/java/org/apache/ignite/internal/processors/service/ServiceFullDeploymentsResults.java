@@ -40,7 +40,7 @@ public class ServiceFullDeploymentsResults implements Message {
     /** Service id. */
     private IgniteUuid srvcId;
 
-    /** Deployments results. */
+    /** Per node deployments results. */
     @GridToStringInclude
     private Map<UUID, ServiceSingleDeploymentsResults> results;
 
@@ -75,14 +75,14 @@ public class ServiceFullDeploymentsResults implements Message {
     }
 
     /**
-     * @return Deployments results.
+     * @return Per node deployments results.
      */
     public Map<UUID, ServiceSingleDeploymentsResults> results() {
         return results;
     }
 
     /**
-     * @param results Deployments results.
+     * @param results Per node deployments results.
      */
     public void results(Map<UUID, ServiceSingleDeploymentsResults> results) {
         this.results = results;

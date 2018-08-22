@@ -35,9 +35,6 @@ public class DynamicServiceChangeRequest implements Serializable {
     /** Undeploy service flag mask. */
     private static final int SERVICE_UNDEPLOY_FLAG_MASK = 0x02;
 
-    /** Request id. */
-    private IgniteUuid reqId = IgniteUuid.randomUuid();
-
     /** Service id. */
     private IgniteUuid srvcId;
 
@@ -78,13 +75,6 @@ public class DynamicServiceChangeRequest implements Serializable {
         req.markUndeploy();
 
         return req;
-    }
-
-    /**
-     * @return Request id.
-     */
-    public IgniteUuid requestId() {
-        return reqId;
     }
 
     /**
