@@ -814,6 +814,32 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
     }
 
     /**
+     * @param ignite Ignite instance.
+     * @param srvcName Affinity service name.
+     */
+    protected void checkAffinityServiceDeployment(Ignite ignite, String srvcName) {
+        ServiceDescriptor desc = null;
+
+        for (ServiceDescriptor d : ignite.services().serviceDescriptors()) {
+            if (d.name().equals(srvcName)) {
+                desc = d;
+
+                break;
+            }
+        }
+
+        assertNotNull(desc);
+
+        assertEquals(1, desc.topologySnapshot().size());
+
+        ClusterNode n = ignite.affinity(desc.cacheName()).mapKeyToNode(desc.affinityKey());
+
+        assertNotNull(n);
+
+        assertTrue(desc.topologySnapshot().containsKey(n.id()));
+    }
+
+    /**
      * Affinity service.
      */
     protected static class AffinityService implements Service {
@@ -842,11 +868,6 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
         /** {@inheritDoc} */
         @Override public void init(ServiceContext ctx) throws Exception {
             X.println("Initializing affinity service for key: " + affKey);
-
-            ClusterNode n = g.affinity(CACHE_NAME).mapKeyToNode(affKey);
-
-            assertNotNull(n);
-            assertTrue(n.isLocal());
         }
 
         /** {@inheritDoc} */

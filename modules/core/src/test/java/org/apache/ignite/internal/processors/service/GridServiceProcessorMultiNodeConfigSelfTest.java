@@ -187,18 +187,24 @@ public class GridServiceProcessorMultiNodeConfigSelfTest extends GridServiceProc
 
         checkCount(AFFINITY, g.services().serviceDescriptors(), 1);
 
+        checkAffinityServiceDeployment(g, AFFINITY);
+
         int nodeCnt = 2;
 
         startExtraNodes(nodeCnt);
 
         try {
             checkCount(AFFINITY, g.services().serviceDescriptors(), 1);
+
+            checkAffinityServiceDeployment(g, AFFINITY);
         }
         finally {
             stopExtraNodes(nodeCnt);
         }
 
         checkCount(AFFINITY, g.services().serviceDescriptors(), 1);
+
+        checkAffinityServiceDeployment(g, AFFINITY);
     }
 
     /**
