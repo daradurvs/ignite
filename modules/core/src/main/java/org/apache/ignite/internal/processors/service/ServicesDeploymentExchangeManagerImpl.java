@@ -18,7 +18,7 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.UUID;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.events.DiscoveryEvent;
@@ -53,18 +53,17 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Indicates that worker is stopped. */
     private volatile boolean isStopped = true;
 
-    /** */
+    /** Topology version of latest deployment task's event. */
     private volatile AffinityTopologyVersion readyTopVer = AffinityTopologyVersion.NONE;
 
     /**
      * @param ctx Grid kernal context.
      */
-    public ServicesDeploymentExchangeManagerImpl(GridKernalContext ctx,
-        LinkedBlockingQueue<ServicesDeploymentExchangeTask> queue) {
+    public ServicesDeploymentExchangeManagerImpl(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
 
-        this.exchWorker = new ServicesDeploymentExchangeWorker(queue);
+        this.exchWorker = new ServicesDeploymentExchangeWorker();
     }
 
     /** {@inheritDoc} */
@@ -187,22 +186,35 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         return null;
     }
 
+    /** {@inheritDoc} */
+    @Override public synchronized void insertToBegin(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks) {
+        tasks.descendingIterator().forEachRemaining(task -> {
+            if (!exchWorker.tasksQueue.contains(task))
+                exchWorker.tasksQueue.addFirst(task);
+        });
+    }
+
+    /** {@inheritDoc} */
+    @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
+        return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
+    }
+
     /**
      * Services deployment exchange worker.
      */
     private class ServicesDeploymentExchangeWorker extends GridWorker {
         /** Queue to process. */
-        private final LinkedBlockingQueue<ServicesDeploymentExchangeTask> tasksQueue;
+        private final LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasksQueue;
 
         /** Exchange future in work. */
         volatile ServicesDeploymentExchangeTask task = null;
 
         /** {@inheritDoc} */
-        private ServicesDeploymentExchangeWorker(LinkedBlockingQueue<ServicesDeploymentExchangeTask> queue) {
+        private ServicesDeploymentExchangeWorker() {
             super(ctx.igniteInstanceName(), "services-deployment-exchanger",
                 ServicesDeploymentExchangeManagerImpl.this.log, ctx.workersRegistry());
 
-            this.tasksQueue = queue;
+            this.tasksQueue = new LinkedBlockingDeque<>();
         }
 
         /** {@inheritDoc} */

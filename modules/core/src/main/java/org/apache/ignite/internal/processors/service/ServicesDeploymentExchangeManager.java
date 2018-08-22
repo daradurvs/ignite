@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.concurrent.LinkedBlockingDeque;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.jetbrains.annotations.Nullable;
@@ -49,10 +50,24 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
     public AffinityTopologyVersion readyTopologyVersion();
 
     /**
-     * Gets services deployment exchange id with given id.
+     * Gets services deployment exchange task with given id.
      *
      * @param exchId Services deployment exchange id.
      * @return Services deployment task. Possible may be {@code}.
      */
     @Nullable public ServicesDeploymentExchangeTask task(ServicesDeploymentExchangeId exchId);
+
+    /**
+     * Returns queue of deployments tasks.
+     *
+     * @return Queue of deployment tasks.
+     */
+    public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks();
+
+    /**
+     * Inserts given deployment tasks in begin of queue.
+     *
+     * @param tasks Queue of deployment tasks.
+     */
+    public void insertToBegin(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks);
 }

@@ -46,6 +46,16 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
     public ServicesDeploymentExchangeId exchangeId();
 
     /**
+     * @return Cause discovery event.
+     */
+    public DiscoveryEvent event();
+
+    /**
+     * @return Cause of exchange topology version.
+     */
+    public AffinityTopologyVersion topologyVersion();
+
+    /**
      * Returns of remaining nodes ids to receive single node assignments message.
      *
      * @return Unmodifiable collection of nodes ids to wait single node assignments messages.
@@ -74,14 +84,4 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
      * @throws IgniteCheckedException In case of an error.
      */
     public void waitForComplete(long timeout) throws IgniteCheckedException;
-
-    /**
-     * @return Cause discovery event.
-     */
-    public DiscoveryEvent event();
-
-    /**
-     * @return Cause of exchange topology version.
-     */
-    public AffinityTopologyVersion topologyVersion();
 }

@@ -261,7 +261,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(req.serviceId());
         }
 
-        assert !srvcsToDeploy.isEmpty() || !srvcsToUndeploy.isEmpty();
+//        assert !srvcsToDeploy.isEmpty() || !srvcsToUndeploy.isEmpty() : batch;
+        // TODO: Just to build full map when no changes required?
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
