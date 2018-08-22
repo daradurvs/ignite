@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.service;
 
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Defines methods to manage a services deployment and reassignments exchange across Ignite cluster.
@@ -46,4 +47,12 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
      * @return Ready topology version.
      */
     public AffinityTopologyVersion readyTopologyVersion();
+
+    /**
+     * Gets services deployment exchange id with given id.
+     *
+     * @param exchId Services deployment exchange id.
+     * @return Services deployment task. Possible may be {@code}.
+     */
+    @Nullable public ServicesDeploymentExchangeTask task(ServicesDeploymentExchangeId exchId);
 }

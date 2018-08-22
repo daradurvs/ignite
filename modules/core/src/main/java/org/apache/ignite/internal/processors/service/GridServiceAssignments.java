@@ -63,6 +63,16 @@ public class GridServiceAssignments implements Serializable {
     }
 
     /**
+     * @param cfg Configuration.
+     * @param nodeId Node ID.
+     */
+    public GridServiceAssignments(ServiceConfiguration cfg, UUID nodeId) {
+        this.cfg = cfg;
+        this.nodeId = nodeId;
+        this.topVer = -1;
+    }
+
+    /**
      * @return Configuration.
      */
     public ServiceConfiguration configuration() {

@@ -46,16 +46,9 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /** Exchange id. */
     private final ServicesDeploymentExchangeId exchId;
 
-    /** Topology version. */
-    private final long topVer;
-
-    /** New services assignments. */
+    /** Services deployment and reassignment assignments to apply. */
     @GridToStringInclude
-    private Map<IgniteUuid, Map<UUID, Integer>> srvcsToReassign;
-
-    /** Services assignments to apply. */
-    @GridToStringInclude
-    private Collection<GridServiceAssignments> srvcsToDeploy;
+    private Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy;
 
     /** Services names to undeploy. */
     @GridToStringInclude
@@ -64,14 +57,11 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /**
      * @param snd Sender id.
      * @param exchId Exchange id.
-     * @param topVer Topology version.
      */
-    public ServicesAssignmentsRequestMessage(UUID snd, ServicesDeploymentExchangeId exchId, long topVer) {
+    public ServicesAssignmentsRequestMessage(UUID snd, ServicesDeploymentExchangeId exchId) {
         this.snd = snd;
         this.exchId = exchId;
-        this.topVer = topVer;
-        this.srvcsToReassign = Collections.emptyMap();
-        this.srvcsToDeploy = Collections.emptySet();
+        this.srvcsToDeploy = Collections.emptyMap();
         this.srvcsToUndeploy = Collections.emptySet();
     }
 
@@ -90,37 +80,16 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     }
 
     /**
-     * Topology version.
-     */
-    public long topologyVersion() {
-        return topVer;
-    }
-
-    /**
-     * @return Services assignments.
-     */
-    public Map<IgniteUuid, Map<UUID, Integer>> assignments() {
-        return srvcsToReassign;
-    }
-
-    /**
-     * @param assigns Services assignments.
-     */
-    public void assignments(Map<IgniteUuid, Map<UUID, Integer>> assigns) {
-        this.srvcsToReassign = assigns;
-    }
-
-    /**
      * @return Services assignments to apply.
      */
-    public Collection<GridServiceAssignments> servicesToDeploy() {
+    public Map<IgniteUuid, Map<UUID, Integer>> servicesToDeploy() {
         return srvcsToDeploy;
     }
 
     /**
      * @param servicesToDeploy Services assignments to apply.
      */
-    public void servicesToDeploy(Collection<GridServiceAssignments> servicesToDeploy) {
+    public void servicesToDeploy(Map<IgniteUuid, Map<UUID, Integer>> servicesToDeploy) {
         this.srvcsToDeploy = servicesToDeploy;
     }
 

@@ -30,6 +30,7 @@ import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
@@ -169,6 +170,21 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         if (exchWorker.task != null)
             exchWorker.task.onNodeLeft(nodeId);
+    }
+
+    /** {@inheritDoc} */
+    @Nullable public ServicesDeploymentExchangeTask task(ServicesDeploymentExchangeId exchId) {
+        ServicesDeploymentExchangeTask task = exchWorker.task;
+
+        if (task != null && task.exchangeId().equals(exchId))
+            return task;
+
+        for (ServicesDeploymentExchangeTask t : exchWorker.tasksQueue) {
+            if (t.exchangeId().equals(exchId))
+                return t;
+        }
+
+        return null;
     }
 
     /**

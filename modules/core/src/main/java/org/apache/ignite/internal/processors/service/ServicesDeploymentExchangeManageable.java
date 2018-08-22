@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.UUID;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Defines methods to be manageable in service deployment exchange.

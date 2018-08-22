@@ -100,6 +100,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private IgniteLogger log;
 
     /**
+     * Empty constructor for marshalling purposes.
+     */
+    public ServicesDeploymentExchangeFutureTask() {
+    }
+
+    /**
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
      */
@@ -135,7 +141,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
 
             synchronized (mux) {
-                for (ClusterNode node : ctx.discovery().allNodes()) {
+                for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
                     if (ctx.discovery().alive(node))
                         remaining.add(node.id());
                 }
@@ -191,10 +197,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void onServiceChangeRequest(UUID snd, DynamicServicesChangeRequestBatchMessage batch,
         AffinityTopologyVersion topVer) {
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId,
-            evtTopVer.topologyVersion());
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId);
 
-        Collection<GridServiceAssignments> srvcsToDeploy = new ArrayList<>();
+        Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
         Collection<IgniteUuid> srvcsToUndeploy = new ArrayList<>();
 
@@ -252,7 +257,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (log.isDebugEnabled())
                     log.debug("Calculated service assignments: " + srvcAssigns);
 
-                srvcsToDeploy.add(srvcAssigns);
+                srvcsToDeploy.put(srvcAssigns.serviceId(), srvcAssigns.assigns());
             }
             else if (req.undeploy())
                 srvcsToUndeploy.add(req.serviceId());
@@ -286,8 +291,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(id);
         });
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(),
-            exchId, topVer.topologyVersion());
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(), exchId);
 
         msg.servicesToUndeploy(srvcsToUndeploy);
 
@@ -458,10 +462,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         expDeps.putAll(fullAssigns);
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(),
-            exchId, topVer.topologyVersion());
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(), exchId);
 
-        msg.assignments(fullAssigns);
+        msg.servicesToDeploy(fullAssigns);
 
         if (!servicesToUndeploy.isEmpty())
             msg.servicesToUndeploy(servicesToUndeploy);

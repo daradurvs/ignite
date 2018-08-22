@@ -130,7 +130,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private volatile ExecutorService depExe;
 
     /** Busy lock. */
-    private volatile GridSpinBusyLock busyLock;
+    private volatile GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
     /** Uncaught exception handler for thread pools. */
     private final UncaughtExceptionHandler oomeHnd = new OomExceptionHandler(ctx);
@@ -155,7 +155,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final ConcurrentHashMap<IgniteUuid, ServiceDeploymentsMap> srvcsDeps = new ConcurrentHashMap<>();
 
     /** Services deployment exchange manager. */
-    private volatile ServicesDeploymentExchangeManager exchangeMgr;
+    private volatile ServicesDeploymentExchangeManager exchMgr;
 
     /** Services deployment exchange queue to initialize exchange manager. */
     private volatile LinkedBlockingQueue<ServicesDeploymentExchangeTask> exchQueue;
@@ -212,6 +212,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException If failed.
      */
     private void onKernalStart0() throws IgniteCheckedException {
+        if (exchQueue == null)
+            exchQueue = new LinkedBlockingQueue<>();
+
+        exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx, exchQueue);
+
         for (GridServiceAssignments assigns : srvcsAssigns.values())
             redeploy(assigns);
 
@@ -240,7 +245,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         U.shutdownNow(GridServiceProcessor.class, depExe, log);
 
-        exchangeMgr.stopProcessing();
+        exchMgr.stopProcessing();
 
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
@@ -340,11 +345,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         depExe = Executors.newSingleThreadExecutor(new IgniteThreadFactory(ctx.igniteInstanceName(),
             "srvc-deploy", oomeHnd));
-
-        if (exchQueue == null)
-            exchQueue = new LinkedBlockingQueue<>();
-
-        exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx, exchQueue);
 
         start();
 
@@ -1414,9 +1414,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 if (crdChanged && !ctx.clientNode()) {
                     if (crd)
-                        exchangeMgr.stopProcessing();
+                        exchMgr.stopProcessing();
                     else
-                        exchangeMgr.startProcessing();
+                        exchMgr.startProcessing();
 
                     crd = curCrd;
                 }
@@ -1424,14 +1424,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (evt instanceof DiscoveryCustomEvent) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                    if (msg instanceof DynamicServicesChangeRequestBatchMessage && !ctx.clientNode()) {
+//                    if (msg instanceof DynamicServicesChangeRequestBatchMessage && !ctx.clientNode()) {
+                    if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
                         if (log.isDebugEnabled() && curCrd) {
                             log.debug("Received services change state request: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
                                 ", msg=" + msg + ']');
                         }
 
-                        exchangeMgr.processEvent(evt, discoCache.version());
+                        exchMgr.processEvent(evt, discoCache.version());
                     }
                     else if (msg instanceof ServicesAssignmentsRequestMessage) {
                         final ServicesAssignmentsRequestMessage msg0 = (ServicesAssignmentsRequestMessage)msg;
@@ -1461,12 +1462,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             @Override public void run0() {
                                 processFullMap(msg0);
 
-                                if (!ctx.clientNode())
-                                    exchangeMgr.onReceiveFullMapMessage(msg0);
+//                                if (!ctx.clientNode())
+                                exchMgr.onReceiveFullMapMessage(msg0);
                             }
                         });
                     }
-                    else if (msg instanceof DynamicCacheChangeBatch && !ctx.clientNode()) {
+//                    else if (msg instanceof DynamicCacheChangeBatch && !ctx.clientNode()) {
+                    else if (msg instanceof DynamicCacheChangeBatch) {
                         DynamicCacheChangeBatch msg0 = (DynamicCacheChangeBatch)msg;
 
                         Set<String> cachesToStop = new HashSet<>();
@@ -1478,26 +1480,27 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         if (!cachesToStop.isEmpty()) {
                             if (srvcsAssigns.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().cacheName())))
-                                exchangeMgr.processEvent(evt, discoCache.version());
+                                exchMgr.processEvent(evt, discoCache.version());
                         }
                     }
-                    else if (msg instanceof CacheAffinityChangeMessage && !ctx.clientNode()) {
+//                    else if (msg instanceof CacheAffinityChangeMessage && !ctx.clientNode()) {
+                    else if (msg instanceof CacheAffinityChangeMessage) {
                         if (srvcsAssigns.entrySet().stream().anyMatch(e -> e.getValue().cacheName() != null))
-                            exchangeMgr.processEvent(evt, discoCache.version());
+                            exchMgr.processEvent(evt, discoCache.version());
                     }
 
                     return;
                 }
 
-                if (ctx.clientNode())
-                    return;
+//                if (ctx.clientNode())
+//                    return;
 
                 switch (evt.type()) {
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
                     case EVT_NODE_JOINED:
                         if (!srvcsAssigns.isEmpty())
-                            exchangeMgr.processEvent(evt, discoCache.version());
+                            exchMgr.processEvent(evt, discoCache.version());
 
                         break;
 
@@ -1530,7 +1533,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             ", msg=" + msg + ']');
                     }
 
-                    exchangeMgr.onReceiveSingleMapMessage((ServicesSingleMapMessage)msg);
+                    exchMgr.onReceiveSingleMapMessage((ServicesSingleMapMessage)msg);
                 }
             }
             finally {
@@ -1597,17 +1600,36 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         try {
             final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
-            req.assignments().forEach((id, assigns) -> deployIfNeeded(id, assigns, errors));
-
             req.servicesToUndeploy().forEach(this::undeploy);
 
-            for (GridServiceAssignments assigns : req.servicesToDeploy()) {
-                IgniteUuid id = assigns.serviceId();
+            final ServicesDeploymentExchangeId exchId = req.exchangeId();
 
-                srvcsAssigns.put(id, assigns);
+            req.servicesToDeploy().forEach((srvcId, assigns) -> {
+                GridServiceAssignments srvcAssigns = srvcsAssigns.get(srvcId);
 
-                deployIfNeeded(id, assigns.assigns(), errors);
-            }
+                if (srvcAssigns == null) {
+                    ServicesDeploymentExchangeTask exchTask = exchMgr.task(exchId);
+
+                    ServiceConfiguration cfg = extractServiceConfiguration(exchTask, srvcId);
+
+                    if (cfg == null) {
+                        log.error("Service configuration hasn't been found" +
+                            ", srvcId=" + srvcId +
+                            ", task= " + exchTask);
+
+                        return;
+                    }
+
+                    srvcAssigns = new GridServiceAssignments(cfg, exchTask.event().eventNode().id());
+
+                    srvcAssigns.assigns(assigns);
+                    srvcAssigns.serviceId(srvcId);
+
+                    srvcsAssigns.put(srvcId, srvcAssigns);
+                }
+
+                deployIfNeeded(srvcId, assigns, errors);
+            });
 
             req.servicesToUndeploy().forEach(this::undeploy);
 
@@ -1616,6 +1638,30 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         catch (Exception e) {
             log.error("Error occurred during processing of service assignments request, req=" + req, e);
         }
+    }
+
+    private ServiceConfiguration extractServiceConfiguration(ServicesDeploymentExchangeTask task, IgniteUuid srvcId) {
+        ServiceConfiguration cfg = null;
+
+        DiscoveryEvent evt = task.event();
+
+        if (evt instanceof DiscoveryCustomEvent) {
+            DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+            if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
+                DynamicServicesChangeRequestBatchMessage msg0 = (DynamicServicesChangeRequestBatchMessage)msg;
+
+                for (DynamicServiceChangeRequest req : msg0.requests()) {
+                    if (srvcId.equals(req.serviceId())) {
+                        cfg = req.configuration();
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        return cfg;
     }
 
     /**
@@ -1983,6 +2029,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Services deployment exchange manager.
      */
     public ServicesDeploymentExchangeManager exchange() {
-        return exchangeMgr;
+        return exchMgr;
     }
 }
