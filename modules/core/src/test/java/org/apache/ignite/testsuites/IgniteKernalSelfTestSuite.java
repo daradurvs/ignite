@@ -162,8 +162,7 @@ public class IgniteKernalSelfTestSuite extends TestSuite {
         suite.addTestSuite(GridServiceDeploymentCompoundFutureSelfTest.class);
         suite.addTestSuite(SystemCacheNotConfiguredTest.class);
         suite.addTestSuite(ServiceDeploymentProcessingOnCoordinatorChangeTest.class);
-        // IGNITE-3392
-        //suite.addTestSuite(GridServiceDeploymentExceptionPropagationTest.class);
+        suite.addTestSuite(GridServiceDeploymentExceptionPropagationTest.class);
 
         suite.addTestSuite(IgniteServiceDeploymentClassLoadingDefaultMarshallerTest.class);
         suite.addTestSuite(IgniteServiceDeploymentClassLoadingJdkMarshallerTest.class);
