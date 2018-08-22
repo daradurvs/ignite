@@ -58,11 +58,12 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /**
      * @param ctx Grid kernal context.
      */
-    public ServicesDeploymentExchangeManagerImpl(GridKernalContext ctx) {
+    public ServicesDeploymentExchangeManagerImpl(GridKernalContext ctx,
+        LinkedBlockingQueue<ServicesDeploymentExchangeTask> queue) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
 
-        this.exchWorker = new ServicesDeploymentExchangeWorker();
+        this.exchWorker = new ServicesDeploymentExchangeWorker(queue);
     }
 
     /** {@inheritDoc} */
@@ -95,7 +96,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, evt, topVer);
+        ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
+
+        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(evt, topVer, exchId);
 
         if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
             onNodeLeft(evt.eventNode().id());
@@ -173,15 +176,17 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
      */
     private class ServicesDeploymentExchangeWorker extends GridWorker {
         /** Queue to process. */
-        private final LinkedBlockingQueue<ServicesDeploymentExchangeTask> tasksQueue = new LinkedBlockingQueue<>();
+        private final LinkedBlockingQueue<ServicesDeploymentExchangeTask> tasksQueue;
 
         /** Exchange future in work. */
         volatile ServicesDeploymentExchangeTask task = null;
 
         /** {@inheritDoc} */
-        private ServicesDeploymentExchangeWorker() {
+        private ServicesDeploymentExchangeWorker(LinkedBlockingQueue<ServicesDeploymentExchangeTask> queue) {
             super(ctx.igniteInstanceName(), "services-deployment-exchanger",
                 ServicesDeploymentExchangeManagerImpl.this.log, ctx.workersRegistry());
+
+            this.tasksQueue = queue;
         }
 
         /** {@inheritDoc} */
@@ -225,7 +230,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 task = tasksQueue.take();
 
                 try {
-                    task.init();
+                    task.init(ctx);
                 }
                 catch (Exception e) {
                     log.error("Error occurred during init service exchange future.", e);

@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import org.apache.ignite.IgniteCheckedException;
@@ -129,7 +130,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private volatile ExecutorService depExe;
 
     /** Busy lock. */
-    private volatile GridSpinBusyLock busyLock = new GridSpinBusyLock();
+    private volatile GridSpinBusyLock busyLock;
 
     /** Uncaught exception handler for thread pools. */
     private final UncaughtExceptionHandler oomeHnd = new OomExceptionHandler(ctx);
@@ -154,7 +155,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final ConcurrentHashMap<IgniteUuid, ServiceDeploymentsMap> srvcsDeps = new ConcurrentHashMap<>();
 
     /** Services deployment exchange manager. */
-    private final ServicesDeploymentExchangeManager exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
+    private volatile ServicesDeploymentExchangeManager exchangeMgr;
+
+    /** Services deployment exchange queue to initialize exchange manager. */
+    private volatile LinkedBlockingQueue<ServicesDeploymentExchangeTask> exchQueue;
 
     /** */
     private final Object mux = new Object();
@@ -300,7 +304,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
             InitialServicesData initData = new InitialServicesData(
                 new ArrayList<>(srvcsAssigns.values()),
-                new ArrayList<>(srvcsDeps.values())
+                new ArrayList<>(srvcsDeps.values()),
+                exchQueue
             );
 
             dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
@@ -316,6 +321,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         for (ServiceDeploymentsMap dep : initData.srvcsDeps)
             srvcsDeps.put(dep.serviceId(), dep);
+
+        exchQueue = initData.exchQueue;
     }
 
     /** {@inheritDoc} */
@@ -333,6 +340,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         depExe = Executors.newSingleThreadExecutor(new IgniteThreadFactory(ctx.igniteInstanceName(),
             "srvc-deploy", oomeHnd));
+
+        if (exchQueue == null)
+            exchQueue = new LinkedBlockingQueue<>();
+
+        exchangeMgr = new ServicesDeploymentExchangeManagerImpl(ctx, exchQueue);
 
         start();
 
@@ -1933,13 +1945,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         /** Services deployments. */
         private ArrayList<ServiceDeploymentsMap> srvcsDeps;
 
+        /** Services deployment exchange queue to initialize exchange manager. */
+        private LinkedBlockingQueue<ServicesDeploymentExchangeTask> exchQueue;
+
         /**
          * @param assigns Services assignments.
          * @param deps Services deployments.
          */
-        public InitialServicesData(ArrayList<GridServiceAssignments> assigns, ArrayList<ServiceDeploymentsMap> deps) {
+        public InitialServicesData(ArrayList<GridServiceAssignments> assigns, ArrayList<ServiceDeploymentsMap> deps,
+            LinkedBlockingQueue<ServicesDeploymentExchangeTask> exchQueue) {
             this.srvcsAssigns = assigns;
             this.srvcsDeps = deps;
+            this.exchQueue = exchQueue;
         }
 
         /** {@inheritDoc} */

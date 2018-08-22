@@ -17,23 +17,26 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.events.DiscoveryEvent;
+import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Defines methods to manage a task of service deployment exchange.
  */
-public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchangeManageable {
+public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchangeManageable, Serializable {
     /**
      * Initializes exchange task.
      *
+     * @param ctx Kernal context.
      * @throws IgniteCheckedException In case of an error.
      */
-    public void init() throws IgniteCheckedException;
+    public void init(GridKernalContext ctx) throws IgniteCheckedException;
 
     /**
      * Returns services deployment exchange id of the task.

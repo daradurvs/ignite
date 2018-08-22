@@ -17,6 +17,10 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -54,69 +58,76 @@ import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 /**
  * Services deployment exchange future.
  */
-public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask {
+public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask, Externalizable {
     /** Single service messages to process. */
     @GridToStringInclude
-    private final Map<UUID, ServicesSingleMapMessage> singleAssignsMsgs = new ConcurrentHashMap<>();
+    private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new ConcurrentHashMap<>();
 
     /** Expected services assignments. */
-    private final Map<IgniteUuid, Map<UUID, Integer>> expAssigns = new HashMap<>();
+    private final Map<IgniteUuid, Map<UUID, Integer>> expDeps = new HashMap<>();
 
     /** Deployment errors. */
     @GridToStringInclude
     private final Map<IgniteUuid, Throwable> depErrors = new HashMap<>();
 
-    /** Mutex. */
-    private final Object mux = new Object();
-
-    /** Services assignments. */
-    private final Map<IgniteUuid, GridServiceAssignments> srvcsAssigns;
-
-    /** Services deployments. */
-    private final Map<IgniteUuid, ServiceDeploymentsMap> srvcsDeps;
-
-    /** Kernal context. */
-    private final GridKernalContext ctx;
-
-    /** Logger. */
-    private final IgniteLogger log;
-
-    /** Discovery event. */
-    @GridToStringInclude
-    private final DiscoveryEvent evt;
-
-    /** Topology version. */
-    private final AffinityTopologyVersion evtTopVer;
-
-    /** Exchange id. */
-    private final ServicesDeploymentExchangeId exchId;
-
     /** Remaining nodes to received single node assignments message. */
     @GridToStringInclude
     private final Set<UUID> remaining = new HashSet<>();
 
+    /** Mutex. */
+    private final Object mux = new Object();
+
+    /** Discovery event. */
+    @GridToStringInclude
+    private DiscoveryEvent evt;
+
+    /** Topology version. */
+    private AffinityTopologyVersion evtTopVer;
+
+    /** Exchange id. */
+    private ServicesDeploymentExchangeId exchId;
+
+    /** Kernal context. */
+    private GridKernalContext ctx;
+
+    /** Services assignments. */
+    private Map<IgniteUuid, GridServiceAssignments> srvcsAssigns;
+
+    /** Services deployments. */
+    private Map<IgniteUuid, ServiceDeploymentsMap> srvcsDeps;
+
+    /** Logger. */
+    private IgniteLogger log;
+
     /**
-     * @param ctx Kernal context.
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
      */
-    public ServicesDeploymentExchangeFutureTask(GridKernalContext ctx, DiscoveryEvent evt,
-        AffinityTopologyVersion evtTopVer) {
-        this.ctx = ctx;
+    public ServicesDeploymentExchangeFutureTask(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer,
+        ServicesDeploymentExchangeId exchId) {
         this.evt = evt;
         this.evtTopVer = evtTopVer;
+        this.exchId = exchId;
+    }
+
+    /**
+     * @param ctx Kernal context.
+     */
+    private void init0(GridKernalContext ctx) {
+        this.ctx = ctx;
+        this.log = ctx.log(getClass());
         this.srvcsAssigns = ctx.service().assignments();
         this.srvcsDeps = ctx.service().deployments();
-        this.exchId = new ServicesDeploymentExchangeId(evt, evtTopVer);
-        this.log = ctx.log(getClass());
     }
 
     /** {@inheritDoc} */
-    @Override public void init() throws IgniteCheckedException {
+    @Override public void init(GridKernalContext ctx) throws IgniteCheckedException {
         if (isDone())
             return;
 
         try {
+            init0(ctx);
+
             if (log.isDebugEnabled()) {
                 log.debug("Started services exchange future init: [exchId=" + exchangeId() +
                     ", locId=" + ctx.localNodeId() +
@@ -298,7 +309,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         synchronized (mux) {
             if (remaining.remove(msg.sender())) {
-                singleAssignsMsgs.put(msg.sender(), msg);
+                singleMapMsgs.put(msg.sender(), msg);
 
                 if (remaining.isEmpty())
                     onAllReceived();
@@ -330,14 +341,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private ServicesFullMapMessage createFullMapMessage() {
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
 
-        singleAssignsMsgs.forEach((nodeId, msg) -> {
+        singleMapMsgs.forEach((nodeId, msg) -> {
             msg.results().forEach((id, res) -> {
                 Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
 
                 int num = res.count();
 
                 if (num != 0) {
-                    Map<UUID, Integer> expSrvcAssigns = expAssigns.get(id);
+                    Map<UUID, Integer> expSrvcAssigns = expDeps.get(id);
 
                     if (expSrvcAssigns != null) {
                         Integer expNum = expSrvcAssigns.get(nodeId);
@@ -445,7 +456,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 servicesToUndeploy.add(srvcId);
         });
 
-        expAssigns.putAll(fullAssigns);
+        expDeps.putAll(fullAssigns);
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(),
             exchId, topVer.topologyVersion());
@@ -518,6 +529,20 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** {@inheritDoc} */
     @Override public Set<UUID> remaining() {
         return Collections.unmodifiableSet(remaining);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void writeExternal(ObjectOutput out) throws IOException {
+        out.writeObject(evt);
+        out.writeObject(evtTopVer);
+        out.writeObject(exchId);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+        evt = (DiscoveryEvent)in.readObject();
+        evtTopVer = (AffinityTopologyVersion)in.readObject();
+        exchId = (ServicesDeploymentExchangeId)in.readObject();
     }
 
     /** {@inheritDoc} */
