@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
@@ -37,9 +36,6 @@ public class ServicesSingleMapMessage implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Sender id. */
-    private UUID snd;
-
     /** Exchange id. */
     @GridToStringInclude
     private ServicesDeploymentExchangeId exchId;
@@ -55,22 +51,13 @@ public class ServicesSingleMapMessage implements Message {
     }
 
     /**
-     * @param snd Sender id.
      * @param exchId Exchange id.
      * @param results Services deployments results.
      */
-    public ServicesSingleMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
+    public ServicesSingleMapMessage(ServicesDeploymentExchangeId exchId,
         Map<IgniteUuid, ServiceSingleDeploymentsResults> results) {
-        this.snd = snd;
         this.exchId = exchId;
         this.results = results;
-    }
-
-    /**
-     * @return Sender id.
-     */
-    public UUID sender() {
-        return snd;
     }
 
     /**
@@ -100,18 +87,12 @@ public class ServicesSingleMapMessage implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeUuid("snd", snd))
-                    return false;
-
-                writer.incrementState();
-
-            case 1:
                 if (!writer.writeMessage("exchId", exchId))
                     return false;
 
                 writer.incrementState();
 
-            case 2:
+            case 1:
                 if (!writer.writeMap("results", results, IGNITE_UUID, MSG))
                     return false;
 
@@ -130,14 +111,6 @@ public class ServicesSingleMapMessage implements Message {
 
         switch (reader.state()) {
             case 0:
-                snd = reader.readUuid("snd");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 1:
                 exchId = reader.readMessage("exchId");
 
                 if (!reader.isLastRead())
@@ -145,7 +118,7 @@ public class ServicesSingleMapMessage implements Message {
 
                 reader.incrementState();
 
-            case 2:
+            case 1:
                 results = reader.readMap("results", IGNITE_UUID, MSG, false);
 
                 if (!reader.isLastRead())
@@ -164,7 +137,7 @@ public class ServicesSingleMapMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public byte fieldsCount() {
-        return 4;
+        return 2;
     }
 
     /** {@inheritDoc} */

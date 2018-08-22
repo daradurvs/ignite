@@ -1462,8 +1462,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             @Override public void run0() {
                                 processFullMap(msg0);
 
-//                                if (!ctx.clientNode())
-                                exchMgr.onReceiveFullMapMessage(msg0);
+                                exchMgr.onReceiveFullMapMessage(evt.eventNode().id(), msg0);
                             }
                         });
                     }
@@ -1533,7 +1532,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             ", msg=" + msg + ']');
                     }
 
-                    exchMgr.onReceiveSingleMapMessage((ServicesSingleMapMessage)msg);
+                    exchMgr.onReceiveSingleMapMessage(nodeId, (ServicesSingleMapMessage)msg);
                 }
             }
             finally {
@@ -1755,7 +1754,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             results.put(id, depRes);
         });
 
-        return new ServicesSingleMapMessage(ctx.localNodeId(), exchId, results);
+        return new ServicesSingleMapMessage(exchId, results);
     }
 
     /**

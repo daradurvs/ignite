@@ -31,7 +31,7 @@ import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 
 /**
- * Service deployment exchange id.
+ * Services deployment exchange id.
  */
 public class ServicesDeploymentExchangeId implements Message {
     /** */
@@ -46,7 +46,7 @@ public class ServicesDeploymentExchangeId implements Message {
     /** Topology version. */
     private AffinityTopologyVersion topVer;
 
-    /** Requests id. */
+    /** Request's id. */
     private IgniteUuid reqId;
 
     /**
@@ -78,17 +78,17 @@ public class ServicesDeploymentExchangeId implements Message {
     }
 
     /**
-     * @return Topology version.
-     */
-    public AffinityTopologyVersion topologyVersion() {
-        return topVer;
-    }
-
-    /**
      * @return Event type.
      */
     public int eventType() {
         return evtType;
+    }
+
+    /**
+     * @return Topology version.
+     */
+    public AffinityTopologyVersion topologyVersion() {
+        return topVer;
     }
 
     /**

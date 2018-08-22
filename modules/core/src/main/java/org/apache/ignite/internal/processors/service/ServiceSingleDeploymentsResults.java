@@ -28,7 +28,7 @@ import org.apache.ignite.plugin.extensions.communication.MessageWriter;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
 
 /**
- * Service single deployments results.
+ * Service single node deployments results.
  */
 public class ServiceSingleDeploymentsResults implements Message {
     /** */

@@ -197,8 +197,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void onServiceChangeRequest(UUID snd, DynamicServicesChangeRequestBatchMessage batch,
         AffinityTopologyVersion topVer) {
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(snd, exchId);
-
         Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
         Collection<IgniteUuid> srvcsToUndeploy = new ArrayList<>();
@@ -263,6 +261,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(req.serviceId());
         }
 
+        assert !srvcsToDeploy.isEmpty() || !srvcsToUndeploy.isEmpty();
+
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
+
         if (!srvcsToDeploy.isEmpty())
             msg.servicesToDeploy(srvcsToDeploy);
 
@@ -291,7 +293,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(id);
         });
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(), exchId);
+        assert !srvcsToUndeploy.isEmpty();
+
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
         msg.servicesToUndeploy(srvcsToUndeploy);
 
@@ -308,12 +312,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg) {
+    @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
         synchronized (mux) {
-            if (remaining.remove(msg.sender())) {
-                singleMapMsgs.put(msg.sender(), msg);
+            if (remaining.remove(snd)) {
+                singleMapMsgs.put(snd, msg);
 
                 if (remaining.isEmpty())
                     onAllReceived();
@@ -324,8 +328,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
-        onDone();
+    @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
+        assert exchId.equals(msg.exchangeId());
+
+        complete(null, false);
     }
 
     /**
@@ -408,7 +414,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             fullResults.add(res);
         });
 
-        return new ServicesFullMapMessage(ctx.localNodeId(), exchId, fullResults);
+        return new ServicesFullMapMessage(exchId, fullResults);
     }
 
     /**
@@ -462,9 +468,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         expDeps.putAll(fullAssigns);
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(ctx.localNodeId(), exchId);
+        assert !fullAssigns.isEmpty() || !servicesToUndeploy.isEmpty();
 
-        msg.servicesToDeploy(fullAssigns);
+        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
+
+        if (!fullAssigns.isEmpty())
+            msg.servicesToDeploy(fullAssigns);
 
         if (!servicesToUndeploy.isEmpty())
             msg.servicesToUndeploy(servicesToUndeploy);

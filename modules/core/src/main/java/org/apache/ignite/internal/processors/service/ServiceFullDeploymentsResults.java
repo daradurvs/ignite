@@ -31,9 +31,12 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.UUID;
 
 /**
- * Service full deployments results.
+ * Service full cluster deployments results.
  */
 public class ServiceFullDeploymentsResults implements Message {
+    /** */
+    private static final long serialVersionUID = 0L;
+
     /** Service id. */
     private IgniteUuid srvcId;
 
@@ -79,7 +82,7 @@ public class ServiceFullDeploymentsResults implements Message {
     }
 
     /**
-     * @param results New deployments results.
+     * @param results Deployments results.
      */
     public void results(Map<UUID, ServiceSingleDeploymentsResults> results) {
         this.results = results;

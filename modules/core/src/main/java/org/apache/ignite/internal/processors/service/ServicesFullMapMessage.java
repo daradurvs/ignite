@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.Collection;
-import java.util.UUID;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
@@ -29,7 +28,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Services full map message.
+ * Services full cluster map message.
  */
 public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     /** */
@@ -37,9 +36,6 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
 
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
-
-    /** Sender node id. */
-    private final UUID snd;
 
     /** Exchange id. */
     private final ServicesDeploymentExchangeId exchId;
@@ -49,23 +45,13 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     private Collection<ServiceFullDeploymentsResults> results;
 
     /**
-     * @param snd Sender id.
      * @param exchId Exchange id.
      * @param results Services deployments results.
      */
-    public ServicesFullMapMessage(UUID snd, ServicesDeploymentExchangeId exchId,
+    public ServicesFullMapMessage(ServicesDeploymentExchangeId exchId,
         Collection<ServiceFullDeploymentsResults> results) {
-        this.snd = snd;
         this.exchId = exchId;
         this.results = results;
-    }
-
-
-    /**
-     * @return Sender id.
-     */
-    public UUID senderId() {
-        return snd;
     }
 
     /**

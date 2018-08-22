@@ -109,15 +109,15 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg) {
+    @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
         ServicesDeploymentExchangeTask task = exchWorker.task;
 
         if (task != null && task.exchangeId().equals(msg.exchangeId()))
-            task.onReceiveSingleMapMessage(msg);
+            task.onReceiveSingleMapMessage(snd, msg);
     }
 
     /** {@inheritDoc} */
-    @Override public void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
+    @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         ServicesDeploymentExchangeTask fut;
 
         if (!isStopped)
@@ -148,14 +148,14 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                             fut = exchWorker.tasksQueue.poll();
 
                             if (fut != null)
-                                fut.onReceiveFullMapMessage(msg);
+                                fut.onReceiveFullMapMessage(snd, msg);
                         }
                         while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
                     }
                 }
             }
             else {
-                fut.onReceiveFullMapMessage(msg);
+                fut.onReceiveFullMapMessage(snd, msg);
 
                 if (isStopped)
                     exchWorker.tasksQueue.poll();

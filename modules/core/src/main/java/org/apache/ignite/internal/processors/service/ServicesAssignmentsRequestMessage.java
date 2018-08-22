@@ -40,13 +40,10 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
-    /** Assignments initiator id. */
-    private final UUID snd;
-
     /** Exchange id. */
     private final ServicesDeploymentExchangeId exchId;
 
-    /** Services deployment and reassignment assignments to apply. */
+    /** Services deployment and reassignment topologies to apply. */
     @GridToStringInclude
     private Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy;
 
@@ -55,21 +52,12 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     private Collection<IgniteUuid> srvcsToUndeploy;
 
     /**
-     * @param snd Sender id.
      * @param exchId Exchange id.
      */
-    public ServicesAssignmentsRequestMessage(UUID snd, ServicesDeploymentExchangeId exchId) {
-        this.snd = snd;
+    public ServicesAssignmentsRequestMessage(ServicesDeploymentExchangeId exchId) {
         this.exchId = exchId;
         this.srvcsToDeploy = Collections.emptyMap();
         this.srvcsToUndeploy = Collections.emptySet();
-    }
-
-    /**
-     * @return Sender id.
-     */
-    public UUID senderId() {
-        return snd;
     }
 
     /**
@@ -94,14 +82,14 @@ public class ServicesAssignmentsRequestMessage implements DiscoveryCustomMessage
     }
 
     /**
-     * @return Services names to undeploy.
+     * @return Services ids to undeploy.
      */
     public Collection<IgniteUuid> servicesToUndeploy() {
         return srvcsToUndeploy;
     }
 
     /**
-     * @param undepSrvcsNames Services names to undeploy.
+     * @param undepSrvcsNames Services ids to undeploy.
      */
     public void servicesToUndeploy(Collection<IgniteUuid> undepSrvcsNames) {
         this.srvcsToUndeploy = undepSrvcsNames;

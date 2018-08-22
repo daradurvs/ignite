@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.UUID;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Defines methods to be manageable in service deployment exchange.
@@ -27,16 +26,18 @@ public interface ServicesDeploymentExchangeManageable {
     /**
      * Handles received single node services map message.
      *
+     * @param snd Sender node id.
      * @param msg Single services map message.
      */
-    public void onReceiveSingleMapMessage(ServicesSingleMapMessage msg);
+    public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg);
 
     /**
      * Handles received full services map message.
      *
+     * @param snd Sender node id.
      * @param msg Full services map message.
      */
-    public void onReceiveFullMapMessage(ServicesFullMapMessage msg);
+    public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg);
 
     /**
      * Handles situations when node leaves topology.
