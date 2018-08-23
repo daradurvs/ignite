@@ -94,7 +94,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private Map<IgniteUuid, GridServiceAssignments> srvcsAssigns;
 
     /** Services deployments. */
-    private Map<IgniteUuid, ServiceDeploymentsMap> srvcsDeps;
+    private Map<IgniteUuid, Map<UUID, Integer>> srvcsDeps;
 
     /** Logger. */
     private IgniteLogger log;
@@ -205,7 +205,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (req.deploy()) {
                 ServiceConfiguration cfg = req.configuration();
 
-                ServiceDeploymentsMap srvcDep = srvcsDeps.get(req.serviceId());
+                Map<UUID, Integer> srvcDep = srvcsDeps.get(req.serviceId());
 
                 Throwable th = null;
 

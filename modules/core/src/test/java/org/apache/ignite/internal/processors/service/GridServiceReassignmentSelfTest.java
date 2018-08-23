@@ -169,7 +169,7 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
             return topVer.compareTo(readyTopVer) <= 0;
         }, 5_000);
 
-        ServiceDeploymentsMap srvcDep = grid.context().service().deployments().get(id);
+        Map<UUID, Integer> srvcDep = grid.context().service().deployments().get(id);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.cluster().nodes(), F.node2id());
 
@@ -177,7 +177,7 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         int sum = 0;
 
-        for (Map.Entry<UUID, Integer> entry : srvcDep.topologySnapshot().entrySet()) {
+        for (Map.Entry<UUID, Integer> entry : srvcDep.entrySet()) {
             UUID nodeId = entry.getKey();
 
             if (!lastTry && !nodes.contains(nodeId))
@@ -196,9 +196,9 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         if (total > 0)
             assertTrue("Total number of services limit exceeded [sum=" + sum +
-                ", assigns=" + srvcDep.topologySnapshot() + ']', sum <= total);
+                ", assigns=" + srvcDep + ']', sum <= total);
         else
-            assertEquals("Reassign per node failed.", nodes.size(), srvcDep.topologySnapshot().size());
+            assertEquals("Reassign per node failed.", nodes.size(), srvcDep.size());
 
         if (!lastTry && proxy(grid).get() != 10)
             return false;

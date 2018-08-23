@@ -152,7 +152,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final ConcurrentHashMap<IgniteUuid, GridServiceAssignments> srvcsAssigns = new ConcurrentHashMap<>();
 
     /** Actual services deployments over cluster. */
-    private final ConcurrentHashMap<IgniteUuid, ServiceDeploymentsMap> srvcsDeps = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsDeps = new ConcurrentHashMap<>();
 
     /** Services deployment exchange manager. */
     private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
@@ -298,8 +298,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
             InitialServicesData initData = new InitialServicesData(
                 new ArrayList<>(srvcsAssigns.values()),
-                new ArrayList<>(srvcsDeps.values()),
-                exchMgr.tasks()
+                new ConcurrentHashMap<>(srvcsDeps),
+                new LinkedBlockingDeque<>(exchMgr.tasks())
             );
 
             dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
@@ -313,8 +313,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         for (GridServiceAssignments assign : initData.srvcsAssigns)
             srvcsAssigns.putIfAbsent(assign.serviceId(), assign);
 
-        for (ServiceDeploymentsMap dep : initData.srvcsDeps)
-            srvcsDeps.putIfAbsent(dep.serviceId(), dep);
+        initData.srvcsDeps.forEach(srvcsDeps::putIfAbsent);
 
         exchMgr.insertToBegin(initData.exchQueue);
     }
@@ -831,10 +830,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return null;
         }
 
-        ServiceDeploymentsMap dep = srvcsDeps.get(id);
+        Map<UUID, Integer> dep = srvcsDeps.get(id);
 
-        synchronized (srvcsDeps) {
-            if (dep == null) {
+        if (dep == null) {
+            synchronized (srvcsDeps) {
                 try {
                     srvcsDeps.wait(timeout);
                 }
@@ -846,7 +845,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         }
 
-        return dep != null ? dep.topologySnapshot() : null;
+        return dep;
     }
 
     /**
@@ -858,10 +857,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         for (GridServiceAssignments assigns : srvcsAssigns.values()) {
             ServiceDescriptorImpl desc = new ServiceDescriptorImpl(assigns);
 
-            ServiceDeploymentsMap dep = srvcsDeps.get(assigns.serviceId());
+            Map<UUID, Integer> dep = srvcsDeps.get(assigns.serviceId());
 
             if (dep != null)
-                desc.topologySnapshot(dep.topologySnapshot());
+                desc.topologySnapshot(dep);
 
             descs.add(desc);
         }
@@ -1061,7 +1060,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 IgniteUuid id = lookupId(name);
 
-                ServiceDeploymentsMap oldMap = id != null ? srvcsDeps.get(id) : null;
+                Map<UUID, Integer> oldDep = id != null ? srvcsDeps.get(id) : null;
 
                 Map<UUID, Integer> cnts = new HashMap<>();
 
@@ -1095,11 +1094,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (remainder > 0) {
                             int cnt = perNodeCnt + 1;
 
-                            if (oldMap != null) {
+                            if (oldDep != null) {
                                 Collection<UUID> used = new HashSet<>();
 
                                 // Avoid redundant moving of services.
-                                for (Map.Entry<UUID, Integer> e : oldMap.topologySnapshot().entrySet()) {
+                                for (Map.Entry<UUID, Integer> e : oldDep.entrySet()) {
                                     // Do not assign services to left nodes.
                                     if (ctx.discovery().node(e.getKey()) == null)
                                         continue;
@@ -1431,7 +1430,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         depExe.execute(new DepRunnable() {
                             @Override public void run0() {
-                                onAssignmentsRequest((ServicesAssignmentsRequestMessage)msg);
+                                processAssignmentsRequest((ServicesAssignmentsRequestMessage)msg);
                             }
                         });
                     }
@@ -1448,13 +1447,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             @Override public void run0() {
                                 processFullMap(msg0);
 
-                                try {
-                                    exchMgr.onReceiveFullMapMessage(evt.eventNode().id(), msg0);
-                                }
-                                catch (Throwable t) {
-                                    log.error(t.getMessage() + ", exchMgr=" + exchMgr, t);
-                                }
-
+                                exchMgr.onReceiveFullMapMessage(evt.eventNode().id(), msg0);
                             }
                         });
                     }
@@ -1580,9 +1573,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * Handles services assigments requests.
+     *
      * @param req Services assignments request.
      */
-    private void onAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
+    private void processAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
         try {
             final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
@@ -1753,13 +1748,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * Handles services full map message.
+     *
      * @param msg Services full map message.
      */
     private void processFullMap(ServicesFullMapMessage msg) {
         try {
             Collection<ServiceFullDeploymentsResults> results = msg.results();
 
-            Map<IgniteUuid, ServiceDeploymentsMap> fullDeps = new HashMap<>();
+            Map<IgniteUuid, HashMap<UUID, Integer>> fullDeps = new HashMap<>();
 
             Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
 
@@ -1767,7 +1764,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 IgniteUuid srvcId = res.serviceId();
                 Map<UUID, ServiceSingleDeploymentsResults> dep = res.results();
 
-                Map<UUID, Integer> topSnap = new HashMap<>();
+                HashMap<UUID, Integer> topSnap = new HashMap<>();
 
                 Collection<byte[]> errors = new ArrayList<>();
 
@@ -1781,11 +1778,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         errors.addAll(depRes.errors());
                 });
 
-                if (!topSnap.isEmpty()) {
-                    ServiceDeploymentsMap depMap = new ServiceDeploymentsMap(srvcId, topSnap);
-
-                    fullDeps.put(srvcId, depMap);
-                }
+                if (!topSnap.isEmpty())
+                    fullDeps.put(srvcId, topSnap);
 
                 GridServiceAssignments srvcAssigns = srvcsAssigns.get(srvcId);
 
@@ -1811,6 +1805,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             redeploy(srvcId, cfg, topSnap, cfg.getCacheName(), cfg.getAffinityKey());
                         }
                     }
+                }
+                else if (log.isDebugEnabled()) {
+                    log.debug("GridServiceAssignments has not been found to update while processing full services" +
+                        " full map message, locId=" + ctx.localNodeId() +
+                        ", srvcId=" + srvcId);
                 }
             }
 
@@ -1979,19 +1978,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         private ArrayList<GridServiceAssignments> srvcsAssigns;
 
         /** Services deployments. */
-        private ArrayList<ServiceDeploymentsMap> srvcsDeps;
+        private ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsDeps;
 
         /** Services deployment exchange queue to initialize exchange manager. */
         private LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue;
 
         /**
-         * @param assigns Services assignments.
-         * @param deps Services deployments.
+         * @param srvcsAssigns Services assignments.
+         * @param srvcsDeps Services deployments.
          */
-        public InitialServicesData(ArrayList<GridServiceAssignments> assigns, ArrayList<ServiceDeploymentsMap> deps,
+        public InitialServicesData(ArrayList<GridServiceAssignments> srvcsAssigns,
+            ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsDeps,
             LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue) {
-            this.srvcsAssigns = assigns;
-            this.srvcsDeps = deps;
+            this.srvcsAssigns = srvcsAssigns;
+            this.srvcsDeps = srvcsDeps;
             this.exchQueue = exchQueue;
         }
 
@@ -2011,7 +2011,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Unmodifiable map of current services deployments.
      */
-    public Map<IgniteUuid, ServiceDeploymentsMap> deployments() {
+    public Map<IgniteUuid, Map<UUID, Integer>> deployments() {
         return Collections.unmodifiableMap(srvcsDeps);
     }
 
