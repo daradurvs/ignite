@@ -1590,6 +1590,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (dep == null) {
                     ServicesDeploymentExchangeTask exchTask = exchMgr.task(exchId);
 
+                    if (exchTask == null) {
+                        log.error("Failed to find ServicesDeploymentExchangeTask in deployment queue" +
+                            ", srvcId=" + srvcId +
+                            ", exchId=" + exchId);
+
+                        return;
+                    }
+
                     ServiceConfiguration cfg = extractServiceConfiguration(exchTask, srvcId);
 
                     if (cfg == null) {
