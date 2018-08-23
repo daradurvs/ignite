@@ -1689,9 +1689,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @param exchId Exchange id.
      * @param errors Deployment errors.
+     * @throws IgniteCheckedException In case of an error.
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        final Map<IgniteUuid, Collection<Throwable>> errors) {
+        final Map<IgniteUuid, Collection<Throwable>> errors) throws IgniteCheckedException {
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
         ClusterNode crd = coordinator();
@@ -1707,6 +1708,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 log.debug("Topology changed while message send: " + e.getMessage());
 
             log.error("Failed to send message over communication spi, msg=" + msg, e);
+
+            throw e;
         }
     }
 

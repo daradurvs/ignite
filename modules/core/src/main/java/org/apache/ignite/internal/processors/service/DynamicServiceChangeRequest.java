@@ -36,12 +36,12 @@ public class DynamicServiceChangeRequest implements Serializable {
     private static final int SERVICE_UNDEPLOY_FLAG_MASK = 0x02;
 
     /** Service id. */
-    private IgniteUuid srvcId;
+    private final IgniteUuid srvcId;
 
     /** Service configuration. May be {@code null} in case of undeploy. */
     private ServiceConfiguration cfg;
 
-    /** Change’s types flags. */
+    /** Change's types flags. */
     private byte flags;
 
     /**
@@ -67,7 +67,7 @@ public class DynamicServiceChangeRequest implements Serializable {
 
     /**
      * @param srvcId Service id.
-     * @return Deployment request.
+     * @return Undeployment request.
      */
     public static DynamicServiceChangeRequest undeploymentRequest(IgniteUuid srvcId) {
         DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(srvcId);
@@ -85,13 +85,6 @@ public class DynamicServiceChangeRequest implements Serializable {
     }
 
     /**
-     * @param srvcId New service id.
-     */
-    public void serviceId(IgniteUuid srvcId) {
-        this.srvcId = srvcId;
-    }
-
-    /**
      * @return Service configuration.
      */
     public ServiceConfiguration configuration() {
@@ -106,7 +99,7 @@ public class DynamicServiceChangeRequest implements Serializable {
     }
 
     /**
-     * Marks the message's action as deploy service.
+     * Marks the message's action as deploy service request.
      */
     public void markDeploy() {
         flags |= SERVICE_DEPLOY_FLAG_MASK;
@@ -120,7 +113,7 @@ public class DynamicServiceChangeRequest implements Serializable {
     }
 
     /**
-     * Marks the message's action as undeploy service.
+     * Marks the message's action as undeploy service request.
      */
     public void markUndeploy() {
         flags |= SERVICE_UNDEPLOY_FLAG_MASK;

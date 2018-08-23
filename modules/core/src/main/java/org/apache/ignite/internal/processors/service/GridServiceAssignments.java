@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -35,11 +36,17 @@ public class GridServiceAssignments implements Serializable {
     /** Serialization version. */
     private static final long serialVersionUID = 0L;
 
-    /** Deployment initiator node ID. */
+    /** Node ID. */
     private final UUID nodeId;
 
-    /** Topology version. */
-    private long topVer;
+    /**
+     * Topology version.
+     *
+     * @deprecated Shouldn't be used as a characteristic of service assignments version anymore, since there is not
+     * strictly mapping each-other anymore.
+     */
+    @Deprecated
+    private final long topVer;
 
     /** Service configuration. */
     private final ServiceConfiguration cfg;
@@ -67,9 +74,7 @@ public class GridServiceAssignments implements Serializable {
      * @param nodeId Node ID.
      */
     public GridServiceAssignments(ServiceConfiguration cfg, UUID nodeId) {
-        this.cfg = cfg;
-        this.nodeId = nodeId;
-        this.topVer = -1;
+        this(cfg, nodeId, AffinityTopologyVersion.NONE.topologyVersion());
     }
 
     /**
@@ -91,13 +96,6 @@ public class GridServiceAssignments implements Serializable {
      */
     public long topologyVersion() {
         return topVer;
-    }
-
-    /**
-     * @param topVer Topology version.
-     */
-    public void topologyVersion(long topVer) {
-        this.topVer = topVer;
     }
 
     /**

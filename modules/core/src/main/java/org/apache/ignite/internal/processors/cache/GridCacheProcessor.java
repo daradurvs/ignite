@@ -2258,7 +2258,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
      */
     void forceCloseCaches(ExchangeActions exchActions) {
         assert exchActions != null && !exchActions.cacheStopRequests().isEmpty();
-      
+
         processCacheStopRequestOnExchangeDone(exchActions);
     }
 
