@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.service;
 
 import java.io.Serializable;
 import java.util.UUID;
-import org.apache.ignite.internal.processors.cache.GridCacheInternal;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -27,7 +26,7 @@ import org.apache.ignite.services.ServiceConfiguration;
 /**
  * Service deployment.
  */
-public class GridServiceDeployment implements GridCacheInternal, Serializable {
+public class GridServiceDeployment implements Serializable {
     /** */
     private static final long serialVersionUID = 0L;
 
