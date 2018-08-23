@@ -59,6 +59,9 @@ import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
  * Services deployment exchange future.
  */
 public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask, Externalizable {
+    /** */
+    private static final long serialVersionUID = 0L;
+    
     /** Single service messages to process. */
     @GridToStringInclude
     private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new ConcurrentHashMap<>();
