@@ -25,15 +25,10 @@ import org.jetbrains.annotations.Nullable;
 public enum ServiceDeploymentFailuresPolicy {
     /**
      * When service deployment failures policy is {@code CANCEL} and there are errors on deployment/reassignment
-     * requests, coordinator will initiate cancellation of existing services in Ingite cluster.
+     * requests, coordinator will initiate cancellation of existing services in Ingite cluster and propogates deployment
+     * errors to all nodes..
      */
-    CANCEL,
-
-    /**
-     * When service deployment failures policy is {@code IGNORE} and there are errors on deployment request or
-     * reassignment  and there are at least one node with successful deployment then service won't be canceled.
-     */
-    IGNORE;
+    CANCEL;
 
     /** Enumerated values. */
     private static final ServiceDeploymentFailuresPolicy[] VALS = values();

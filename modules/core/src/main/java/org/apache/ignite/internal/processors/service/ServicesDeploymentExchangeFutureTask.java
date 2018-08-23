@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
@@ -53,7 +54,6 @@ import org.jetbrains.annotations.Nullable;
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
-import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 
 /**
  * Services deployment exchange future.
@@ -455,24 +455,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                 fullTops.put(srvcId, top);
             }
-            else if (cfg.policy() == IGNORE) {
-                // TODO: remove in first phase
-                Map<UUID, Integer> top0 = new HashMap<>();
+            else {
+                if (th != null) {
+                    th = new IgniteException("Failed to determine suitable nodes to deploy service" +
+                        ", srvcId=" + srvcId +
+                        ", cfg=" + cfg);
+                }
 
-                Map<UUID, Integer> oldTop = srvcsTops.get(srvcId);
+                depErrors.put(srvcId, th);
 
-                oldTop.forEach((id, num) -> {
-                    if (ctx.discovery().alive(id))
-                        top0.put(id, num);
-                });
-
-                if (!top0.isEmpty())
-                    fullTops.put(srvcId, top0);
-                else
-                    servicesToUndeploy.add(srvcId);
-            }
-            else
                 servicesToUndeploy.add(srvcId);
+            }
         });
 
         expDeps.putAll(fullTops);
