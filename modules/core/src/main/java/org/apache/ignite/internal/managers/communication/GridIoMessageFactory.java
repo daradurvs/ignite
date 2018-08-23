@@ -932,22 +932,17 @@ public class GridIoMessageFactory implements MessageFactory {
                 break;
 
             case 136:
-                msg = new ServicesSingleMapMessage();
+                msg = new ServicesDeploymentExchangeId();
 
                 break;
 
             case 137:
-                msg = new ServicesDeploymentExchangeId();
+                msg = new ServicesSingleMapMessage();
 
                 break;
 
             case 138:
                 msg = new ServiceSingleDeploymentsResults();
-
-                break;
-
-            case 139:
-                msg = new ServiceFullDeploymentsResults();
 
                 break;
             // [-3..119] [124..129] [-23..-27] [-36..-55]- this

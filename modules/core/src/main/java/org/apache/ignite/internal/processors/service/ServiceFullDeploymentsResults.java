@@ -17,38 +17,26 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.nio.ByteBuffer;
+import java.io.Serializable;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.plugin.extensions.communication.Message;
-import org.apache.ignite.plugin.extensions.communication.MessageReader;
-import org.apache.ignite.plugin.extensions.communication.MessageWriter;
-
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
-import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.UUID;
 
 /**
  * Service full cluster deployments results.
  */
-public class ServiceFullDeploymentsResults implements Message {
+public class ServiceFullDeploymentsResults implements Serializable {
     /** */
     private static final long serialVersionUID = 0L;
 
     /** Service id. */
-    private IgniteUuid srvcId;
+    private final IgniteUuid srvcId;
 
     /** Per node deployments results. */
     @GridToStringInclude
-    private Map<UUID, ServiceSingleDeploymentsResults> results;
-
-    /**
-     * Empty constructor for marshalling purposes.
-     */
-    public ServiceFullDeploymentsResults() {
-    }
+    private final Map<UUID, ServiceSingleDeploymentsResults> results;
 
     /**
      * @param srvcId Service id.
@@ -68,95 +56,10 @@ public class ServiceFullDeploymentsResults implements Message {
     }
 
     /**
-     * @param srvcId Service id.
-     */
-    public void serviceId(IgniteUuid srvcId) {
-        this.srvcId = srvcId;
-    }
-
-    /**
      * @return Per node deployments results.
      */
     public Map<UUID, ServiceSingleDeploymentsResults> results() {
         return results;
-    }
-
-    /**
-     * @param results Per node deployments results.
-     */
-    public void results(Map<UUID, ServiceSingleDeploymentsResults> results) {
-        this.results = results;
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean writeTo(ByteBuffer buf, MessageWriter writer) {
-        writer.setBuffer(buf);
-
-        if (!writer.isHeaderWritten()) {
-            if (!writer.writeHeader(directType(), fieldsCount()))
-                return false;
-
-            writer.onHeaderWritten();
-        }
-
-        switch (writer.state()) {
-            case 0:
-                if (!writer.writeIgniteUuid("srvcId", srvcId))
-                    return false;
-
-                writer.incrementState();
-
-            case 1:
-                if (!writer.writeMap("results", results, UUID, MSG))
-                    return false;
-
-                writer.incrementState();
-        }
-
-        return true;
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean readFrom(ByteBuffer buf, MessageReader reader) {
-        reader.setBuffer(buf);
-
-        if (!reader.beforeMessageRead())
-            return false;
-
-        switch (reader.state()) {
-            case 0:
-                srvcId = reader.readIgniteUuid("srvcId");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 1:
-                results = reader.readMap("results", UUID, MSG, false);
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-        }
-
-        return reader.afterMessageRead(ServiceFullDeploymentsResults.class);
-    }
-
-    /** {@inheritDoc} */
-    @Override public short directType() {
-        return 139;
-    }
-
-    /** {@inheritDoc} */
-    @Override public byte fieldsCount() {
-        return 2;
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onAckReceived() {
-        // No-op.
     }
 
     /** {@inheritDoc} */
