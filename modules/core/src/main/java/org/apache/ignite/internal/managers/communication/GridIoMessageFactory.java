@@ -153,7 +153,6 @@ import org.apache.ignite.internal.processors.query.h2.twostep.messages.GridQuery
 import org.apache.ignite.internal.processors.query.schema.message.SchemaOperationStatusMessage;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRequest;
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
-import org.apache.ignite.internal.processors.service.ServiceFullDeploymentsResults;
 import org.apache.ignite.internal.processors.service.ServiceSingleDeploymentsResults;
 import org.apache.ignite.internal.processors.service.ServicesDeploymentExchangeId;
 import org.apache.ignite.internal.processors.service.ServicesSingleMapMessage;

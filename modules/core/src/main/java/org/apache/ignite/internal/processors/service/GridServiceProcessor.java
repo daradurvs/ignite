@@ -324,10 +324,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
         InitialServicesData initData = (InitialServicesData)data.commonData();
 
-        for (GridServiceDeployment assign : initData.srvcsAssigns)
+        for (GridServiceDeployment assign : initData.srvcsDeps)
             srvcsDeps.putIfAbsent(assign.serviceId(), assign);
 
-        initData.srvcsDeps.forEach(srvcsTops::putIfAbsent);
+        initData.srvcsTops.forEach(srvcsTops::putIfAbsent);
 
         exchMgr.insertToBegin(initData.exchQueue);
     }
@@ -755,10 +755,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             try {
                 for (IgniteUuid srvcId : srvcsIds) {
-                    GridServiceDeployment assigns = srvcsDeps.get(srvcId);
+                    GridServiceDeployment dep = srvcsDeps.get(srvcId);
 
                     try {
-                        ctx.security().authorize(assigns.configuration().getName(), SecurityPermission.SERVICE_CANCEL, null);
+                        ctx.security().authorize(dep.configuration().getName(), SecurityPermission.SERVICE_CANCEL, null);
                     }
                     catch (SecurityException e) {
                         res.add(new GridFinishedFuture<>(e));
@@ -868,13 +868,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
-        for (GridServiceDeployment assigns : srvcsDeps.values()) {
-            ServiceDescriptorImpl desc = new ServiceDescriptorImpl(assigns);
+        for (GridServiceDeployment dep : srvcsDeps.values()) {
+            ServiceDescriptorImpl desc = new ServiceDescriptorImpl(dep);
 
-            Map<UUID, Integer> dep = srvcsTops.get(assigns.serviceId());
+            Map<UUID, Integer> top = srvcsTops.get(dep.serviceId());
 
-            if (dep != null)
-                desc.topologySnapshot(dep);
+            if (top != null)
+                desc.topologySnapshot(top);
 
             descs.add(desc);
         }
@@ -1031,11 +1031,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * Reassigns service to nodes.
      *
      * @param cfg Service configuration.
-     * @param nodeId Deployment initiator id.
      * @param topVer Topology version.
      * @throws IgniteCheckedException If failed.
      */
-    public Map<UUID, Integer> reassign(ServiceConfiguration cfg, UUID nodeId,
+    public Map<UUID, Integer> reassign(ServiceConfiguration cfg,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         Object nodeFilter = cfg.getNodeFilter();
 
@@ -1048,8 +1047,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Object affKey = cfg.getAffinityKey();
 
         while (true) {
-//            GridServiceAssignments assigns = new GridServiceAssignments(cfg, nodeId, topVer.topologyVersion());
-
             Collection<ClusterNode> nodes;
 
             if (affKey == null) {
@@ -1175,33 +1172,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-//    /**
-//     * Redeploys local services based on assignments.
-//     *
-//     * @param assigns Assignments.
-//     */
-//    private void redeploy(GridServiceAssignments assigns) {
-//        redeploy(assigns.serviceId(), assigns.configuration(), assigns.assigns(), assigns.cacheName(), assigns.affinityKey());
-//    }
-
-    private void redeploy(IgniteUuid srvcId, ServiceConfiguration cfg, Map<UUID, Integer> top) {
-        redeploy(srvcId, cfg, top, cfg.getCacheName(), cfg.getAffinityKey());
-    }
-
     /**
      * Redeploys local services based on assignments.
      *
      * @param id Service id.
      * @param cfg Service configuration.
-     * @param assigns Service assignments.
-     * @param cacheName Cache name
-     * @param affKey Affinity key.
+     * @param top Service assignments.
      */
-    private void redeploy(IgniteUuid id, ServiceConfiguration cfg, Map<UUID, Integer> assigns, String cacheName,
-        Object affKey) {
+    private void redeploy(IgniteUuid id, ServiceConfiguration cfg, Map<UUID, Integer> top) {
         String name = cfg.getName();
+        String cacheName = cfg.getCacheName();
+        Object affKey = cfg.getAffinityKey();
 
-        Integer assignCnt = assigns.get(ctx.localNodeId());
+        Integer assignCnt = top.get(ctx.localNodeId());
 
         if (assignCnt == null)
             assignCnt = 0;
@@ -1602,9 +1585,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             final ServicesDeploymentExchangeId exchId = req.exchangeId();
 
             req.servicesToDeploy().forEach((srvcId, top) -> {
-                GridServiceDeployment srvcAssigns = srvcsDeps.get(srvcId);
+                GridServiceDeployment dep = srvcsDeps.get(srvcId);
 
-                if (srvcAssigns == null) {
+                if (dep == null) {
                     ServicesDeploymentExchangeTask exchTask = exchMgr.task(exchId);
 
                     ServiceConfiguration cfg = extractServiceConfiguration(exchTask, srvcId);
@@ -1617,15 +1600,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         return;
                     }
 
-                    srvcAssigns = new GridServiceDeployment(exchTask.event().eventNode().id(), cfg);
+                    dep = new GridServiceDeployment(exchTask.event().eventNode().id(), cfg);
 
-                    srvcAssigns.serviceId(srvcId);
-//                    srvcAssigns(top);
+                    dep.serviceId(srvcId);
 
-                    srvcsDeps.put(srvcId, srvcAssigns);
+                    srvcsDeps.put(srvcId, dep);
                 }
-//                else
-//                    srvcAssigns.assigns(top);
 
                 deployIfNeeded(srvcId, top, errors);
             });
@@ -1670,15 +1650,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Deploys service with given name if a number of local instances less than its number in given assignments.
+     * Deploys service with given name if a number of local instances less than its number in given topology.
      *
      * @param id Service id.
-     * @param assigns Service assigns.
+     * @param top Service topology.
      * @param errors Deployment errors container to fill in.
      */
-    private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> assigns,
-        Map<IgniteUuid, Collection<Throwable>> errors) {
-        Integer expNum = assigns.get(ctx.localNodeId());
+    private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> top, Map<IgniteUuid, Collection<Throwable>> errors) {
+        Integer expNum = top.get(ctx.localNodeId());
 
         boolean needDeploy = false;
 
@@ -1690,9 +1669,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (needDeploy) {
             try {
-                GridServiceDeployment old = srvcsDeps.get(id);
+                GridServiceDeployment dep = srvcsDeps.get(id);
 
-                redeploy(id, old.configuration(), assigns, old.configuration().getCacheName(), old.configuration().getAffinityKey());
+                redeploy(id, dep.configuration(), top);
             }
             catch (Error | RuntimeException t) {
                 Collection<Throwable> err = errors.computeIfAbsent(id, e -> new ArrayList<>());
@@ -1806,9 +1785,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     srvcErrors.addAll(errors);
                 }
 
-//                if (srvcAssigns != null) {
-//                    srvcAssigns.assigns(topSnap);
-
                 Integer expNum = topSnap.get(ctx.localNodeId());
 
                 if (expNum == null || expNum == 0)
@@ -1818,13 +1794,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     if (ctxs != null && expNum < ctxs.size()) { // Undeploy exceed instances
 
-                        GridServiceDeployment srvcAssigns = srvcsDeps.get(srvcId);
+                        GridServiceDeployment srvcDep = srvcsDeps.get(srvcId);
 
-                        if (srvcAssigns != null) {
+                        if (srvcDep != null) {
 
-                            ServiceConfiguration cfg = srvcAssigns.configuration();
+                            ServiceConfiguration cfg = srvcDep.configuration();
 
-                            redeploy(srvcId, cfg, topSnap, cfg.getCacheName(), cfg.getAffinityKey());
+                            redeploy(srvcId, cfg, topSnap);
                         }
                         else {
                             log.error("GridServiceDeployment has not been found undeploy exceed instances " +
@@ -1861,8 +1837,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 else {
                     ServiceConfiguration cfg = fut.configuration();
 
-                    for (GridServiceDeployment assigns : srvcsDeps.values()) {
-                        if (assigns.configuration().equalsIgnoreNodeFilter(cfg)) {
+                    for (GridServiceDeployment dep : srvcsDeps.values()) {
+                        if (dep.configuration().equalsIgnoreNodeFilter(cfg)) {
                             fut.onDone();
 
                             return true;
@@ -1998,23 +1974,24 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         private static final long serialVersionUID = 0L;
 
         /** Services assignments. */
-        private ArrayList<GridServiceDeployment> srvcsAssigns;
+        private ArrayList<GridServiceDeployment> srvcsDeps;
 
         /** Services deployments. */
-        private ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsDeps;
+        private ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
 
         /** Services deployment exchange queue to initialize exchange manager. */
         private LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue;
 
         /**
-         * @param srvcsAssigns Services assignments.
          * @param srvcsDeps Services deployments.
+         * @param srvcsTops Services topologies.
+         * @param exchQueue Services deployment exchange queue to initialize exchange manager.
          */
-        public InitialServicesData(ArrayList<GridServiceDeployment> srvcsAssigns,
-            ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsDeps,
+        public InitialServicesData(ArrayList<GridServiceDeployment> srvcsDeps,
+            ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops,
             LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue) {
-            this.srvcsAssigns = srvcsAssigns;
             this.srvcsDeps = srvcsDeps;
+            this.srvcsTops = srvcsTops;
             this.exchQueue = exchQueue;
         }
 

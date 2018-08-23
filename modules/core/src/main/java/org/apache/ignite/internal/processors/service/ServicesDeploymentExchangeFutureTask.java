@@ -151,7 +151,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
                 if (msg instanceof DynamicServicesChangeRequestBatchMessage)
-                    onServiceChangeRequest(evt.eventNode().id(), (DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
+                    onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
                 else if (msg instanceof CacheAffinityChangeMessage)
@@ -191,11 +191,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * @param snd Sender id.
      * @param batch Set of requests to change service.
      * @param topVer Topology version.
      */
-    private void onServiceChangeRequest(UUID snd, DynamicServicesChangeRequestBatchMessage batch,
+    private void onServiceChangeRequest(DynamicServicesChangeRequestBatchMessage batch,
         AffinityTopologyVersion topVer) {
         Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
@@ -207,45 +206,45 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (req.deploy()) {
                 ServiceConfiguration cfg = req.configuration();
 
-                Map<UUID, Integer> srvcDep = srvcsTops.get(srvcId);
+                Map<UUID, Integer> srvcTop = srvcsTops.get(srvcId);
 
                 Throwable th = null;
 
-                if (srvcDep != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+                if (srvcTop != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
                     th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
-                        ", assigns=" + srvcDep);
+                        ", srvcTop=" + srvcTop);
                 }
 
-                GridServiceDeployment oldSrvcAssigns = null;
+                GridServiceDeployment oldSrvcDep = null;
                 IgniteUuid oldSrvcId = null;
 
                 for (Map.Entry<IgniteUuid, GridServiceDeployment> e : srvcsDeps.entrySet()) {
                     GridServiceDeployment dep = e.getValue();
 
                     if (dep.configuration().getName().equals(cfg.getName())) {
-                        oldSrvcAssigns = dep;
+                        oldSrvcDep = dep;
                         oldSrvcId = e.getKey();
 
                         break;
                     }
                 }
 
-                if (oldSrvcAssigns != null && !oldSrvcAssigns.configuration().equalsIgnoreNodeFilter(cfg)) {
+                if (oldSrvcDep != null && !oldSrvcDep.configuration().equalsIgnoreNodeFilter(cfg)) {
                     th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                        "different configuration) [deployed=" + oldSrvcAssigns.configuration() + ", new=" + cfg + ']');
+                        "different configuration) [deployed=" + oldSrvcDep.configuration() + ", new=" + cfg + ']');
                 }
                 else {
                     try {
                         if (oldSrvcId != null)
                             srvcId = oldSrvcId;
 
-                        srvcDep = ctx.service().reassign(cfg, snd, topVer);
+                        srvcTop = ctx.service().reassign(cfg, topVer);
                     }
                     catch (IgniteCheckedException e) {
                         th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
                     }
 
-                    if (srvcDep != null && srvcDep.isEmpty())
+                    if (srvcTop != null && srvcTop.isEmpty())
                         th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
                 }
 
@@ -259,11 +258,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                 if (log.isDebugEnabled()) {
                     log.debug("Calculated service assignments" +
-                        ", srvcId=" + oldSrvcAssigns +
-                        ", top=" + srvcDep);
+                        ", srvcId=" + oldSrvcDep +
+                        ", top=" + srvcTop);
                 }
 
-                srvcsToDeploy.put(srvcId, srvcDep);
+                srvcsToDeploy.put(srvcId, srvcTop);
             }
             else if (req.undeploy())
                 srvcsToUndeploy.add(srvcId);
@@ -297,8 +296,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
-        srvcsDeps.forEach((id, assigns) -> {
-            if (cacheToStop.contains(assigns.configuration().getCacheName()))
+        srvcsDeps.forEach((id, dep) -> {
+            if (cacheToStop.contains(dep.configuration().getCacheName()))
                 srvcsToUndeploy.add(id);
         });
 
@@ -367,10 +366,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 int num = res.count();
 
                 if (num != 0) {
-                    Map<UUID, Integer> expSrvcAssigns = expDeps.get(srvcId);
+                    Map<UUID, Integer> expSrvcTop = expDeps.get(srvcId);
 
-                    if (expSrvcAssigns != null) {
-                        Integer expNum = expSrvcAssigns.get(nodeId);
+                    if (expSrvcTop != null) {
+                        Integer expNum = expSrvcTop.get(nodeId);
 
                         if (expNum == null)
                             num = 0;
@@ -430,19 +429,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private ServicesAssignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, Map<UUID, Integer>> fullAssigns = new HashMap<>();
+        final Map<IgniteUuid, Map<UUID, Integer>> fullTops = new HashMap<>();
 
         final Set<IgniteUuid> servicesToUndeploy = new HashSet<>();
 
         srvcsDeps.forEach((srvcId, old) -> {
             ServiceConfiguration cfg = old.configuration();
 
-            Map<UUID, Integer> newAssigns = null;
+            Map<UUID, Integer> top = null;
 
             Throwable th = null;
 
             try {
-                newAssigns = ctx.service().reassign(cfg, old.nodeId(), topVer);
+                top = ctx.service().reassign(cfg, topVer);
             }
             catch (Throwable e) {
                 log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);
@@ -450,25 +449,25 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 th = e;
             }
 
-            if (th == null && !newAssigns.isEmpty()) {
+            if (th == null && !top.isEmpty()) {
                 if (log.isDebugEnabled())
-                    log.debug("Calculated service assignments: " + newAssigns);
+                    log.debug("Calculated service assignments: " + top);
 
-                fullAssigns.put(srvcId, newAssigns);
+                fullTops.put(srvcId, top);
             }
             else if (cfg.policy() == IGNORE) {
                 // TODO: remove in first phase
-                Map<UUID, Integer> assigns = new HashMap<>();
+                Map<UUID, Integer> top0 = new HashMap<>();
 
-                Map<UUID, Integer> oldAssigns = srvcsTops.get(srvcId);
+                Map<UUID, Integer> oldTop = srvcsTops.get(srvcId);
 
-                oldAssigns.forEach((id, num) -> {
+                oldTop.forEach((id, num) -> {
                     if (ctx.discovery().alive(id))
-                        assigns.put(id, num);
+                        top0.put(id, num);
                 });
 
-                if (!assigns.isEmpty())
-                    fullAssigns.put(srvcId, assigns);
+                if (!top0.isEmpty())
+                    fullTops.put(srvcId, top0);
                 else
                     servicesToUndeploy.add(srvcId);
             }
@@ -476,14 +475,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 servicesToUndeploy.add(srvcId);
         });
 
-        expDeps.putAll(fullAssigns);
+        expDeps.putAll(fullTops);
 
-        assert !fullAssigns.isEmpty() || !servicesToUndeploy.isEmpty();
+        assert !fullTops.isEmpty() || !servicesToUndeploy.isEmpty();
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
-        if (!fullAssigns.isEmpty())
-            msg.servicesToDeploy(fullAssigns);
+        if (!fullTops.isEmpty())
+            msg.servicesToDeploy(fullTops);
 
         if (!servicesToUndeploy.isEmpty())
             msg.servicesToUndeploy(servicesToUndeploy);
