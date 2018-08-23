@@ -169,7 +169,7 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
             return topVer.compareTo(readyTopVer) <= 0;
         }, 5_000);
 
-        Map<UUID, Integer> srvcDep = grid.context().service().deployments().get(id);
+        Map<UUID, Integer> srvcDep = grid.context().service().servicesTopologies().get(id);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.cluster().nodes(), F.node2id());
 

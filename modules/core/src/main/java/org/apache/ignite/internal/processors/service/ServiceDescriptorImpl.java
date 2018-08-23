@@ -36,27 +36,27 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
 
     /** Configuration. */
     @GridToStringInclude
-    private final GridServiceAssignments assigns;
+    private final GridServiceDeployment dep;
 
     /** Topology snapshot. */
     @GridToStringInclude
     private Map<UUID, Integer> top;
 
     /**
-     * @param assigns Service assignments.
+     * @param dep Deployment.
      */
-    public ServiceDescriptorImpl(GridServiceAssignments assigns) {
-        this.assigns = assigns;
+    public ServiceDescriptorImpl(GridServiceDeployment dep) {
+        this.dep = dep;
     }
 
     /** {@inheritDoc} */
     @Override public String name() {
-        return assigns.configuration().getName();
+        return dep.configuration().getName();
     }
 
     /** {@inheritDoc} */
     @Override public Class<? extends Service> serviceClass() {
-        ServiceConfiguration cfg = assigns.configuration();
+        ServiceConfiguration cfg = dep.configuration();
 
         if (cfg instanceof LazyServiceConfiguration) {
             String clsName = ((LazyServiceConfiguration)cfg).serviceClassName();
@@ -69,33 +69,33 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
             }
         }
         else
-            return assigns.configuration().getService().getClass();
+            return dep.configuration().getService().getClass();
     }
 
     /** {@inheritDoc} */
     @Override public int totalCount() {
-        return assigns.configuration().getTotalCount();
+        return dep.configuration().getTotalCount();
     }
 
     /** {@inheritDoc} */
     @Override public int maxPerNodeCount() {
-        return assigns.configuration().getMaxPerNodeCount();
+        return dep.configuration().getMaxPerNodeCount();
     }
 
     /** {@inheritDoc} */
     @Nullable @Override public String cacheName() {
-        return assigns.configuration().getCacheName();
+        return dep.configuration().getCacheName();
     }
 
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
     @Nullable @Override public <K> K affinityKey() {
-        return (K)assigns.configuration().getAffinityKey();
+        return (K)dep.configuration().getAffinityKey();
     }
 
     /** {@inheritDoc} */
     @Override public UUID originNodeId() {
-        return assigns.nodeId();
+        return dep.nodeId();
     }
 
     /** {@inheritDoc} */
