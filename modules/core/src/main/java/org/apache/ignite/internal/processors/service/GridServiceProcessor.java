@@ -311,7 +311,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
             InitialServicesData initData = new InitialServicesData(
-                new ArrayList<>(srvcsDeps.values()),
+                new ConcurrentHashMap<>(srvcsDeps),
                 new ConcurrentHashMap<>(srvcsTops),
                 new LinkedBlockingDeque<>(exchMgr.tasks())
             );
@@ -324,8 +324,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
         InitialServicesData initData = (InitialServicesData)data.commonData();
 
-        for (GridServiceDeployment assign : initData.srvcsDeps)
-            srvcsDeps.putIfAbsent(assign.serviceId(), assign);
+        initData.srvcsDeps.forEach(srvcsDeps::putIfAbsent);
 
         initData.srvcsTops.forEach(srvcsTops::putIfAbsent);
 
@@ -868,16 +867,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
-        for (GridServiceDeployment dep : srvcsDeps.values()) {
+        srvcsDeps.forEach((srvcId, dep) -> {
             ServiceDescriptorImpl desc = new ServiceDescriptorImpl(dep);
 
-            Map<UUID, Integer> top = srvcsTops.get(dep.serviceId());
+            Map<UUID, Integer> top = srvcsTops.get(srvcId);
 
             if (top != null)
                 desc.topologySnapshot(top);
 
             descs.add(desc);
-        }
+        });
 
         return descs;
     }
@@ -1610,8 +1609,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     dep = new GridServiceDeployment(exchTask.event().eventNode().id(), cfg);
 
-                    dep.serviceId(srvcId);
-
                     srvcsDeps.put(srvcId, dep);
                 }
 
@@ -1981,10 +1978,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         /** */
         private static final long serialVersionUID = 0L;
 
-        /** Services assignments. */
-        private ArrayList<GridServiceDeployment> srvcsDeps;
-
         /** Services deployments. */
+        private ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps;
+
+        /** Services topologies. */
         private ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
 
         /** Services deployment exchange queue to initialize exchange manager. */
@@ -1995,9 +1992,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
          * @param srvcsTops Services topologies.
          * @param exchQueue Services deployment exchange queue to initialize exchange manager.
          */
-        public InitialServicesData(ArrayList<GridServiceDeployment> srvcsDeps,
+        public InitialServicesData(
+            ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps,
             ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops,
-            LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue) {
+            LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue
+        ) {
             this.srvcsDeps = srvcsDeps;
             this.srvcsTops = srvcsTops;
             this.exchQueue = exchQueue;
