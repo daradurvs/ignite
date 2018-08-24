@@ -61,7 +61,7 @@ import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask, Externalizable {
     /** */
     private static final long serialVersionUID = 0L;
-    
+
     /** Single service messages to process. */
     @GridToStringInclude
     private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new ConcurrentHashMap<>();
@@ -189,6 +189,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
         }
         catch (Exception e) {
+            log.error("Error occurred during deployment task initialization, err=" + e.getMessage(), e);
+
             throw new IgniteCheckedException(e);
         }
     }
@@ -271,9 +273,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(srvcId);
         }
 
-//        assert !srvcsToDeploy.isEmpty() || !srvcsToUndeploy.isEmpty() : batch;
-        // TODO: Just to build full map when no changes required?
-
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
         if (!srvcsToDeploy.isEmpty())
@@ -303,8 +302,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (cacheToStop.contains(dep.configuration().getCacheName()))
                 srvcsToUndeploy.add(id);
         });
-
-        assert !srvcsToUndeploy.isEmpty();
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
@@ -340,7 +337,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
-        assert exchId.equals(msg.exchangeId());
+        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
         complete(null, false);
     }
@@ -472,8 +469,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         });
 
         expDeps.putAll(fullTops);
-
-        assert !fullTops.isEmpty() || !servicesToUndeploy.isEmpty();
 
         ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
