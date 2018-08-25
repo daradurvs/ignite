@@ -43,6 +43,7 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridClosureCallMode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.typedef.F;
@@ -197,17 +198,33 @@ public class GridServiceProxy<T> implements Serializable {
                             true).get();
                     }
                 }
+                catch (GridServiceNotFoundException | ClusterTopologyCheckedException e) {
+                    if (log.isDebugEnabled())
+                        log.debug("Service was not found or topology changed (will retry): " + e.getMessage());
+                }
                 catch (RuntimeException | Error e) {
                     throw e;
                 }
                 catch (IgniteCheckedException e) {
-                    // Rethrow original service method exception so that calling user code can handle it correctly.
-                    ServiceProxyException svcProxyE = X.cause(e, ServiceProxyException.class);
+                    // Check if ignorable exceptions are in the cause chain.
+                    Throwable ignorableCause = X.cause(e, GridServiceNotFoundException.class);
 
-                    if (svcProxyE != null)
-                        throw svcProxyE.getCause();
+                    if (ignorableCause == null)
+                        ignorableCause = X.cause(e, ClusterTopologyCheckedException.class);
 
-                    throw U.convertException(e);
+                    if (ignorableCause != null) {
+                        if (log.isDebugEnabled())
+                            log.debug("Service was not found or topology changed (will retry): " + ignorableCause.getMessage());
+                    }
+                    else {
+                        // Rethrow original service method exception so that calling user code can handle it correctly.
+                        ServiceProxyException svcProxyE = X.cause(e, ServiceProxyException.class);
+
+                        if (svcProxyE != null)
+                            throw svcProxyE.getCause();
+
+                        throw U.convertException(e);
+                    }
                 }
                 catch (Exception e) {
                     throw new IgniteException(e);
