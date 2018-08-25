@@ -322,6 +322,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
+        if (data.commonData() == null)
+            return;
+
         InitialServicesData initData = (InitialServicesData)data.commonData();
 
         initData.srvcsDeps.forEach(srvcsDeps::putIfAbsent);
