@@ -872,10 +872,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             Map<UUID, Integer> top = srvcsTops.get(srvcId);
 
-            if (top != null)
+            if (top != null) {
                 desc.topologySnapshot(top);
 
-            descs.add(desc);
+                descs.add(desc);
+            }
         });
 
         return descs;

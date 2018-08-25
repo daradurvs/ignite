@@ -26,7 +26,6 @@ import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
-import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
@@ -234,7 +233,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 err = e;
             }
             finally {
-                if (err == null && !isStopped)
+                if (err == null && !isCancelled())
                     err = new IllegalStateException("Thread " + name() + " is terminated unexpectedly.");
 
                 if (err instanceof OutOfMemoryError)
@@ -279,9 +278,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                         break;
                     }
                     catch (IgniteCheckedException e) {
-                        if (X.hasCause(e, IgniteInterruptedCheckedException.class) && isStopped)
-                            return;
-
                         log.error("Error occurred during waiting for exchange future completion " +
                             "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
 
