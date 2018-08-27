@@ -41,7 +41,7 @@ public class DynamicServiceChangeRequest implements Serializable {
     /** Service configuration. May be {@code null} in case of undeploy. */
     private ServiceConfiguration cfg;
 
-    /** Change's types flags. */
+    /** Flags. */
     private byte flags;
 
     /**

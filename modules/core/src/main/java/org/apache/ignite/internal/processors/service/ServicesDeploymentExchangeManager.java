@@ -69,5 +69,5 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
      *
      * @param tasks Queue of deployment tasks.
      */
-    public void insertToBegin(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks);
+    public void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks);
 }

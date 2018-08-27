@@ -143,10 +143,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadLocal<String> svcName = new ThreadLocal<>();
 
     /** Discovery messages listener. */
-    private final DiscoveryEventListener discoLsnr = new DiscoveryListener();
+    private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
 
     /** Services messages communication listener. */
-    private final GridMessageListener commLsnr = new CommunicationListener();
+    private final GridMessageListener commLsnr = new ServiceCommunicationListener();
 
     /** Contains all services deployments, not only locally deployed. */
     private final ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps = new ConcurrentHashMap<>();
@@ -331,7 +331,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         initData.srvcsTops.forEach(srvcsTops::putIfAbsent);
 
-        exchMgr.insertToBegin(initData.exchQueue);
+        exchMgr.insertFirst(initData.exchQueue);
     }
 
     /** {@inheritDoc} */
@@ -548,7 +548,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (failedFuts == null)
                     failedFuts = new ArrayList<>();
 
-                GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, IgniteUuid.randomUuid());
+                GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, null);
 
                 fut.onDone(err);
 
@@ -567,12 +567,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs, null);
+            return deployAll(cfgs,  null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs, prj.predicate());
+            return deployAll(cfgs,  prj.predicate());
     }
 
     /**
@@ -1388,7 +1388,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Discovery messages listener.
      */
-    private class DiscoveryListener implements DiscoveryEventListener {
+    private class ServiceDiscoveryListener implements DiscoveryEventListener {
         /** If local node coordinator or not. */
         private volatile boolean crd = false;
 
@@ -1501,7 +1501,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Services messages communication listener.
      */
-    private class CommunicationListener implements GridMessageListener {
+    private class ServiceCommunicationListener implements GridMessageListener {
         /** {@inheritDoc} */
         @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
             if (!enterBusy())
