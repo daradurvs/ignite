@@ -366,6 +366,12 @@ namespace Apache.Ignite.Core.Impl.Services
         /** <inheritDoc /> */
         public T GetServiceProxy<T>(string name, bool sticky) where T : class
         {
+            return GetServiceProxy<T>(name, sticky, 0);
+        }
+
+        /** <inheritDoc /> */
+        public T GetServiceProxy<T>(string name, bool sticky, long timeout) where T : class
+        {
             IgniteArgumentCheck.NotNullOrEmpty(name, "name");
             IgniteArgumentCheck.Ensure(typeof(T).IsInterface, "T", 
                 "Service proxy type should be an interface: " + typeof(T));
@@ -381,6 +387,7 @@ namespace Apache.Ignite.Core.Impl.Services
             {
                 w.WriteString(name);
                 w.WriteBoolean(sticky);
+                w.WriteLong(timeout);
             });
 
             var platform = GetServiceDescriptors().Cast<ServiceDescriptor>().Single(x => x.Name == name).Platform;
@@ -398,6 +405,12 @@ namespace Apache.Ignite.Core.Impl.Services
         /** <inheritDoc /> */
         public dynamic GetDynamicServiceProxy(string name, bool sticky)
         {
+            return GetDynamicServiceProxy(name, sticky, 0);
+        }
+
+        /** <inheritDoc /> */
+        public dynamic GetDynamicServiceProxy(string name, bool sticky, long timeout)
+        {
             IgniteArgumentCheck.NotNullOrEmpty(name, "name");
 
             // In local scenario try to return service instance itself instead of a proxy
@@ -412,6 +425,7 @@ namespace Apache.Ignite.Core.Impl.Services
             {
                 w.WriteString(name);
                 w.WriteBoolean(sticky);
+                w.WriteLong(timeout);
             });
 
             var platform = GetServiceDescriptors().Cast<ServiceDescriptor>().Single(x => x.Name == name).Platform;

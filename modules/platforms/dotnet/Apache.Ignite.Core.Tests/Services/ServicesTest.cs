@@ -578,8 +578,10 @@ namespace Apache.Ignite.Core.Tests.Services
             Assert.IsNotNull(firstFailedSvc);
             Assert.IsNotNull(secondFailedSvc);
 
-            Assert.AreEqual(firstFailedIdx, firstFailedSvc.TestProperty);
-            Assert.AreEqual(secondFailedIdx, secondFailedSvc.TestProperty);
+            int[] properties = { firstFailedSvc.TestProperty, secondFailedSvc.TestProperty };
+
+            Assert.IsTrue(properties.Contains(firstFailedIdx));
+            Assert.IsTrue(properties.Contains(secondFailedIdx));
 
             for (var i = 0; i < num; i++)
             {
