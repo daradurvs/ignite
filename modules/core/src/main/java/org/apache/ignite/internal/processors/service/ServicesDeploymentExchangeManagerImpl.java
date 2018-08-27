@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.events.DiscoveryEvent;
@@ -53,7 +54,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     private volatile boolean isStopped = true;
 
     /** Topology version of latest deployment task's event. */
-    private volatile AffinityTopologyVersion readyTopVer = AffinityTopologyVersion.NONE;
+    private final AtomicReference<AffinityTopologyVersion> readyTopVer =
+        new AtomicReference<>(AffinityTopologyVersion.NONE);
 
     /**
      * @param ctx Grid kernal context.
@@ -67,13 +69,15 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void startProcessing() {
+        isStopped = false;
+
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
     /** {@inheritDoc} */
     @Override public void stopProcessing() {
         try {
-            exchWorker.stopProcessing();
+            isStopped = true;
 
             U.cancel(exchWorker);
 
@@ -90,7 +94,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public AffinityTopologyVersion readyTopologyVersion() {
-        return readyTopVer;
+        return readyTopVer.get();
     }
 
     /** {@inheritDoc} */
@@ -218,23 +222,23 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         /** {@inheritDoc} */
         @Override protected void body() throws InterruptedException, IgniteInterruptedCheckedException {
-            isStopped = false;
-
             Throwable err = null;
 
             try {
                 body0();
             }
-            catch (InterruptedException | IgniteInterruptedCheckedException e) {
-                if (!isStopped)
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+
+                if (!isCancelled)
                     err = e;
             }
-            catch (Throwable e) {
-                err = e;
+            catch (Throwable t) {
+                err = t;
             }
             finally {
-                if (err == null && !isCancelled())
-                    err = new IllegalStateException("Thread " + name() + " is terminated unexpectedly.");
+                if (err == null && !isCancelled)
+                    err = new IllegalStateException("Worker " + name() + " is terminated unexpectedly.");
 
                 if (err instanceof OutOfMemoryError)
                     ctx.failure().process(new FailureContext(CRITICAL_ERROR, err));
@@ -245,7 +249,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         /**
          * @throws InterruptedException If interrupted.
-         * @throws IgniteCheckedException In case of an error.
          */
         private void body0() throws InterruptedException, IgniteCheckedException {
             while (!isCancelled()) {
@@ -264,7 +267,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                     task.complete(e, false);
 
-                    continue;
+                    throw e;
                 }
 
                 long timeout = ctx.config().getNetworkTimeout() * 5;
@@ -273,7 +276,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                     try {
                         task.waitForComplete(timeout);
 
-                        readyTopVer = task.topologyVersion();
+                        taskPostProcessing(task);
 
                         break;
                     }
@@ -281,11 +284,14 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                         log.error("Error occurred during waiting for exchange future completion " +
                             "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
 
-                        if (isStopped)
-                            return;
+                        if (task.isComplete()) {
+                            taskPostProcessing(task);
 
-                        if (task.isComplete())
                             break;
+                        }
+
+                        if (isCancelled)
+                            return;
 
                         for (UUID uuid : task.remaining()) {
                             if (!ctx.discovery().alive(uuid))
@@ -297,10 +303,12 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         }
 
         /**
-         * Handles a processing stop.
+         * Does additional actions after task's completion.
          */
-        private void stopProcessing() {
-            isStopped = true;
+        private void taskPostProcessing(ServicesDeploymentExchangeTask task) {
+            AffinityTopologyVersion readyVer = readyTopVer.get();
+
+            readyTopVer.compareAndSet(readyVer, task.topologyVersion());
         }
     }
 }

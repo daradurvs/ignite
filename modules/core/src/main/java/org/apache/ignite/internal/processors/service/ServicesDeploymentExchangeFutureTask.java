@@ -29,7 +29,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteIllegalStateException;
@@ -64,7 +63,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** Single service messages to process. */
     @GridToStringInclude
-    private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new ConcurrentHashMap<>();
+    private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new HashMap<>();
 
     /** Expected services assignments. */
     private final Map<IgniteUuid, Map<UUID, Integer>> expDeps = new HashMap<>();
@@ -84,7 +83,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @GridToStringInclude
     private DiscoveryEvent evt;
 
-    /** Topology version. */
+    /** Cause event topology version. */
     private AffinityTopologyVersion evtTopVer;
 
     /** Exchange id. */
@@ -97,7 +96,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private Map<IgniteUuid, GridServiceDeployment> srvcsDeps;
 
     /** Services topologies. */
-    private Map<IgniteUuid, Map<UUID, Integer>> srvcsTops;
+    private Map<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
 
     /** Logger. */
     private IgniteLogger log;
@@ -156,7 +155,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (msg instanceof DynamicServicesChangeRequestBatchMessage)
                     onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
-                    onCacheStateChangeRequest((DynamicCacheChangeBatch)msg, evtTopVer);
+                    onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
                 else if (msg instanceof CacheAffinityChangeMessage)
                     initFullReassignment(evtTopVer);
                 else
@@ -286,9 +285,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /**
      * @param req Cacje state change request.
-     * @param topVer Topology version;
      */
-    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req, AffinityTopologyVersion topVer) {
+    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) {
         Set<String> cacheToStop = new HashSet<>();
 
         for (DynamicCacheChangeRequest chReq : req.requests()) {
@@ -352,7 +350,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Processes single assignments messages to build full map message.
+     * Processes single map messages to build full map message.
      *
      * @return Services full map message.
      */

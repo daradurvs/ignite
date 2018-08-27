@@ -2015,15 +2015,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Unmodifiable map of current services deployments.
      */
-    public Map<IgniteUuid, GridServiceDeployment> deployments() {
-        return Collections.unmodifiableMap(srvcsDeps);
+    protected Map<IgniteUuid, GridServiceDeployment> deployments() {
+        return srvcsDeps;
     }
 
     /**
      * @return Unmodifiable map of current services topologies snapsots.
      */
-    public Map<IgniteUuid, Map<UUID, Integer>> servicesTopologies() {
-        return Collections.unmodifiableMap(srvcsTops);
+    protected Map<IgniteUuid, HashMap<UUID, Integer>> servicesTopologies() {
+        return srvcsTops;
     }
 
     /**
