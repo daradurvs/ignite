@@ -29,7 +29,6 @@ import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
-import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.testframework.GridTestUtils;
 
 /**
@@ -151,17 +150,13 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
      * @param maxPerNode Maximum number of services per node.
      * @param gridIdx Grid index to check.
      * @param lastTry Last try flag.
-     * @return {@code True} if check passed.
      * @throws Exception If failed.
+     * @return {@code True} if check passed.
      */
     private boolean checkServices(int total, int maxPerNode, int gridIdx, boolean lastTry) throws Exception {
         IgniteEx grid = grid(gridIdx);
 
-        AffinityTopologyVersion topVer = grid.context().discovery().topologyVersionEx();
-
-        IgniteUuid id = grid.context().service().lookupId(SERVICE_NAME);
-
-        assertNotNull(id);
+        final AffinityTopologyVersion topVer = grid.context().discovery().topologyVersionEx();
 
         GridTestUtils.waitForCondition(() -> {
             AffinityTopologyVersion readyTopVer = grid.context().service().exchange().readyTopologyVersion();
@@ -169,15 +164,15 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
             return topVer.compareTo(readyTopVer) <= 0;
         }, 5_000);
 
-        Map<UUID, Integer> srvcDep = grid.context().service().servicesTopologies().get(id);
+        Map<UUID, Integer> srvcDeps = grid.context().service().serviceTopology(SERVICE_NAME, 500);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.cluster().nodes(), F.node2id());
 
-        assertNotNull("Grid assignments object is null", srvcDep);
+        assertNotNull("Grid assignments object is null", srvcDeps);
 
         int sum = 0;
 
-        for (Map.Entry<UUID, Integer> entry : srvcDep.entrySet()) {
+        for (Map.Entry<UUID, Integer> entry : srvcDeps.entrySet()) {
             UUID nodeId = entry.getKey();
 
             if (!lastTry && !nodes.contains(nodeId))
@@ -196,9 +191,9 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         if (total > 0)
             assertTrue("Total number of services limit exceeded [sum=" + sum +
-                ", assigns=" + srvcDep + ']', sum <= total);
+                ", assigns=" + srvcDeps + ']', sum <= total);
         else
-            assertEquals("Reassign per node failed.", nodes.size(), srvcDep.size());
+            assertEquals("Reassign per node failed.", nodes.size(), srvcDeps.size());
 
         if (!lastTry && proxy(grid).get() != 10)
             return false;
