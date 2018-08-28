@@ -281,11 +281,13 @@ namespace Apache.Ignite.Core.Tests.Services
             Grid1.GetCluster().ForNodeIds(Grid2.GetCluster().GetLocalNode().Id, Grid1.GetCluster().GetLocalNode().Id)
                 .GetServices().DeployNodeSingleton(SvcName, svc);
 
+            TestUtils.WaitForCondition(() => Grid3.GetServices().GetServiceDescriptors().Any(x => x.Name == SvcName), 5000);
+            
             // Make sure there is no local instance on grid3
             Assert.IsNull(Grid3.GetServices().GetService<ITestIgniteService>(SvcName));
 
             // Get proxy
-            var prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, false, 5000);
+            var prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName);
 
             // Check proxy properties
             Assert.IsNotNull(prx);
@@ -307,8 +309,10 @@ namespace Apache.Ignite.Core.Tests.Services
             var invokedIds = Enumerable.Range(1, 100).Select(x => prx.NodeId).Distinct().ToList();
             Assert.AreEqual(2, invokedIds.Count);
 
+            TestUtils.WaitForCondition(() => Grid3.GetServices().GetServiceDescriptors().Any(x => x.Name == SvcName), 5000);
+
             // Check sticky = true: all calls should be to the same node
-            prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, true, 5000);
+            prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, true);
             invokedIds = Enumerable.Range(1, 100).Select(x => prx.NodeId).Distinct().ToList();
             Assert.AreEqual(1, invokedIds.Count);
 
