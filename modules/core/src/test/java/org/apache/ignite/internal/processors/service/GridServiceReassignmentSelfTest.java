@@ -162,7 +162,7 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         Map<UUID, Integer> srvcDeps = grid.context().service().serviceTopology(SERVICE_NAME, 500);
 
-        Collection<UUID> nodes = F.viewReadOnly(grid.cluster().nodes(), F.node2id());
+        Collection<UUID> nodes = F.viewReadOnly(grid.context().discovery().aliveServerNodes(), F.node2id());
 
         assertNotNull("Grid assignments object is null", srvcDeps);
 
