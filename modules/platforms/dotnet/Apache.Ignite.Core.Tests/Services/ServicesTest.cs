@@ -285,7 +285,7 @@ namespace Apache.Ignite.Core.Tests.Services
             Assert.IsNull(Grid3.GetServices().GetService<ITestIgniteService>(SvcName));
 
             // Get proxy
-            var prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName);
+            var prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, false, 5000);
 
             // Check proxy properties
             Assert.IsNotNull(prx);
@@ -308,7 +308,7 @@ namespace Apache.Ignite.Core.Tests.Services
             Assert.AreEqual(2, invokedIds.Count);
 
             // Check sticky = true: all calls should be to the same node
-            prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, true);
+            prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, true, 5000);
             invokedIds = Enumerable.Range(1, 100).Select(x => prx.NodeId).Distinct().ToList();
             Assert.AreEqual(1, invokedIds.Count);
 
