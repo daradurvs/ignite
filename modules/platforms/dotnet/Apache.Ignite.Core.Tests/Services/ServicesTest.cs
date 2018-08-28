@@ -278,11 +278,9 @@ namespace Apache.Ignite.Core.Tests.Services
                 ? new TestIgniteServiceBinarizable {TestProperty = 17}
                 : new TestIgniteServiceSerializable {TestProperty = 17};
 
-            Grid1.GetCluster().ForNodeIds(Grid2.GetCluster().GetLocalNode().Id, Grid1.GetCluster().GetLocalNode().Id)
+            Grid3.GetCluster().ForNodeIds(Grid2.GetCluster().GetLocalNode().Id, Grid1.GetCluster().GetLocalNode().Id)
                 .GetServices().DeployNodeSingleton(SvcName, svc);
 
-            TestUtils.WaitForCondition(() => Grid3.GetServices().GetServiceDescriptors().Any(x => x.Name == SvcName), 5000);
-            
             // Make sure there is no local instance on grid3
             Assert.IsNull(Grid3.GetServices().GetService<ITestIgniteService>(SvcName));
 
@@ -308,8 +306,6 @@ namespace Apache.Ignite.Core.Tests.Services
             // Check sticky = false: call multiple times, check that different nodes get invoked
             var invokedIds = Enumerable.Range(1, 100).Select(x => prx.NodeId).Distinct().ToList();
             Assert.AreEqual(2, invokedIds.Count);
-
-            TestUtils.WaitForCondition(() => Grid3.GetServices().GetServiceDescriptors().Any(x => x.Name == SvcName), 5000);
 
             // Check sticky = true: all calls should be to the same node
             prx = Grid3.GetServices().GetServiceProxy<ITestIgniteService>(SvcName, true);
