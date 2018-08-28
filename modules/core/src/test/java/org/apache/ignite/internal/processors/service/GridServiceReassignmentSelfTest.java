@@ -156,13 +156,9 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
     private boolean checkServices(int total, int maxPerNode, int gridIdx, boolean lastTry) throws Exception {
         IgniteEx grid = grid(gridIdx);
 
-        final AffinityTopologyVersion topVer = grid.context().discovery().topologyVersionEx();
+        AffinityTopologyVersion topVer = grid.context().discovery().topologyVersionEx();
 
-        GridTestUtils.waitForCondition(() -> {
-            AffinityTopologyVersion readyTopVer = grid.context().service().exchange().readyTopologyVersion();
-
-            return topVer.compareTo(readyTopVer) <= 0;
-        }, 5_000);
+        waitForReadyTopology(grid, topVer);
 
         Map<UUID, Integer> srvcDeps = grid.context().service().serviceTopology(SERVICE_NAME, 500);
 

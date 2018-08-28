@@ -22,6 +22,8 @@ import junit.framework.TestCase;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteServices;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -127,7 +129,7 @@ public class GridServiceProcessorMultiNodeSelfTest extends GridServiceProcessorA
         try {
             final String name = "serviceOnEachNodeButClientUpdateTopology";
 
-            Ignite g = randomGrid();
+            IgniteEx g = (IgniteEx)randomGrid();
 
             CountDownLatch latch = new CountDownLatch(nodeCount());
 
@@ -170,6 +172,10 @@ public class GridServiceProcessorMultiNodeSelfTest extends GridServiceProcessorA
                 // so we check only the difference between start and cancel and
                 // not start and cancel events individually.
                 assertEquals(name, nodeCount() + servers, DummyService.started(name) - DummyService.cancelled(name));
+
+                AffinityTopologyVersion topVer = g.context().discovery().topologyVersionEx();
+
+                waitForReadyTopology(g, topVer);
 
                 checkCount(name, g.services().serviceDescriptors(), nodeCount() + servers);
             }

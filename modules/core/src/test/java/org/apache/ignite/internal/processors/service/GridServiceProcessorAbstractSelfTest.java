@@ -30,7 +30,9 @@ import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.affinity.GridAffinityProcessor;
 import org.apache.ignite.internal.util.lang.GridAbsPredicateX;
 import org.apache.ignite.internal.util.typedef.CA;
@@ -791,6 +793,21 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
                 return actualCount(srvcName, g.services().serviceDescriptors())  == expectedDeps;
             }
         }, 12_000);
+    }
+
+    /**
+     * @param ignite Ignite instance.
+     * @param topVer Topology version to wait.
+     * @return If given topology ready.
+     * @throws IgniteInterruptedCheckedException If interrupted.
+     */
+    protected boolean waitForReadyTopology(final IgniteEx ignite,
+        final AffinityTopologyVersion topVer) throws IgniteInterruptedCheckedException {
+        return GridTestUtils.waitForCondition(() -> {
+            AffinityTopologyVersion readyTopVer = ignite.context().service().exchange().readyTopologyVersion();
+
+            return topVer.compareTo(readyTopVer) <= 0;
+        }, 10_000);
     }
 
     /**
