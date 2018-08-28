@@ -64,6 +64,9 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
     /** Random generator. */
     private static final Random RAND = new Random();
 
+    /** Service deployment wait timeout. */
+    protected static final int SERVICE_DEPLOYMENT_WAIT_TIMEOUT = 10_000;
+
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
         IgniteConfiguration c = super.getConfiguration(igniteInstanceName);
@@ -150,7 +153,7 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
     /**
      * @return Random grid.
      */
-    protected Ignite randomGrid() {
+    protected IgniteEx randomGrid() {
         return grid(RAND.nextInt(nodeCount()));
     }
 
@@ -755,6 +758,19 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
 
     /**
      * @param svcName Service name.
+     * @param ignite Ignite instance.
+     * @param cnt Expected count.
+     */
+    protected void checkCount(String svcName, IgniteEx ignite, int cnt) throws IgniteInterruptedCheckedException {
+        AffinityTopologyVersion topVer = ignite.context().discovery().topologyVersionEx();
+
+        waitForReadyTopology(ignite, topVer);
+
+        assertEquals(cnt, actualCount(svcName, ignite.services().serviceDescriptors()));
+    }
+
+    /**
+     * @param svcName Service name.
      * @param descs Descriptors.
      * @param cnt Expected count.
      */
@@ -807,7 +823,7 @@ public abstract class GridServiceProcessorAbstractSelfTest extends GridCommonAbs
             AffinityTopologyVersion readyTopVer = ignite.context().service().exchange().readyTopologyVersion();
 
             return topVer.compareTo(readyTopVer) <= 0;
-        }, 10_000);
+        }, SERVICE_DEPLOYMENT_WAIT_TIMEOUT);
     }
 
     /**
