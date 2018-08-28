@@ -374,7 +374,6 @@ public class PlatformServices extends PlatformAbstractTarget {
             case OP_SERVICE_PROXY: {
                 String name = reader.readString();
                 boolean sticky = reader.readBoolean();
-                long timeout = reader.readLong();
 
                 ServiceDescriptor d = findDescriptor(name);
 
@@ -382,8 +381,8 @@ public class PlatformServices extends PlatformAbstractTarget {
                     throw new IgniteException("Failed to find deployed service: " + name);
 
                 Object proxy = PlatformService.class.isAssignableFrom(d.serviceClass())
-                    ? services.serviceProxy(name, PlatformService.class, sticky, timeout)
-                    : new GridServiceProxy<>(services.clusterGroup(), name, Service.class, sticky, timeout,
+                    ? services.serviceProxy(name, PlatformService.class, sticky)
+                    : new GridServiceProxy<>(services.clusterGroup(), name, Service.class, sticky, 0,
                         platformCtx.kernalContext());
 
                 return new ServiceProxyHolder(proxy, d.serviceClass(), platformContext());

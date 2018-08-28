@@ -194,12 +194,6 @@ namespace Apache.Ignite.Core.Tests.Services
         }
 
         /** <inheritDoc /> */
-        public T GetServiceProxy<T>(string name, bool sticky, long timeout) where T : class
-        {
-            return _services.GetServiceProxy<T>(name, sticky, timeout);
-        }
-
-        /** <inheritDoc /> */
         public dynamic GetDynamicServiceProxy(string name)
         {
             return _services.GetDynamicServiceProxy(name);
@@ -209,12 +203,6 @@ namespace Apache.Ignite.Core.Tests.Services
         public dynamic GetDynamicServiceProxy(string name, bool sticky)
         {
             return _services.GetDynamicServiceProxy(name, sticky);
-        }
-
-        /** <inheritDoc /> */
-        public dynamic GetDynamicServiceProxy(string name, bool sticky, long timeout)
-        {
-            return _services.GetDynamicServiceProxy(name, sticky, timeout);
         }
 
         /** <inheritDoc /> */
