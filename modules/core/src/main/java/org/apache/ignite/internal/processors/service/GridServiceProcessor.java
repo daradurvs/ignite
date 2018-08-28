@@ -601,58 +601,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 Collection<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
                 for (ServiceConfiguration cfg : cfgsCp) {
-                    GridServiceDeploymentFuture old = null;
-
-                    for (GridServiceDeploymentFuture fut : depFuts.values()) {
-                        if (fut.configuration().getName().equals(cfg.getName())) {
-                            old = fut;
-
-                            break;
-                        }
-                    }
-
-                    ServiceConfiguration oldDifCfg = null;
-
-                    if (old != null) {
-                        if (!old.configuration().equalsIgnoreNodeFilter(cfg))
-                            oldDifCfg = old.configuration();
-                        else {
-                            res.add(old, false);
-
-                            continue;
-                        }
-                    }
-
-                    if (oldDifCfg == null) {
-                        IgniteUuid srvcId = lookupId(cfg.getName());
-
-                        if (srvcId != null) {
-                            GridServiceDeployment assign = srvcsDeps.get(srvcId);
-
-                            if (assign != null && !assign.configuration().equalsIgnoreNodeFilter(cfg))
-                                oldDifCfg = assign.configuration();
-                        }
-                    }
-
                     IgniteUuid srvcId = IgniteUuid.randomUuid();
 
                     GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, srvcId);
 
-                    if (oldDifCfg != null) {
-                        res.add(fut, false);
+                    res.add(fut, true);
 
-                        fut.onDone(new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                            "different configuration) [deployed=" + oldDifCfg + ", new=" + cfg + ']'));
-                    }
-                    else {
-                        res.add(fut, true);
+                    DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
 
-                        DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
+                    reqs.add(req);
 
-                        reqs.add(req);
-
-                        depFuts.put(srvcId, fut);
-                    }
+                    depFuts.put(srvcId, fut);
                 }
 
                 if (!reqs.isEmpty()) {
