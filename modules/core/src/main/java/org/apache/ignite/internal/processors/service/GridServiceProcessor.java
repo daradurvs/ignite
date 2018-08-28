@@ -1625,14 +1625,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param errors Deployment errors container to fill in.
      */
     private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> top, Map<IgniteUuid, Collection<Throwable>> errors) {
-        Integer expNum = top.get(ctx.localNodeId());
+        Integer expCnt = top.get(ctx.localNodeId());
 
         boolean needDeploy = false;
 
-        if (expNum != null && expNum > 0) {
+        if (expCnt != null && expCnt > 0) {
             Collection<ServiceContextImpl> ctxs = locSvcs.get(id);
 
-            needDeploy = (ctxs == null) || (ctxs.size() != expNum);
+            needDeploy = (ctxs == null) || (ctxs.size() != expCnt);
         }
 
         if (needDeploy) {
@@ -1753,14 +1753,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     srvcErrors.addAll(errors);
                 }
 
-                Integer expNum = topSnap.get(ctx.localNodeId());
+                Integer expCnt = topSnap.get(ctx.localNodeId());
 
-                if (expNum == null || expNum == 0)
+                if (expCnt == null || expCnt == 0)
                     undeploy(srvcId);
                 else {
                     Collection ctxs = locSvcs.get(srvcId);
 
-                    if (ctxs != null && expNum < ctxs.size()) { // Undeploy exceed instances
+                    if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
 
                         GridServiceDeployment srvcDep = srvcsDeps.get(srvcId);
 
@@ -1972,14 +1972,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Unmodifiable map of current services deployments.
+     * @return Services deployments.
      */
     protected Map<IgniteUuid, GridServiceDeployment> deployments() {
         return srvcsDeps;
     }
 
     /**
-     * @return Unmodifiable map of current services topologies snapsots.
+     * @return Services topologies snapsots.
      */
     protected Map<IgniteUuid, HashMap<UUID, Integer>> servicesTopologies() {
         return srvcsTops;

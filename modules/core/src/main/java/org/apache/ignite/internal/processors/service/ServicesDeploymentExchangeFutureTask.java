@@ -111,17 +111,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
      */
-    public ServicesDeploymentExchangeFutureTask(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer,
+    public ServicesDeploymentExchangeFutureTask(GridKernalContext ctx, DiscoveryEvent evt,
+        AffinityTopologyVersion evtTopVer,
         ServicesDeploymentExchangeId exchId) {
         this.evt = evt;
         this.evtTopVer = evtTopVer;
         this.exchId = exchId;
-    }
-
-    /**
-     * @param ctx Kernal context.
-     */
-    private void init0(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
         this.srvcsDeps = ctx.service().deployments();
@@ -129,13 +124,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void init(GridKernalContext ctx) throws IgniteCheckedException {
+    @Override public void init() throws IgniteCheckedException {
         if (isDone())
             return;
 
         try {
-            init0(ctx);
-
             if (log.isDebugEnabled()) {
                 log.debug("Started services exchange future init: [exchId=" + exchangeId() +
                     ", locId=" + ctx.localNodeId() +
@@ -262,7 +255,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                 if (log.isDebugEnabled()) {
                     log.debug("Calculated service assignments" +
-                        ", srvcId=" + oldSrvcDep +
+                        ", srvcId=" + srvcId +
                         ", top=" + srvcTop);
                 }
 
@@ -272,15 +265,22 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 srvcsToUndeploy.add(srvcId);
         }
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
+        if (srvcsToDeploy.isEmpty() && srvcsToUndeploy.isEmpty()) {
+            ServicesFullMapMessage msg = createFullMapMessageUsingServicesTopology();
 
-        if (!srvcsToDeploy.isEmpty())
-            msg.servicesToDeploy(srvcsToDeploy);
+            sendCustomEvent(msg);
+        }
+        else {
+            ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
 
-        if (!srvcsToUndeploy.isEmpty())
-            msg.servicesToUndeploy(srvcsToUndeploy);
+            if (!srvcsToDeploy.isEmpty())
+                msg.servicesToDeploy(srvcsToDeploy);
 
-        sendCustomEvent(msg);
+            if (!srvcsToUndeploy.isEmpty())
+                msg.servicesToUndeploy(srvcsToUndeploy);
+
+            sendCustomEvent(msg);
+        }
     }
 
     /**
@@ -312,121 +312,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private void initFullReassignment(AffinityTopologyVersion topVer) {
-        ServicesAssignmentsRequestMessage msg = createReassignmentsRequest(topVer);
-
-        sendCustomEvent(msg);
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
-
-        synchronized (mux) {
-            if (remaining.remove(snd)) {
-                singleMapMsgs.put(snd, msg);
-
-                if (remaining.isEmpty())
-                    onAllReceived();
-            }
-            else
-                log.warning("Unexpected service assignments message received, msg=" + msg);
-        }
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
-        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
-
-        complete(null, false);
-    }
-
-    /**
-     * Creates full assignments message and send it across over discovery.
-     */
-    private void onAllReceived() {
-        ServicesFullMapMessage msg = createFullMapMessage();
-
-        sendCustomEvent(msg);
-    }
-
-    /**
-     * Processes single map messages to build full map message.
-     *
-     * @return Services full map message.
-     */
-    private ServicesFullMapMessage createFullMapMessage() {
-        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
-
-        singleMapMsgs.forEach((nodeId, msg) -> {
-            msg.results().forEach((srvcId, res) -> {
-                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(srvcId, r -> new HashMap<>());
-
-                int num = res.count();
-
-                if (num != 0) {
-                    Map<UUID, Integer> expSrvcTop = expDeps.get(srvcId);
-
-                    if (expSrvcTop != null) {
-                        Integer expNum = expSrvcTop.get(nodeId);
-
-                        if (expNum == null)
-                            num = 0;
-                        else if (expNum < num)
-                            num = expNum;
-                    }
-                }
-
-                ServiceSingleDeploymentsResults singleDepRes = new ServiceSingleDeploymentsResults(num);
-
-                if (!res.errors().isEmpty())
-                    singleDepRes.errors(res.errors());
-
-                depResults.put(nodeId, singleDepRes);
-            });
-        });
-
-        depErrors.forEach((id, err) -> {
-            byte[] arr = null;
-
-            try {
-                arr = U.marshal(ctx, err);
-            }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to marshal reassignments error.", e);
-            }
-
-            if (arr != null) {
-                Collection<byte[]> srvcErrors = new ArrayList<>(1);
-
-                srvcErrors.add(arr);
-
-                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
-
-                ServiceSingleDeploymentsResults singleDepRes = depResults.computeIfAbsent(
-                    ctx.localNodeId(), r -> new ServiceSingleDeploymentsResults(0));
-
-                if (singleDepRes.errors().isEmpty())
-                    singleDepRes.errors(srvcErrors);
-                else
-                    singleDepRes.errors().addAll(srvcErrors);
-            }
-        });
-
-        final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
-
-        results.forEach((srvcId, dep) -> {
-            ServiceFullDeploymentsResults res = new ServiceFullDeploymentsResults(srvcId, dep);
-
-            fullResults.add(res);
-        });
-
-        return new ServicesFullMapMessage(exchId, fullResults);
-    }
-
-    /**
-     * @param topVer Topology version.
-     */
-    private ServicesAssignmentsRequestMessage createReassignmentsRequest(AffinityTopologyVersion topVer) {
         final Map<IgniteUuid, Map<UUID, Integer>> fullTops = new HashMap<>();
 
         final Set<IgniteUuid> servicesToUndeploy = new HashSet<>();
@@ -476,7 +361,143 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (!servicesToUndeploy.isEmpty())
             msg.servicesToUndeploy(servicesToUndeploy);
 
-        return msg;
+        sendCustomEvent(msg);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
+        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+
+        synchronized (mux) {
+            if (remaining.remove(snd)) {
+                singleMapMsgs.put(snd, msg);
+
+                if (remaining.isEmpty())
+                    onAllReceived();
+            }
+            else
+                log.warning("Unexpected service assignments message received, msg=" + msg);
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
+        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+
+        complete(null, false);
+    }
+
+    /**
+     * Creates full assignments message and send it across over discovery.
+     */
+    private void onAllReceived() {
+        ServicesFullMapMessage msg = createFullMapMessageUsingSingleDeploymentsResults();
+
+        sendCustomEvent(msg);
+    }
+
+    /**
+     * Processes single map messages to build full map message.
+     *
+     * @return Services full map message.
+     */
+    private ServicesFullMapMessage createFullMapMessageUsingSingleDeploymentsResults() {
+        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
+
+        singleMapMsgs.forEach((nodeId, msg) -> {
+            msg.results().forEach((srvcId, res) -> {
+                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(srvcId, r -> new HashMap<>());
+
+                int cnt = res.count();
+
+                if (cnt != 0) {
+                    Map<UUID, Integer> expSrvcTop = expDeps.get(srvcId);
+
+                    if (expSrvcTop != null) {
+                        Integer expCnt = expSrvcTop.get(nodeId);
+
+                        if (expCnt == null)
+                            cnt = 0;
+                        else if (expCnt < cnt)
+                            cnt = expCnt;
+                    }
+                }
+
+                ServiceSingleDeploymentsResults singleDepRes = new ServiceSingleDeploymentsResults(cnt);
+
+                if (!res.errors().isEmpty())
+                    singleDepRes.errors(res.errors());
+
+                depResults.put(nodeId, singleDepRes);
+            });
+        });
+
+        return createFullMapMessage0(results);
+    }
+
+    /**
+     * Processes services topology messages to build full map message.
+     *
+     * @return Services full map message.
+     */
+    private ServicesFullMapMessage createFullMapMessageUsingServicesTopology() {
+        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
+
+        srvcsTops.forEach((srvcId, top) -> {
+            Map<UUID, ServiceSingleDeploymentsResults> depResults = new HashMap<>();
+
+            top.forEach((nodeId, cnt) -> {
+                depResults.put(nodeId, new ServiceSingleDeploymentsResults(cnt));
+            });
+
+            results.put(srvcId, depResults);
+        });
+
+        return createFullMapMessage0(results);
+    }
+
+    /**
+     * @param results Services per node single deployments results.
+     * @return Services full map message.
+     */
+    private ServicesFullMapMessage createFullMapMessage0(
+        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
+        depErrors.forEach((id, err) -> {
+            byte[] arr = null;
+
+            try {
+                arr = U.marshal(ctx, err);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to marshal reassignments error.", e);
+            }
+
+            if (arr != null) {
+                Collection<byte[]> srvcErrors = new ArrayList<>(1);
+
+                srvcErrors.add(arr);
+
+                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
+
+                ServiceSingleDeploymentsResults singleDepRes = depResults.computeIfAbsent(
+                    ctx.localNodeId(), r -> new ServiceSingleDeploymentsResults(0));
+
+                if (singleDepRes.errors().isEmpty())
+                    singleDepRes.errors(srvcErrors);
+                else
+                    singleDepRes.errors().addAll(srvcErrors);
+            }
+        });
+
+        final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
+
+        results.forEach((srvcId, dep) -> {
+            ServiceFullDeploymentsResults res = new ServiceFullDeploymentsResults(srvcId, dep);
+
+            fullResults.add(res);
+        });
+
+        return new ServicesFullMapMessage(exchId, fullResults);
     }
 
     /**

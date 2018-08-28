@@ -101,7 +101,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
 
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(evt, topVer, exchId);
+        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, evt, topVer, exchId);
 
         if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
             onNodeLeft(evt.eventNode().id());
@@ -260,7 +260,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 task = tasksQueue.take();
 
                 try {
-                    task.init(ctx);
+                    task.init();
                 }
                 catch (Exception e) {
                     log.error("Error occurred during init service exchange future.", e);
