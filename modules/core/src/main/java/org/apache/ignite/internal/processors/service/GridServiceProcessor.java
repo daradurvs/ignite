@@ -1037,7 +1037,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 Map<UUID, Integer> cnts = new HashMap<>();
 
-                if (affKey != null) {
+                if (affKey != null && cacheName != null) {
                     ClusterNode n = ctx.affinity().mapKeyToNode(cacheName, affKey, topVer);
 
                     if (n != null) {
@@ -1090,9 +1090,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 if (remainder > 0) {
                                     List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
 
-                                    // Randomize.
-                                    Collections.shuffle(entries);
-
                                     for (Map.Entry<UUID, Integer> e : entries) {
                                         // Assign only the ones that have not been reused from previous assignments.
                                         if (!used.contains(e.getKey())) {
@@ -1108,9 +1105,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
                             else {
                                 List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
-
-                                // Randomize.
-                                Collections.shuffle(entries);
 
                                 for (Map.Entry<UUID, Integer> e : entries) {
                                     e.setValue(e.getValue() + 1);
