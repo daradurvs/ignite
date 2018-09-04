@@ -206,8 +206,11 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** {@inheritDoc} */
     @Override public synchronized void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks) {
         tasks.descendingIterator().forEachRemaining(task -> {
-            if (!exchWorker.tasksQueue.contains(task))
+            if (!exchWorker.tasksQueue.contains(task)) {
                 exchWorker.tasksQueue.addFirst(task);
+
+                this.tasks.put(task.exchangeId(), task);
+            }
         });
     }
 

@@ -79,9 +79,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** Deployment errors. */
     @GridToStringInclude
-//    private final Map<IgniteUuid, Throwable> depErrors = new HashMap<>();
-
-    private final Map<IgniteUuid, Collection<Throwable>> depErrors = new HashMap();
+    private final Map<IgniteUuid, Collection<Throwable>> depErrors = new HashMap<>();
 
     /** Remaining nodes to received single node assignments message. */
     @GridToStringInclude
@@ -193,6 +191,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     complete(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg), true);
             }
             else {
+                // TODO
+                if (evt.type() == EVT_NODE_JOINED)
+                    remaining.remove(evt.eventNode().id());
+
                 if (!srvcsDeps.isEmpty()) {
                     switch (evt.type()) {
                         case EVT_NODE_JOINED:
