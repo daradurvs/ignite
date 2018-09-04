@@ -17,7 +17,9 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteCheckedException;
@@ -101,7 +103,10 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
 
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, evt, topVer, exchId);
+//        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, evt, topVer, exchId);
+        ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+
+        task.event(evt, topVer);
 
         if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
             onNodeLeft(evt.eventNode().id());
@@ -112,63 +117,72 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-        ServicesDeploymentExchangeTask task = exchWorker.task;
+        ServicesDeploymentExchangeTask task = exchangeTask(msg.exchangeId());
 
-        if (task != null && task.exchangeId().equals(msg.exchangeId()))
-            task.onReceiveSingleMapMessage(snd, msg);
+        assert task != null;
+
+        task.onReceiveSingleMapMessage(snd, msg);
     }
 
     /** {@inheritDoc} */
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
-        ServicesDeploymentExchangeTask fut;
+        ServicesDeploymentExchangeTask task = exchangeTask(msg.exchangeId());
 
-        if (!isStopped)
-            fut = exchWorker.task;
-        else
-            fut = exchWorker.tasksQueue.peek();
+        assert task != null;
 
-        if (fut != null) {
-            if (!fut.exchangeId().equals(msg.exchangeId())) {
-                log.warning("Unexpected services full assignments message received" +
-                    ", locId=" + ctx.localNodeId() +
-                    ", msg=" + msg);
+        task.onReceiveFullMapMessage(snd, msg);
 
-                // The section to handle a critical situation when TcpDiscoverySpi breaches safeguards.
-                if (isStopped) {
-                    boolean found = false;
-
-                    for (ServicesDeploymentExchangeTask f : exchWorker.tasksQueue) {
-                        if (f.exchangeId().equals(msg.exchangeId())) {
-                            found = true;
-
-                            break;
-                        }
-                    }
-
-                    if (found) {
-                        do {
-                            fut = exchWorker.tasksQueue.poll();
-
-                            if (fut != null)
-                                fut.onReceiveFullMapMessage(snd, msg);
-                        }
-                        while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
-                    }
-                }
-            }
-            else {
-                fut.onReceiveFullMapMessage(snd, msg);
-
-                if (isStopped)
-                    exchWorker.tasksQueue.poll();
-            }
-        }
+        tasks.remove(msg.exchangeId());
+//
+//        ServicesDeploymentExchangeTask fut;
+//
+//        if (!isStopped)
+//            fut = exchWorker.task;
+//        else
+//            fut = exchWorker.tasksQueue.peek();
+//
+//        if (fut != null) {
+//            if (!fut.exchangeId().equals(msg.exchangeId())) {
+//                log.warning("Unexpected services full assignments message received" +
+//                    ", locId=" + ctx.localNodeId() +
+//                    ", msg=" + msg);
+//
+//                // The section to handle a critical situation when TcpDiscoverySpi breaches safeguards.
+//                if (isStopped) {
+//                    boolean found = false;
+//
+//                    for (ServicesDeploymentExchangeTask f : exchWorker.tasksQueue) {
+//                        if (f.exchangeId().equals(msg.exchangeId())) {
+//                            found = true;
+//
+//                            break;
+//                        }
+//                    }
+//
+//                    if (found) {
+//                        do {
+//                            fut = exchWorker.tasksQueue.poll();
+//
+//                            if (fut != null)
+//                                fut.onReceiveFullMapMessage(snd, msg);
+//                        }
+//                        while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
+//                    }
+//                }
+//            }
+//            else {
+//                fut.onReceiveFullMapMessage(snd, msg);
+//
+//                if (isStopped)
+//                    exchWorker.tasksQueue.poll();
+//            }
+//        }
     }
 
     /** {@inheritDoc} */
     @Override public void onNodeLeft(UUID nodeId) {
-        if (isStopped)
-            return;
+//        if (isStopped)
+//            return;
 
         if (exchWorker.task != null)
             exchWorker.task.onNodeLeft(nodeId);
@@ -200,6 +214,16 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** {@inheritDoc} */
     @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
         return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
+    }
+
+    private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
+
+    public ServicesDeploymentExchangeTask exchangeTask(ServicesDeploymentExchangeId exchId) {
+        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, exchId);
+
+        ServicesDeploymentExchangeTask old = tasks.putIfAbsent(exchId, task);
+
+        return old != null ? old : task;
     }
 
     /**

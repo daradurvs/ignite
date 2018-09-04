@@ -73,6 +73,7 @@ import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
+import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
@@ -157,6 +158,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
+    private final GridFutureAdapter<?> dataReceivedfut = new GridFutureAdapter<>();
+
     /**
      * @param ctx Kernal context.
      */
@@ -169,6 +172,26 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         String servicesCompatibilityMode = getString(IGNITE_SERVICES_COMPATIBILITY_MODE);
 
         srvcCompatibilitySysProp = servicesCompatibilityMode == null ? null : Boolean.valueOf(servicesCompatibilityMode);
+
+//        if (isLocalNodeCoordinator()) {
+//            exchMgr.startProcessing();
+//
+//            dataReceivedfut.onDone();
+//        }
+//        else {
+            dataReceivedfut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
+                @Override public void apply(IgniteInternalFuture<?> fut) {
+                    try {
+                        fut.get();
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error(e.getMessage(), e);
+                    }
+
+                    exchMgr.startProcessing();
+                }
+            });
+//        }
 
         ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
 
@@ -222,6 +245,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
         });
+
+        if (isLocalNodeCoordinator())
+            dataReceivedfut.onDone();
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
@@ -322,16 +348,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
-        if (data.commonData() == null)
-            return;
+        if (data.commonData() == null) {
 
-        InitialServicesData initData = (InitialServicesData)data.commonData();
+            InitialServicesData initData = (InitialServicesData)data.commonData();
 
-        initData.srvcsDeps.forEach(srvcsDeps::putIfAbsent);
+            initData.srvcsDeps.forEach(srvcsDeps::putIfAbsent);
 
-        initData.srvcsTops.forEach(srvcsTops::putIfAbsent);
+            initData.srvcsTops.forEach(srvcsTops::putIfAbsent);
 
-        exchMgr.insertFirst(initData.exchQueue);
+            exchMgr.insertFirst(initData.exchQueue);
+        }
+
+        dataReceivedfut.onDone();
     }
 
     /** {@inheritDoc} */
@@ -1356,10 +1384,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 final boolean crdChanged = crd != curCrd;
 
                 if (crdChanged && !ctx.clientNode()) {
-                    if (crd)
-                        exchMgr.stopProcessing();
-                    else
-                        exchMgr.startProcessing();
+//                    if (crd)
+//                        exchMgr.stopProcessing();
+//                    else
+//                        exchMgr.startProcessing();
 
                     crd = curCrd;
                 }
@@ -1479,7 +1507,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @param id Service id.
      */
-    private void undeploy(IgniteUuid id) {
+    protected void undeploy(IgniteUuid id) {
         Collection<ServiceContextImpl> ctxs;
 
         synchronized (locSvcs) {
@@ -1618,7 +1646,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param top Service topology.
      * @param errors Deployment errors container to fill in.
      */
-    private void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> top, Map<IgniteUuid, Collection<Throwable>> errors) {
+    protected void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> top,
+        Map<IgniteUuid, Collection<Throwable>> errors) {
         Integer expCnt = top.get(ctx.localNodeId());
 
         boolean needDeploy = false;
@@ -1648,7 +1677,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param errors Deployment errors.
      * @throws IgniteCheckedException In case of an error.
      */
-    private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
+    protected void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) throws IgniteCheckedException {
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 

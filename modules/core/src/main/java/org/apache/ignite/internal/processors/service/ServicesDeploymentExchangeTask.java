@@ -49,6 +49,14 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
     public DiscoveryEvent event();
 
     /**
+     * Adds cause discovery event.
+     *
+     * @param evt Cause discovery event.
+     * @param evtTopVer Event's topology version.
+     */
+    public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer);
+
+    /**
      * @return Cause of exchange topology version.
      */
     public AffinityTopologyVersion topologyVersion();
