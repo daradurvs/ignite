@@ -184,6 +184,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 //        if (isStopped)
 //            return;
 
+        for (ServicesDeploymentExchangeTask task : tasks.values())
+            task.onNodeLeft(nodeId);
+
         if (exchWorker.task != null)
             exchWorker.task.onNodeLeft(nodeId);
     }

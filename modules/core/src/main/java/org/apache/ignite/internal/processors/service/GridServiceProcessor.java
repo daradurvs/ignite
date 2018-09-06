@@ -1904,7 +1904,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return {@code true} if local node is clusters coordinator, otherwise {@code false}.
      */
-    private boolean isLocalNodeCoordinator() {
+    protected boolean isLocalNodeCoordinator() {
         DiscoverySpi spi = ctx.discovery().getInjectedDiscoverySpi();
 
         if (spi instanceof TcpDiscoverySpi)
@@ -1935,7 +1935,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Coordinator node or {@code null} if there are no coordinator.
      */
-    @Nullable private ClusterNode coordinator() {
+    @Nullable protected ClusterNode coordinator() {
         try {
             return U.oldest(ctx.discovery().aliveServerNodes(), null);
         }

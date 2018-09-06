@@ -110,6 +110,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Logger. */
     private IgniteLogger log;
 
+    /** If local node coordinator. */
+    private volatile boolean crd;
+
+    private volatile UUID crdNode;
+
     /**
      * Empty constructor for marshalling purposes.
      */
@@ -165,6 +170,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         try {
             U.await(evtLatch);
 
+            crd = ctx.service().isLocalNodeCoordinator();
+            crdNode = ctx.service().coordinator().id();
+
             if (log.isDebugEnabled()) {
                 log.debug("Started services exchange future init: [exchId=" + exchangeId() +
                     ", locId=" + ctx.localNodeId() +
@@ -196,20 +204,20 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 //                    remaining.remove(evt.eventNode().id());
 //
 //                if (!srvcsDeps.isEmpty()) {
-                    switch (evt.type()) {
-                        case EVT_NODE_JOINED:
-                        case EVT_NODE_LEFT:
-                        case EVT_NODE_FAILED:
+                switch (evt.type()) {
+                    case EVT_NODE_JOINED:
+                    case EVT_NODE_LEFT:
+                    case EVT_NODE_FAILED:
 
-                            initFullReassignment(evtTopVer);
+                        initFullReassignment(evtTopVer);
 
-                            break;
+                        break;
 
-                        default:
-                            complete(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt), true);
+                    default:
+                        complete(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt), true);
 
-                            break;
-                    }
+                        break;
+                }
 //                }
 //                else
 //                    complete(null, false);
@@ -614,14 +622,36 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param nodeId Node id.
      */
     private void onNodeLeft0(UUID nodeId) {
-        if (isDone() || remaining.isEmpty())
+        if (isDone())
             return;
-
         synchronized (mux) {
-            remaining.remove(nodeId);
 
-            if (remaining.isEmpty())
-                onAllReceived();
+//            final boolean curCrd = ctx.service().isLocalNodeCoordinator();
+//
+//            final boolean crdChanged = crd != curCrd;
+//            ClusterNode q = ctx.discovery().node(nodeId);
+            final boolean crdChanged = nodeId.equals(crdNode);
+
+            if (crdChanged) {
+                try {
+//                    crd = curCrd;
+                    crdNode = nodeId;
+
+                    remaining.remove(nodeId);
+
+                    ctx.service().createAndSendSingleMapMessage(exchId, depErrors);
+                }
+                catch (IgniteCheckedException e) {
+                    e.printStackTrace();
+                }
+            }
+            else if (ctx.localNodeId().equals(crdNode)) {
+
+                remaining.remove(nodeId);
+
+                if (remaining.isEmpty())
+                    onAllReceived();
+            }
         }
     }
 
