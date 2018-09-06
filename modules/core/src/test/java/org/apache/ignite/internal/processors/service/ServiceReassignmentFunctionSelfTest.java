@@ -28,6 +28,7 @@ import org.apache.ignite.internal.managers.communication.GridIoManager;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.testframework.GridTestNode;
 import org.apache.ignite.testframework.config.GridTestProperties;
@@ -46,7 +47,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
- *
+ * Tests of determined assignments function of {@link GridServiceProcessor}.
  */
 @RunWith(Parameterized.class)
 public class ServiceReassignmentFunctionSelfTest {
@@ -91,7 +92,7 @@ public class ServiceReassignmentFunctionSelfTest {
     }
 
     /**
-     * Mocks GridServiceProcessor to test method {@link GridServiceProcessor#reassign(ServiceConfiguration,
+     * Mocks GridServiceProcessor to test method {@link GridServiceProcessor#reassign(IgniteUuid, ServiceConfiguration,
      * AffinityTopologyVersion)}.
      */
     private GridServiceProcessor mockServiceProcessor() {
@@ -122,7 +123,7 @@ public class ServiceReassignmentFunctionSelfTest {
         cfg.setName(TEST_SERVICE_NAME);
         cfg.setTotalCount(1);
 
-        runTestReassignFunction(cfg);
+        runTestReassignFunction(IgniteUuid.randomUuid(), cfg);
     }
 
     /**
@@ -135,7 +136,7 @@ public class ServiceReassignmentFunctionSelfTest {
         cfg.setName(TEST_SERVICE_NAME);
         cfg.setMaxPerNodeCount(1);
 
-        runTestReassignFunction(cfg);
+        runTestReassignFunction(IgniteUuid.randomUuid(), cfg);
     }
 
     /**
@@ -149,22 +150,22 @@ public class ServiceReassignmentFunctionSelfTest {
         cfg.setMaxPerNodeCount(3);
         cfg.setTotalCount(10);
 
-        runTestReassignFunction(cfg);
+        runTestReassignFunction(IgniteUuid.randomUuid(), cfg);
     }
 
     /**
      * @param cfg Service configuration to test.
      * @throws Exception In case of an error.
      */
-    public void runTestReassignFunction(ServiceConfiguration cfg) throws Exception {
+    public void runTestReassignFunction(IgniteUuid srvcId, ServiceConfiguration cfg) throws Exception {
         GridServiceProcessor proc0 = processors.get(0);
 
-        Map<UUID, Integer> sut = proc0.reassign(cfg, null);
+        Map<UUID, Integer> sut = proc0.reassign(srvcId, cfg, null);
 
         for (int idx = 1; idx < nodes.size(); idx++) {
             GridServiceProcessor proc = processors.get(idx);
 
-            Map<UUID, Integer> assign = proc.reassign(cfg, null);
+            Map<UUID, Integer> assign = proc.reassign(srvcId, cfg, null);
 
             assertEquals(sut, assign);
         }

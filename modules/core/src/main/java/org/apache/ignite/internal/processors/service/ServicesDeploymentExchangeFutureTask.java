@@ -283,7 +283,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         if (oldSrvcId != null)
                             srvcId = oldSrvcId;
 
-                        srvcTop = ctx.service().reassign(cfg, topVer);
+                        srvcTop = ctx.service().reassign(srvcId, cfg, topVer);
                     }
                     catch (IgniteCheckedException e) {
                         th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
@@ -364,7 +364,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             Throwable th = null;
 
             try {
-                top = ctx.service().reassign(cfg, topVer);
+                top = ctx.service().reassign(srvcId, cfg, topVer);
             }
             catch (Throwable e) {
                 log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);

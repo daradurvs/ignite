@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -1024,7 +1025,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param topVer Topology version.
      * @throws IgniteCheckedException If failed.
      */
-    public Map<UUID, Integer> reassign(ServiceConfiguration cfg,
+    public Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         Object nodeFilter = cfg.getNodeFilter();
 
@@ -1095,6 +1096,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         if (remainder > 0) {
                             int cnt = perNodeCnt + 1;
 
+                            Random rnd = new Random(srvcId.localId());
+
                             if (oldDep != null) {
                                 Collection<UUID> used = new HashSet<>();
 
@@ -1118,6 +1121,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                                 if (remainder > 0) {
                                     List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
 
+                                    // Randomize.
+                                    Collections.shuffle(entries, rnd);
+
                                     for (Map.Entry<UUID, Integer> e : entries) {
                                         // Assign only the ones that have not been reused from previous assignments.
                                         if (!used.contains(e.getKey())) {
@@ -1133,6 +1139,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                             }
                             else {
                                 List<Map.Entry<UUID, Integer>> entries = new ArrayList<>(cnts.entrySet());
+
+                                // Randomize.
+                                Collections.shuffle(entries, rnd);
 
                                 for (Map.Entry<UUID, Integer> e : entries) {
                                     e.setValue(e.getValue() + 1);
