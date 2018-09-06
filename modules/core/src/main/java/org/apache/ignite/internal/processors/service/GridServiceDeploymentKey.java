@@ -22,7 +22,10 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 
 /**
  * Service configuration key.
+ *
+ * @deprecated Because of services use messages for deployment communication instead of the utility cache.
  */
+@Deprecated
 public class GridServiceDeploymentKey extends GridCacheUtilityKey<GridServiceDeploymentKey> {
     /** */
     private static final long serialVersionUID = 0L;
