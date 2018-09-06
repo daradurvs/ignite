@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.DataRegionConfiguration;
@@ -27,6 +28,7 @@ import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.configuration.WALMode;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.internal.util.typedef.G;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
@@ -218,7 +220,12 @@ public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
         else {
             GridTestUtils.waitForCondition(() -> {
                 try {
-                    return ignite.context().service().serviceTopology(SERVICE_NAME, 500) != null;
+                    for (Ignite i : G.allGrids()) {
+                        if (ignite.context().service().serviceTopology(SERVICE_NAME, 500) == null)
+                            return false;
+                    }
+
+                    return true;
                 }
                 catch (IgniteCheckedException e) {
                     log.error(e.getMessage(), e);

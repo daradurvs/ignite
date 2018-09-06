@@ -180,17 +180,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 //            dataReceivedfut.onDone();
 //        }
 //        else {
-            dataReceivedfut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
-                @Override public void apply(IgniteInternalFuture<?> fut) {
-                    try {
-                        fut.get();
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error(e.getMessage(), e);
-                    }
-
-                    exchMgr.startProcessing();
+            dataReceivedfut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+                try {
+                    fut.get();
                 }
+                catch (IgniteCheckedException e) {
+                    log.error(e.getMessage(), e);
+                }
+
+                exchMgr.startProcessing();
             });
 //        }
 
@@ -1470,10 +1468,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
                     case EVT_NODE_JOINED:
-                        if (!srvcsDeps.isEmpty())
+//                        if (!srvcsDeps.isEmpty())
                             exchMgr.processEvent(evt, discoCache.version());
 
                         break;
+
 
                     default:
                         if (log.isDebugEnabled())

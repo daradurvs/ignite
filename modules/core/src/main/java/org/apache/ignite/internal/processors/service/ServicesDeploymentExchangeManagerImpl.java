@@ -308,6 +308,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                         break;
                     }
                     catch (IgniteCheckedException e) {
+                        if (isCancelled)
+                            return;
+
                         log.error("Error occurred during waiting for exchange future completion " +
                             "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
 
@@ -317,8 +320,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                             break;
                         }
 
-                        if (isCancelled)
-                            return;
 
                         for (UUID uuid : task.remaining()) {
                             if (!ctx.discovery().alive(uuid))

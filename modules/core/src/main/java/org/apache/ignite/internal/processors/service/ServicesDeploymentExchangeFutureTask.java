@@ -192,10 +192,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
             else {
                 // TODO
-                if (evt.type() == EVT_NODE_JOINED)
-                    remaining.remove(evt.eventNode().id());
-
-                if (!srvcsDeps.isEmpty()) {
+//                if (evt.type() == EVT_NODE_JOINED)
+//                    remaining.remove(evt.eventNode().id());
+//
+//                if (!srvcsDeps.isEmpty()) {
                     switch (evt.type()) {
                         case EVT_NODE_JOINED:
                         case EVT_NODE_LEFT:
@@ -210,9 +210,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                             break;
                     }
-                }
-                else
-                    complete(null, false);
+//                }
+//                else
+//                    complete(null, false);
             }
 
             if (log.isDebugEnabled()) {
