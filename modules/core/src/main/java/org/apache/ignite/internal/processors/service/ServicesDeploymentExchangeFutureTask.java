@@ -88,15 +88,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Mutex. */
     private final Object mux = new Object();
 
+    /** Exchange id. */
+    @GridToStringInclude
+    private ServicesDeploymentExchangeId exchId;
+
     /** Discovery event. */
     @GridToStringInclude
     private DiscoveryEvent evt;
 
     /** Cause event topology version. */
+    @GridToStringInclude
     private AffinityTopologyVersion evtTopVer;
-
-    /** Exchange id. */
-    private ServicesDeploymentExchangeId exchId;
 
     /** Kernal context. */
     private GridKernalContext ctx;
@@ -110,10 +112,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Logger. */
     private IgniteLogger log;
 
-    /** If local node coordinator. */
-    private volatile boolean crd;
-
-    private volatile UUID crdNode;
+    /** Coordinator node id. */
+    private volatile UUID crdId;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -122,31 +122,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * @param evt Discovery event.
-     * @param evtTopVer Topology version.
-     */
-    public ServicesDeploymentExchangeFutureTask(GridKernalContext ctx, DiscoveryEvent evt,
-        AffinityTopologyVersion evtTopVer,
-        ServicesDeploymentExchangeId exchId) {
-        this.evt = evt;
-        this.evtTopVer = evtTopVer;
-        this.exchId = exchId;
-        this.ctx = ctx;
-        this.log = ctx.log(getClass());
-        this.srvcsDeps = ctx.service().deployments();
-        this.srvcsTops = ctx.service().servicesTopologies();
-    }
-
-    /**
-     * @param ctx Kernal context.
      * @param exchId Service deployment exchange id.
      */
-    public ServicesDeploymentExchangeFutureTask(GridKernalContext ctx, ServicesDeploymentExchangeId exchId) {
+    public ServicesDeploymentExchangeFutureTask(ServicesDeploymentExchangeId exchId) {
         this.exchId = exchId;
-        this.ctx = ctx;
-        this.log = ctx.log(getClass());
-        this.srvcsDeps = ctx.service().deployments();
-        this.srvcsTops = ctx.service().servicesTopologies();
+
     }
 
     /** {@inheritDoc} */
@@ -162,16 +142,27 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         evtLatch.countDown();
     }
 
+    /**
+     * @param ctx Kernal context.
+     */
+    private void init0(GridKernalContext ctx) {
+        this.ctx = ctx;
+        this.log = ctx.log(getClass());
+        this.srvcsDeps = ctx.service().deployments();
+        this.srvcsTops = ctx.service().servicesTopologies();
+    }
+
     /** {@inheritDoc} */
-    @Override public void init() throws IgniteCheckedException {
-        if (isDone())
+    @Override public void init(GridKernalContext kCtx) throws IgniteCheckedException {
+        if (isComplete())
             return;
+
+        Exception initEx = null;
 
         try {
             U.await(evtLatch);
 
-            crd = ctx.service().isLocalNodeCoordinator();
-            crdNode = ctx.service().coordinator().id();
+            init0(kCtx);
 
             if (log.isDebugEnabled()) {
                 log.debug("Started services exchange future init: [exchId=" + exchangeId() +
@@ -179,10 +170,16 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     ", evt=" + evt + ']');
             }
 
-            synchronized (mux) {
-                for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
-                    if (ctx.discovery().alive(node))
-                        remaining.add(node.id());
+            ClusterNode crd = ctx.service().coordinator();
+
+            if (crd != null) {
+                crdId = crd.id();
+
+                synchronized (mux) {
+                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
+                        if (ctx.discovery().alive(node))
+                            remaining.add(node.id());
+                    }
                 }
             }
 
@@ -199,11 +196,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     complete(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg), true);
             }
             else {
-                // TODO
-//                if (evt.type() == EVT_NODE_JOINED)
-//                    remaining.remove(evt.eventNode().id());
-//
-//                if (!srvcsDeps.isEmpty()) {
                 switch (evt.type()) {
                     case EVT_NODE_JOINED:
                     case EVT_NODE_LEFT:
@@ -218,24 +210,25 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                         break;
                 }
-//                }
-//                else
-//                    complete(null, false);
             }
 
             if (log.isDebugEnabled()) {
                 log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
                     ", locId=" + ctx.localNodeId() + ']');
             }
-
-            initFut.onDone();
         }
         catch (Exception e) {
             log.error("Error occurred during deployment task initialization, err=" + e.getMessage(), e);
 
-            initFut.onDone(e);
+            initEx = e;
 
             throw new IgniteCheckedException(e);
+        }
+        finally {
+            if (initEx != null)
+                initFut.onDone(initEx);
+            else
+                initFut.onDone();
         }
     }
 
@@ -245,11 +238,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void onServiceChangeRequest(DynamicServicesChangeRequestBatchMessage batch,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
-//        Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
-
-//        Collection<IgniteUuid> srvcsToUndeploy = new ArrayList<>();
-
-//        final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
         for (DynamicServiceChangeRequest req : batch.requests()) {
             IgniteUuid srvcId = req.serviceId();
@@ -411,15 +399,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         });
 
         ctx.service().createAndSendSingleMapMessage(exchId, depErrors);
-//        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
-//
-//        if (!fullTops.isEmpty())
-//            msg.servicesToDeploy(fullTops);
-//
-//        if (!servicesToUndeploy.isEmpty())
-//            msg.servicesToUndeploy(servicesToUndeploy);
-//
-//        sendCustomEvent(msg);
     }
 
     /** {@inheritDoc} */
@@ -622,20 +601,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param nodeId Node id.
      */
     private void onNodeLeft0(UUID nodeId) {
-        if (isDone())
+        if (isComplete())
             return;
-        synchronized (mux) {
 
-//            final boolean curCrd = ctx.service().isLocalNodeCoordinator();
-//
-//            final boolean crdChanged = crd != curCrd;
-//            ClusterNode q = ctx.discovery().node(nodeId);
-            final boolean crdChanged = nodeId.equals(crdNode);
+        synchronized (mux) {
+            final boolean crdChanged = nodeId.equals(crdId);
 
             if (crdChanged) {
                 try {
-//                    crd = curCrd;
-                    crdNode = nodeId;
+                    crdId = nodeId;
 
                     remaining.remove(nodeId);
 
@@ -645,7 +619,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     e.printStackTrace();
                 }
             }
-            else if (ctx.localNodeId().equals(crdNode)) {
+            else if (ctx.localNodeId().equals(crdId)) {
 
                 remaining.remove(nodeId);
 
@@ -692,16 +666,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
+        out.writeObject(exchId);
         out.writeObject(evt);
         out.writeObject(evtTopVer);
-        out.writeObject(exchId);
     }
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        evt = (DiscoveryEvent)in.readObject();
         evtTopVer = (AffinityTopologyVersion)in.readObject();
         exchId = (ServicesDeploymentExchangeId)in.readObject();
+        evt = (DiscoveryEvent)in.readObject();
+
+        if (evt != null)
+            evtLatch.countDown();
     }
 
     /** {@inheritDoc} */

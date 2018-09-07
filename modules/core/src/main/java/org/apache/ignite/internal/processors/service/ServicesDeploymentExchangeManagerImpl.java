@@ -103,7 +103,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
 
-//        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, evt, topVer, exchId);
         ServicesDeploymentExchangeTask task = exchangeTask(exchId);
 
         task.event(evt, topVer);
@@ -225,7 +224,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
 
     public ServicesDeploymentExchangeTask exchangeTask(ServicesDeploymentExchangeId exchId) {
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(ctx, exchId);
+        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(exchId);
 
         ServicesDeploymentExchangeTask old = tasks.putIfAbsent(exchId, task);
 
@@ -290,7 +289,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 task = tasksQueue.take();
 
                 try {
-                    task.init();
+                    task.init(ctx);
                 }
                 catch (Exception e) {
                     log.error("Error occurred during init service exchange future.", e);
@@ -322,7 +321,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                             break;
                         }
-
 
                         for (UUID uuid : task.remaining()) {
                             if (!ctx.discovery().alive(uuid))

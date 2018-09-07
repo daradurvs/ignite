@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.events.DiscoveryEvent;
+import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,9 +33,10 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
     /**
      * Initializes exchange task.
      *
+     * @param kCtx Kernal context.
      * @throws IgniteCheckedException In case of an error.
      */
-    public void init() throws IgniteCheckedException;
+    public void init(GridKernalContext kCtx) throws IgniteCheckedException;
 
     /**
      * Returns services deployment exchange id of the task.
