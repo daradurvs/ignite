@@ -23,7 +23,7 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 /**
  * Service configuration key.
  *
- * @deprecated Because of services use messages for deployment communication instead of the utility cache.
+ * @deprecated Services internals use messages for deployment management instead of the utility cache, since Ignite 2.8.
  */
 @Deprecated
 public class GridServiceDeploymentKey extends GridCacheUtilityKey<GridServiceDeploymentKey> {
