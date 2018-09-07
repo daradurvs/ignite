@@ -148,7 +148,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void init0(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
-        this.srvcsDeps = ctx.service().deployments();
+        this.srvcsDeps = ctx.service().servicesDeployments();
         this.srvcsTops = ctx.service().servicesTopologies();
     }
 
@@ -191,7 +191,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
                 else if (msg instanceof CacheAffinityChangeMessage)
-                    initFullReassignment(evtTopVer);
+                    onCacheAffinityChangeMessage((CacheAffinityChangeMessage)msg);
                 else
                     complete(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg), true);
             }
@@ -321,20 +321,41 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * @param req Cacje state change request.
+     * @param req Cache affinity change request.
+     * @throws IgniteCheckedException In case of an error.
+     */
+    private void onCacheAffinityChangeMessage(CacheAffinityChangeMessage req) throws IgniteCheckedException {
+        if (srvcsDeps.entrySet().stream().noneMatch(e -> e.getValue().configuration().getCacheName() != null)) {
+            complete(null, false);
+
+            return;
+        }
+
+        initFullReassignment(evtTopVer);
+    }
+
+    /**
+     * @param req Cache state change request.
+     * @throws IgniteCheckedException In case of an error.
      */
     private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) throws IgniteCheckedException {
-        Set<String> cacheToStop = new HashSet<>();
+        Set<String> cachesToStop = new HashSet<>();
 
         for (DynamicCacheChangeRequest chReq : req.requests()) {
             if (chReq.stop())
-                cacheToStop.add(chReq.cacheName());
+                cachesToStop.add(chReq.cacheName());
+        }
+
+        if (srvcsDeps.entrySet().stream().noneMatch(e -> cachesToStop.contains(e.getValue().configuration().getCacheName()))) {
+            complete(null, false);
+
+            return;
         }
 
         Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
         srvcsDeps.forEach((id, dep) -> {
-            if (cacheToStop.contains(dep.configuration().getCacheName()))
+            if (cachesToStop.contains(dep.configuration().getCacheName()))
                 srvcsToUndeploy.add(id);
         });
 
@@ -444,6 +465,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** {@inheritDoc} */
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+
+        ctx.service().processFullMap(msg);
 
         complete(null, false);
     }

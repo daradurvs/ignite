@@ -46,25 +46,14 @@ import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.DeploymentMode;
 import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.events.DiscoveryEvent;
-import org.apache.ignite.events.EventType;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteClientDisconnectedCheckedException;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
-import org.apache.ignite.internal.events.DiscoveryCustomEvent;
-import org.apache.ignite.internal.managers.communication.GridMessageListener;
-import org.apache.ignite.internal.managers.discovery.DiscoCache;
-import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
-import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
-import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
-import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
-import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
-import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.future.GridCompoundFuture;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
@@ -95,9 +84,6 @@ import static org.apache.ignite.IgniteSystemProperties.IGNITE_SERVICES_COMPATIBI
 import static org.apache.ignite.IgniteSystemProperties.getString;
 import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
 import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
-import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
-import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
-import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
@@ -111,14 +97,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** */
     private final Boolean srvcCompatibilitySysProp;
 
-    /** */
-    private static final int[] EVTS = {
-        EventType.EVT_NODE_JOINED,
-        EventType.EVT_NODE_LEFT,
-        EventType.EVT_NODE_FAILED,
-        DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT
-    };
-
     /** Local service instances. */
     private final Map<IgniteUuid, Collection<ServiceContextImpl>> locSvcs = new HashMap<>();
 
@@ -127,12 +105,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** Deployment futures. */
     private final ConcurrentMap<IgniteUuid, GridFutureAdapter<?>> undepFuts = new ConcurrentHashMap<>();
-
-    /** Deployment executor service. */
-    private volatile ExecutorService depExe;
-
-    /** Busy lock. */
-    private volatile GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
     /** Uncaught exception handler for thread pools. */
     private final UncaughtExceptionHandler oomeHnd = new OomExceptionHandler(ctx);
@@ -144,12 +116,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Thread local for service name. */
     private ThreadLocal<String> svcName = new ThreadLocal<>();
 
-    /** Discovery messages listener. */
-    private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
-
-    /** Services messages communication listener. */
-    private final GridMessageListener commLsnr = new ServiceCommunicationListener();
-
     /** Contains all services deployments, not only locally deployed. */
     private final ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps = new ConcurrentHashMap<>();
 
@@ -159,6 +125,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
+    /** Future to wait initital data receiving on node join to topology. */
     private final GridFutureAdapter<?> dataReceivedfut = new GridFutureAdapter<>();
 
     /**
@@ -167,34 +134,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public GridServiceProcessor(GridKernalContext ctx) {
         super(ctx);
 
-        depExe = Executors.newSingleThreadExecutor(new IgniteThreadFactory(ctx.igniteInstanceName(),
-            "srvc-deploy", oomeHnd));
-
         String servicesCompatibilityMode = getString(IGNITE_SERVICES_COMPATIBILITY_MODE);
 
         srvcCompatibilitySysProp = servicesCompatibilityMode == null ? null : Boolean.valueOf(servicesCompatibilityMode);
 
-//        if (isLocalNodeCoordinator()) {
-//            exchMgr.startProcessing();
-//
-//            dataReceivedfut.onDone();
-//        }
-//        else {
-            dataReceivedfut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
-                try {
-                    fut.get();
-                }
-                catch (IgniteCheckedException e) {
-                    log.error(e.getMessage(), e);
-                }
+        dataReceivedfut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+            try {
+                fut.get();
+            }
+            catch (IgniteCheckedException e) {
+                log.error(e.getMessage(), e);
+            }
 
-                exchMgr.startProcessing();
-            });
-//        }
-
-        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
-
-        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
+            exchMgr.startProcessing();
+        });
     }
 
     /** {@inheritDoc} */
@@ -261,17 +214,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     @Override public void onKernalStop(boolean cancel) {
         if (ctx.isDaemon())
             return;
-
-        GridSpinBusyLock busyLock = this.busyLock;
-
-        // Will not release it.
-        if (busyLock != null) {
-            busyLock.block();
-
-            this.busyLock = null;
-        }
-
-        U.shutdownNow(GridServiceProcessor.class, depExe, log);
 
         exchMgr.stopProcessing();
 
@@ -371,11 +313,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (log.isDebugEnabled())
             log.debug("Activate service processor [nodeId=" + ctx.localNodeId() +
                 " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
-
-        busyLock = new GridSpinBusyLock();
-
-        depExe = Executors.newSingleThreadExecutor(new IgniteThreadFactory(ctx.igniteInstanceName(),
-            "srvc-deploy", oomeHnd));
 
         start();
 
@@ -1374,132 +1311,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Discovery messages listener.
-     */
-    private class ServiceDiscoveryListener implements DiscoveryEventListener {
-        /** If local node coordinator or not. */
-        private volatile boolean crd = false;
-
-        /** {@inheritDoc} */
-        @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
-            if (!enterBusy())
-                return;
-
-            try {
-                final boolean curCrd = isLocalNodeCoordinator();
-
-                final boolean crdChanged = crd != curCrd;
-
-                if (crdChanged && !ctx.clientNode()) {
-//                    if (crd)
-//                        exchMgr.stopProcessing();
-//                    else
-//                        exchMgr.startProcessing();
-
-                    crd = curCrd;
-                }
-
-                if (evt instanceof DiscoveryCustomEvent) {
-                    DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
-                    if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
-                        if (log.isDebugEnabled() && curCrd) {
-                            log.debug("Received services change request: [locId=" + ctx.localNodeId() +
-                                ", sender=" + evt.eventNode().id() +
-                                ", msg=" + msg + ']');
-                        }
-
-                        exchMgr.processEvent(evt, discoCache.version());
-                    }
-                    else if (msg instanceof ServicesFullMapMessage) {
-                        final ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
-
-                        if (log.isDebugEnabled()) {
-                            log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                ", sender=" + evt.eventNode().id() +
-                                ", msg=" + msg0 + ']');
-                        }
-
-                        depExe.execute(new DepRunnable() {
-                            @Override public void run0() {
-                                processFullMap(msg0);
-
-                                exchMgr.onReceiveFullMapMessage(evt.eventNode().id(), msg0);
-                            }
-                        });
-                    }
-                    else if (msg instanceof DynamicCacheChangeBatch) {
-                        DynamicCacheChangeBatch msg0 = (DynamicCacheChangeBatch)msg;
-
-                        Set<String> cachesToStop = new HashSet<>();
-
-                        for (DynamicCacheChangeRequest req : msg0.requests()) {
-                            if (req.stop())
-                                cachesToStop.add(req.cacheName());
-                        }
-
-                        if (!cachesToStop.isEmpty()) {
-                            if (srvcsDeps.entrySet().stream().anyMatch(e -> cachesToStop.contains(e.getValue().configuration().getCacheName())))
-                                exchMgr.processEvent(evt, discoCache.version());
-                        }
-                    }
-                    else if (msg instanceof CacheAffinityChangeMessage) {
-                        if (srvcsDeps.entrySet().stream().anyMatch(e -> e.getValue().configuration().getCacheName() != null))
-                            exchMgr.processEvent(evt, discoCache.version());
-                    }
-
-                    return;
-                }
-
-                switch (evt.type()) {
-                    case EVT_NODE_LEFT:
-                    case EVT_NODE_FAILED:
-                    case EVT_NODE_JOINED:
-//                        if (!srvcsDeps.isEmpty())
-                            exchMgr.processEvent(evt, discoCache.version());
-
-                        break;
-
-
-                    default:
-                        if (log.isDebugEnabled())
-                            log.debug("Unexpected event was received, evt=" + evt);
-
-                        break;
-                }
-            }
-            finally {
-                leaveBusy();
-            }
-        }
-    }
-
-    /**
-     * Services messages communication listener.
-     */
-    private class ServiceCommunicationListener implements GridMessageListener {
-        /** {@inheritDoc} */
-        @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
-            if (!enterBusy())
-                return;
-
-            try {
-                if (msg instanceof ServicesSingleMapMessage) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Received services single map message, locId=" + ctx.localNodeId() +
-                            ", msg=" + msg + ']');
-                    }
-
-                    exchMgr.onReceiveSingleMapMessage(nodeId, (ServicesSingleMapMessage)msg);
-                }
-            }
-            finally {
-                leaveBusy();
-            }
-        }
-    }
-
-    /**
      * @param id Service id.
      */
     protected void undeploy(IgniteUuid id) {
@@ -1514,70 +1325,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 cancel(ctxs, ctxs.size());
             }
         }
-    }
-
-    /**
-     *
-     */
-    private abstract class DepRunnable implements Runnable {
-        /** {@inheritDoc} */
-        @Override public void run() {
-            if (!enterBusy())
-                return;
-
-            // Won't block ServiceProcessor stopping process.
-            leaveBusy();
-
-            svcName.set(null);
-
-            try {
-                run0();
-            }
-            catch (Throwable t) {
-                log.error("Error when executing service: " + svcName.get(), t);
-
-                if (t instanceof Error)
-                    throw t;
-            }
-            finally {
-                svcName.set(null);
-            }
-        }
-
-        /**
-         * Abstract run method protected by busy lock.
-         */
-        public abstract void run0();
-    }
-
-    /**
-     * @param task Services deployment exchange task.
-     * @param srvcId Service id.
-     * @return Service configuration.
-     */
-    @Nullable private ServiceConfiguration extractServiceConfiguration(ServicesDeploymentExchangeTask task,
-        IgniteUuid srvcId) {
-        ServiceConfiguration cfg = null;
-
-        DiscoveryEvent evt = task.event();
-
-        if (evt instanceof DiscoveryCustomEvent) {
-            DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
-            if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
-                DynamicServicesChangeRequestBatchMessage msg0 = (DynamicServicesChangeRequestBatchMessage)msg;
-
-                for (DynamicServiceChangeRequest req : msg0.requests()) {
-                    if (srvcId.equals(req.serviceId())) {
-                        cfg = req.configuration();
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        return cfg;
     }
 
     /**
@@ -1682,7 +1429,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      *
      * @param msg Services full map message.
      */
-    private void processFullMap(ServicesFullMapMessage msg) {
+    protected void processFullMap(ServicesFullMapMessage msg) {
         try {
             Collection<ServiceFullDeploymentsResults> results = msg.results();
 
@@ -1878,27 +1625,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Enters busy state.
-     *
-     * @return {@code true} if entered to busy state.
-     */
-    private boolean enterBusy() {
-        GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-        return busyLock != null && busyLock.enterBusy();
-    }
-
-    /**
-     * Leaves busy state.
-     */
-    private void leaveBusy() {
-        GridSpinBusyLock busyLock = GridServiceProcessor.this.busyLock;
-
-        if (busyLock != null)
-            busyLock.leaveBusy();
-    }
-
-    /**
      * Initial data container to send on joined node.
      */
     private static class InitialServicesData implements Serializable {
@@ -1938,7 +1664,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Services deployments.
      */
-    protected Map<IgniteUuid, GridServiceDeployment> deployments() {
+    protected Map<IgniteUuid, GridServiceDeployment> servicesDeployments() {
         return srvcsDeps;
     }
 

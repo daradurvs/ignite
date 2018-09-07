@@ -28,21 +28,47 @@ import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
+import org.apache.ignite.internal.events.DiscoveryCustomEvent;
+import org.apache.ignite.internal.managers.communication.GridMessageListener;
+import org.apache.ignite.internal.managers.discovery.DiscoCache;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
+import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
+import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
 import static org.apache.ignite.failure.FailureType.CRITICAL_ERROR;
 import static org.apache.ignite.failure.FailureType.SYSTEM_WORKER_TERMINATION;
+import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
+import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVERY_CUSTOM_EVT;
 
 /**
  * Services deployment exchange manager.
  */
 public class ServicesDeploymentExchangeManagerImpl implements ServicesDeploymentExchangeManager {
+    /** Busy lock. */
+    private volatile GridSpinBusyLock busyLock = new GridSpinBusyLock();
+
+    /** Events types to listen. */
+    private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
+
+    /** Discovery messages listener. */
+    private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
+
+    /** Services messages communication listener. */
+    private final GridMessageListener commLsnr = new ServiceCommunicationListener();
+
+    /** Services deploymentst tasks. */
+    private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
+
     /** Kernal context. */
     private final GridKernalContext ctx;
 
@@ -65,6 +91,10 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     public ServicesDeploymentExchangeManagerImpl(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
+
+        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
+
+        ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
         this.exchWorker = new ServicesDeploymentExchangeWorker();
     }
@@ -125,6 +155,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
+        if (!tasks.containsKey(msg.exchangeId())) // In case of double delivering
+            return;
+
         ServicesDeploymentExchangeTask task = exchangeTask(msg.exchangeId());
 
         assert task != null;
@@ -220,8 +253,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
         return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
     }
-
-    private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
 
     public ServicesDeploymentExchangeTask exchangeTask(ServicesDeploymentExchangeId exchId) {
         ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(exchId);
@@ -339,5 +370,103 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
         }
+    }
+
+    /**
+     * Discovery messages listener.
+     */
+    private class ServiceDiscoveryListener implements DiscoveryEventListener {
+        /** {@inheritDoc} */
+        @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
+            if (!enterBusy())
+                return;
+
+            try {
+                if (evt instanceof DiscoveryCustomEvent) {
+                    DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                    if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
+                        msg instanceof DynamicCacheChangeBatch ||
+                        msg instanceof CacheAffinityChangeMessage)
+                        processEvent(evt, discoCache.version());
+                    else if (msg instanceof ServicesFullMapMessage) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
+                                ", sender=" + evt.eventNode().id() +
+                                ", msg=" + msg + ']');
+                        }
+
+                        onReceiveFullMapMessage(evt.eventNode().id(), (ServicesFullMapMessage)msg);
+                    }
+
+                    return;
+                }
+
+                switch (evt.type()) {
+                    case EVT_NODE_LEFT:
+                    case EVT_NODE_FAILED:
+                    case EVT_NODE_JOINED:
+
+                        processEvent(evt, discoCache.version());
+
+                        break;
+
+                    default:
+                        if (log.isDebugEnabled())
+                            log.debug("Unexpected event was received, evt=" + evt);
+
+                        break;
+                }
+            }
+            finally {
+                leaveBusy();
+            }
+        }
+    }
+
+    /**
+     * Services messages communication listener.
+     */
+    private class ServiceCommunicationListener implements GridMessageListener {
+        /** {@inheritDoc} */
+        @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
+            if (!enterBusy())
+                return;
+
+            try {
+                if (msg instanceof ServicesSingleMapMessage) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Received services single map message, locId=" + ctx.localNodeId() +
+                            ", msg=" + msg + ']');
+                    }
+
+                    onReceiveSingleMapMessage(nodeId, (ServicesSingleMapMessage)msg);
+                }
+            }
+            finally {
+                leaveBusy();
+            }
+        }
+    }
+
+    /**
+     * Enters busy state.
+     *
+     * @return {@code true} if entered to busy state.
+     */
+    private boolean enterBusy() {
+        GridSpinBusyLock busyLock = this.busyLock;
+
+        return busyLock != null && busyLock.enterBusy();
+    }
+
+    /**
+     * Leaves busy state.
+     */
+    private void leaveBusy() {
+        GridSpinBusyLock busyLock = this.busyLock;
+
+        if (busyLock != null)
+            busyLock.leaveBusy();
     }
 }
