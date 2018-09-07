@@ -1411,19 +1411,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         exchMgr.processEvent(evt, discoCache.version());
                     }
-                    else if (msg instanceof ServicesAssignmentsRequestMessage) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("Received services assignments request: [locId=" + ctx.localNodeId() +
-                                ", sender=" + evt.eventNode().id() +
-                                ", msg=" + msg + ']');
-                        }
-
-                        depExe.execute(new DepRunnable() {
-                            @Override public void run0() {
-                                processAssignmentsRequest((ServicesAssignmentsRequestMessage)msg);
-                            }
-                        });
-                    }
                     else if (msg instanceof ServicesFullMapMessage) {
                         final ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
@@ -1561,60 +1548,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
          * Abstract run method protected by busy lock.
          */
         public abstract void run0();
-    }
-
-    /**
-     * Handles services assigments requests.
-     *
-     * @param req Services assignments request.
-     */
-    private void processAssignmentsRequest(ServicesAssignmentsRequestMessage req) {
-        try {
-            final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
-
-            req.servicesToUndeploy().forEach(this::undeploy);
-
-            final ServicesDeploymentExchangeId exchId = req.exchangeId();
-
-            req.servicesToDeploy().forEach((srvcId, top) -> {
-                GridServiceDeployment dep = srvcsDeps.get(srvcId);
-
-                if (dep == null) {
-                    ServicesDeploymentExchangeTask exchTask = exchMgr.task(exchId);
-
-                    if (exchTask == null) {
-                        log.error("Failed to find ServicesDeploymentExchangeTask in deployment queue" +
-                            ", srvcId=" + srvcId +
-                            ", exchId=" + exchId);
-
-                        return;
-                    }
-
-                    ServiceConfiguration cfg = extractServiceConfiguration(exchTask, srvcId);
-
-                    if (cfg == null) {
-                        log.error("Service configuration hasn't been found" +
-                            ", srvcId=" + srvcId +
-                            ", task= " + exchTask);
-
-                        return;
-                    }
-
-                    dep = new GridServiceDeployment(exchTask.event().eventNode().id(), cfg);
-
-                    srvcsDeps.put(srvcId, dep);
-                }
-
-                deployIfNeeded(srvcId, top, errors);
-            });
-
-            req.servicesToUndeploy().forEach(this::undeploy);
-
-            createAndSendSingleMapMessage(req.exchangeId(), errors);
-        }
-        catch (Exception e) {
-            log.error("Error occurred during processing of service assignments request, req=" + req, e);
-        }
     }
 
     /**
