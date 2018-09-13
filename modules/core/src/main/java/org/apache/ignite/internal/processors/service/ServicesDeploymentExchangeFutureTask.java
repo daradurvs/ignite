@@ -44,6 +44,7 @@ import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
+import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -172,29 +173,51 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
             ClusterNode crd = ctx.service().coordinator();
 
+            // TODO
             if (crd != null) {
                 crdId = crd.id();
 
                 synchronized (mux) {
-                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
-                        if (ctx.discovery().alive(node))
-                            remaining.add(node.id());
+                    try {
+                        for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
+                            if (ctx.discovery().alive(node))
+                                remaining.add(node.id());
+                        }
+                    }
+                    catch (IgniteException e) {
+                        log.error(e.getMessage(), e);
+
+                        complete(e, false);
+
+                        return;
                     }
                 }
+            }
+            else {
+                complete(null, true);
+
+                return;
             }
 
             if (evt instanceof DiscoveryCustomEvent) {
                 DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                if (msg instanceof DynamicServicesChangeRequestBatchMessage)
+                if (msg instanceof ChangeGlobalStateMessage)
+                    onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg);
+                else if (!ctx.service().isActive())
+                    processInactive();
+                else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
                     onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
                 else if (msg instanceof CacheAffinityChangeMessage)
                     onCacheAffinityChangeMessage((CacheAffinityChangeMessage)msg);
                 else
-                    complete(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg), true);
+                    complete(new IgniteIllegalStateException("Unexpected type of discovery custom message" +
+                        ", msg=" + msg), true);
             }
+            else if (!ctx.service().isActive())
+                processInactive();
             else {
                 switch (evt.type()) {
                     case EVT_NODE_JOINED:
@@ -206,7 +229,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         break;
 
                     default:
-                        complete(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt), true);
+                        complete(new IgniteIllegalStateException("Unexpected type of discovery event" +
+                            ", evt=" + evt), true);
 
                         break;
                 }
@@ -230,6 +254,16 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             else
                 initFut.onDone();
         }
+    }
+
+    /**
+     * Handles cause event with inactive service processor.
+     */
+    private void processInactive() {
+        complete(null, false);
+
+        if (log.isDebugEnabled())
+            log.debug("Skip exchange event, Service Processor is inactive: " + evt);
     }
 
     /**
@@ -332,6 +366,23 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
 
         initFullReassignment(evtTopVer);
+    }
+
+    /**
+     * @param req Change cluster state message.
+     * @throws IgniteCheckedException In case of an error.
+     */
+    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req) throws IgniteCheckedException {
+        if (req.activate()) {
+            ctx.service().onActivate(ctx);
+
+            ctx.service().createAndSendSingleMapMessage(exchId, depErrors);
+        }
+        else {
+            ctx.service().onDeActivate(ctx);
+
+            complete(null, false);
+        }
     }
 
     /**
@@ -696,9 +747,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        evtTopVer = (AffinityTopologyVersion)in.readObject();
         exchId = (ServicesDeploymentExchangeId)in.readObject();
         evt = (DiscoveryEvent)in.readObject();
+        evtTopVer = (AffinityTopologyVersion)in.readObject();
 
         if (evt != null)
             evtLatch.countDown();

@@ -36,6 +36,7 @@ import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
@@ -78,9 +79,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Exchange worker. */
     private final ServicesDeploymentExchangeWorker exchWorker;
 
-    /** Indicates that worker is stopped. */
-    private volatile boolean isStopped = true;
-
     /** Topology version of latest deployment task's event. */
     private final AtomicReference<AffinityTopologyVersion> readyTopVer =
         new AtomicReference<>(AffinityTopologyVersion.NONE);
@@ -101,15 +99,13 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void startProcessing() {
-        isStopped = false;
-
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
     /** {@inheritDoc} */
     @Override public void stopProcessing() {
         try {
-            isStopped = true;
+            busyLock.block();
 
             U.cancel(exchWorker);
 
@@ -118,6 +114,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             exchWorker.tasksQueue.forEach(t -> t.complete(null, true));
 
             exchWorker.tasksQueue.clear();
+
+            tasks.clear();
         }
         catch (Exception e) {
             log.error("Error occurred during stopping exchange worker.");
@@ -130,7 +128,17 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+    @Override public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache) {
+        discoLsnr.onEvent(evt, discoCache);
+    }
+
+    /**
+     * Handles discovery event.
+     *
+     * @param evt Discovery event.
+     * @param topVer Topology version.
+     */
+    private void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
 
         ServicesDeploymentExchangeTask task = exchangeTask(exchId);
@@ -165,57 +173,10 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         task.onReceiveFullMapMessage(snd, msg);
 
         tasks.remove(msg.exchangeId());
-//
-//        ServicesDeploymentExchangeTask fut;
-//
-//        if (!isStopped)
-//            fut = exchWorker.task;
-//        else
-//            fut = exchWorker.tasksQueue.peek();
-//
-//        if (fut != null) {
-//            if (!fut.exchangeId().equals(msg.exchangeId())) {
-//                log.warning("Unexpected services full assignments message received" +
-//                    ", locId=" + ctx.localNodeId() +
-//                    ", msg=" + msg);
-//
-//                // The section to handle a critical situation when TcpDiscoverySpi breaches safeguards.
-//                if (isStopped) {
-//                    boolean found = false;
-//
-//                    for (ServicesDeploymentExchangeTask f : exchWorker.tasksQueue) {
-//                        if (f.exchangeId().equals(msg.exchangeId())) {
-//                            found = true;
-//
-//                            break;
-//                        }
-//                    }
-//
-//                    if (found) {
-//                        do {
-//                            fut = exchWorker.tasksQueue.poll();
-//
-//                            if (fut != null)
-//                                fut.onReceiveFullMapMessage(snd, msg);
-//                        }
-//                        while (fut != null && !fut.exchangeId().equals(msg.exchangeId()));
-//                    }
-//                }
-//            }
-//            else {
-//                fut.onReceiveFullMapMessage(snd, msg);
-//
-//                if (isStopped)
-//                    exchWorker.tasksQueue.poll();
-//            }
-//        }
     }
 
     /** {@inheritDoc} */
     @Override public void onNodeLeft(UUID nodeId) {
-//        if (isStopped)
-//            return;
-
         for (ServicesDeploymentExchangeTask task : tasks.values())
             task.onNodeLeft(nodeId);
 
@@ -254,7 +215,11 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
     }
 
-    public ServicesDeploymentExchangeTask exchangeTask(ServicesDeploymentExchangeId exchId) {
+    /**
+     * @param exchId Exchange id.
+     * @return Service deployment exchange task.
+     */
+    private ServicesDeploymentExchangeTask exchangeTask(ServicesDeploymentExchangeId exchId) {
         ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(exchId);
 
         ServicesDeploymentExchangeTask old = tasks.putIfAbsent(exchId, task);
@@ -387,7 +352,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                     if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
                         msg instanceof DynamicCacheChangeBatch ||
-                        msg instanceof CacheAffinityChangeMessage)
+                        msg instanceof CacheAffinityChangeMessage ||
+                        msg instanceof ChangeGlobalStateMessage)
                         processEvent(evt, discoCache.version());
                     else if (msg instanceof ServicesFullMapMessage) {
                         if (log.isDebugEnabled()) {

@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.concurrent.LinkedBlockingDeque;
 import org.apache.ignite.events.DiscoveryEvent;
+import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,12 +28,12 @@ import org.jetbrains.annotations.Nullable;
  */
 public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExchangeManageable {
     /**
-     * Handles event as cause of services assignments exchange.
+     * Special handler for local join event, because of regular event for local join is not generated.
      *
      * @param evt Discovery event.
-     * @param topVer Affinity topology version.
+     * @param discoCache Discovery cache.
      */
-    public void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer);
+    public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache);
 
     /**
      * Starts processing of services deployments exchange tasks.

@@ -88,6 +88,10 @@ import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType
 import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
+import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.ACTIVATED;
+import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.DEACTIVATED;
+import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.STARTED;
+import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.STOPPED;
 
 /**
  * Grid service processor.
@@ -125,6 +129,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
+    /** Service processor state. */
+    private volatile ServiceProcessorState state = STOPPED;
+
     /** Future to wait initital data receiving on node join to topology. */
     private final GridFutureAdapter<?> dataReceivedfut = new GridFutureAdapter<>();
 
@@ -137,17 +144,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         String servicesCompatibilityMode = getString(IGNITE_SERVICES_COMPATIBILITY_MODE);
 
         srvcCompatibilitySysProp = servicesCompatibilityMode == null ? null : Boolean.valueOf(servicesCompatibilityMode);
-
-        dataReceivedfut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
-            try {
-                fut.get();
-            }
-            catch (IgniteCheckedException e) {
-                log.error(e.getMessage(), e);
-            }
-
-            exchMgr.startProcessing();
-        });
     }
 
     /** {@inheritDoc} */
@@ -169,18 +165,37 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
     @Override public void onKernalStart(boolean active) throws IgniteCheckedException {
+        if (ctx.discovery().localNode().order() == 1)
+            exchMgr.startProcessing();
+        else {
+            dataReceivedfut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+                try {
+                    fut.get();
+                }
+                catch (IgniteCheckedException e) {
+                    log.error(e.getMessage(), e);
+                }
+
+                exchMgr.startProcessing();
+            });
+        }
+
+        state = STARTED;
+
         if (ctx.isDaemon() || !active)
             return;
 
-        onKernalStart0();
+        onKernalStart0(true);
     }
 
     /**
      * Do kernal start.
      *
+     * @param waitForDeploy Whether it is necessary to wait finish of deployment of predefined services configuration
+     * synchronously, in case of starting processor in active mode.
      * @throws IgniteCheckedException If failed.
      */
-    private void onKernalStart0() throws IgniteCheckedException {
+    private void onKernalStart0(boolean waitForDeploy) throws IgniteCheckedException {
         srvcsDeps.forEach((srvcId, dep) -> {
             Map<UUID, Integer> top = srvcsTops.get(srvcId);
 
@@ -198,24 +213,36 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         });
 
-        if (isLocalNodeCoordinator())
-            dataReceivedfut.onDone();
+        ServiceProcessorState prev = state;
 
-        ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
+        state = ACTIVATED;
 
-        if (cfgs != null)
-            deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate()).get();
+        if (prev == STARTED) {
+            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
+
+            if (cfgs != null) {
+                IgniteInternalFuture<?> fut = deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
+
+                if (waitForDeploy)
+                    fut.get();
+            }
+        }
 
         if (log.isDebugEnabled())
             log.debug("Started service processor.");
     }
 
     /** {@inheritDoc} */
+    @Override public void stop(boolean cancel) throws IgniteCheckedException {
+        super.stop(cancel);
+
+        exchMgr.stopProcessing();
+    }
+
+    /** {@inheritDoc} */
     @Override public void onKernalStop(boolean cancel) {
         if (ctx.isDaemon())
             return;
-
-        exchMgr.stopProcessing();
 
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
@@ -267,6 +294,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         cancelFutures(depFuts, err);
         cancelFutures(undepFuts, err);
 
+        state = STOPPED;
+
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
     }
@@ -316,7 +345,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         start();
 
-        onKernalStart0();
+        onKernalStart0(false);
     }
 
     /** {@inheritDoc} */
@@ -330,6 +359,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         cancelFutures(undepFuts, new IgniteCheckedException("Failed to undeploy service, cluster in active."));
 
         onKernalStop(true);
+
+        state = DEACTIVATED;
     }
 
     /** {@inheritDoc} */
@@ -1371,6 +1402,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         ClusterNode crd = coordinator();
 
+        if (crd == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Failed to resolve coordinator to perform services single map message" +
+                    ", locId=" + ctx.localNodeId() +
+                    ", msg=" + msg);
+            }
+
+            return;
+        }
+
         try {
             ctx.io().sendToGridTopic(crd, TOPIC_SERVICES, msg, SERVICE_POOL);
 
@@ -1619,7 +1660,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         try {
             return U.oldest(ctx.discovery().aliveServerNodes(), null);
         }
-        catch (Exception ignored) {
+        catch (Exception e) {
+            log.error(e.getMessage(), e);
+
             return null;
         }
     }
@@ -1662,6 +1705,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
+     * Service processor's state.
+     */
+    protected enum ServiceProcessorState {
+        /** */
+        STARTED,
+
+        /** */
+        STOPPED,
+
+        /** */
+        ACTIVATED,
+
+        /** */
+        DEACTIVATED
+    }
+
+    /**
      * @return Services deployments.
      */
     protected Map<IgniteUuid, GridServiceDeployment> servicesDeployments() {
@@ -1680,5 +1740,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public ServicesDeploymentExchangeManager exchange() {
         return exchMgr;
+    }
+
+    /**
+     * @return If this service processor is activated.
+     */
+    public boolean isActive() {
+        return state == ACTIVATED;
     }
 }
