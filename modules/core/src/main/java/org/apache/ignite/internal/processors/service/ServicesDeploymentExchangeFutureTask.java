@@ -173,30 +173,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
             ClusterNode crd = ctx.service().coordinator();
 
-            // TODO
             if (crd != null) {
                 crdId = crd.id();
 
-                synchronized (mux) {
-                    try {
-                        for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
-                            if (ctx.discovery().alive(node))
-                                remaining.add(node.id());
-                        }
-                    }
-                    catch (IgniteException e) {
-                        log.error(e.getMessage(), e);
-
-                        complete(e, false);
-
-                        return;
+                if (crd.isLocal()) {
+                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
+                        if (ctx.discovery().alive(node))
+                            remaining.add(node.id());
                     }
                 }
-            }
-            else {
-                complete(null, true);
-
-                return;
             }
 
             if (evt instanceof DiscoveryCustomEvent) {
@@ -685,16 +670,22 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 try {
                     crdId = nodeId;
 
-                    remaining.remove(nodeId);
+                    Set<UUID> excluded = new HashSet<>(singleMapMsgs.keySet());
+
+                    excluded.add(nodeId);
+
+                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
+                        if (ctx.discovery().alive(node) && !excluded.contains(node.id()))
+                            remaining.add(node.id());
+                    }
 
                     ctx.service().createAndSendSingleMapMessage(exchId, depErrors);
                 }
                 catch (IgniteCheckedException e) {
-                    e.printStackTrace();
+                    log.error(e.getMessage(), e);
                 }
             }
             else if (ctx.localNodeId().equals(crdId)) {
-
                 remaining.remove(nodeId);
 
                 if (remaining.isEmpty())
