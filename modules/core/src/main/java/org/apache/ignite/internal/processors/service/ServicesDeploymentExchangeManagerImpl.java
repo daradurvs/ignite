@@ -123,11 +123,11 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public synchronized void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks) {
-        tasks.descendingIterator().forEachRemaining(task -> {
-            if (!exchWorker.tasksQueue.contains(task)) {
-                exchWorker.tasksQueue.addFirst(task);
+        tasks.descendingIterator().forEachRemaining(t -> {
+            if (!exchWorker.tasksQueue.contains(t)) {
+                exchWorker.tasksQueue.addFirst(t);
 
-                this.tasks.put(task.exchangeId(), task);
+                this.tasks.put(t.exchangeId(), t);
             }
         });
     }
@@ -285,6 +285,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             AffinityTopologyVersion readyVer = readyTopVer.get();
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
+
+            tasks.remove(task.exchangeId());
         }
     }
 
@@ -298,6 +300,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 return;
 
             try {
+                UUID snd = evt.eventNode().id();
+
                 if (evt instanceof DiscoveryCustomEvent) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
@@ -311,20 +315,16 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                         if (log.isDebugEnabled()) {
                             log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                ", sender=" + evt.eventNode().id() +
+                                ", sender=" + snd +
                                 ", msg=" + msg0 + ']');
                         }
 
                         ServicesDeploymentExchangeId exchId = msg0.exchangeId();
 
-                        if (tasks.containsKey(msg0.exchangeId())) { // In case of double delivering
+                        if (tasks.containsKey(exchId)) { // In case of double delivering
                             ServicesDeploymentExchangeTask task = exchangeTask(exchId);
 
-                            assert task != null;
-
-                            task.onReceiveFullMapMessage(evt.eventNode().id(), msg0);
-
-                            tasks.remove(msg0.exchangeId());
+                            task.onReceiveFullMapMessage(snd, msg0);
                         }
                     }
 
@@ -335,7 +335,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
 
-                        tasks.values().forEach(t -> t.onNodeLeft(evt.eventNode().id()));
+                        tasks.values().forEach(t -> t.onNodeLeft(snd));
 
                     case EVT_NODE_JOINED:
 
