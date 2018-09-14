@@ -29,7 +29,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Defines methods to manage a task of service deployment exchange.
  */
-public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchangeManageable, Serializable {
+public interface ServicesDeploymentExchangeTask extends Serializable {
     /**
      * Initializes exchange task.
      *
@@ -37,18 +37,6 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
      * @throws IgniteCheckedException In case of an error.
      */
     public void init(GridKernalContext kCtx) throws IgniteCheckedException;
-
-    /**
-     * Returns services deployment exchange id of the task.
-     *
-     * @return Services deployment exchange id.
-     */
-    public ServicesDeploymentExchangeId exchangeId();
-
-    /**
-     * @return Cause discovery event.
-     */
-    public DiscoveryEvent event();
 
     /**
      * Adds cause discovery event.
@@ -59,6 +47,22 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
     public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer);
 
     /**
+     * Returns cause discovery event.
+     *
+     * @return Cause discovery event.
+     */
+    public DiscoveryEvent event();
+
+    /**
+     * Returns services deployment exchange id of the task.
+     *
+     * @return Services deployment exchange id.
+     */
+    public ServicesDeploymentExchangeId exchangeId();
+
+    /**
+     * Returns cause of exchange topology version.
+     *
      * @return Cause of exchange topology version.
      */
     public AffinityTopologyVersion topologyVersion();
@@ -92,4 +96,27 @@ public interface ServicesDeploymentExchangeTask extends ServicesDeploymentExchan
      * @throws IgniteCheckedException In case of an error.
      */
     public void waitForComplete(long timeout) throws IgniteCheckedException;
+
+    /**
+     * Handles received single node services map message.
+     *
+     * @param snd Sender node id.
+     * @param msg Single services map message.
+     */
+    public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg);
+
+    /**
+     * Handles received full services map message.
+     *
+     * @param snd Sender node id.
+     * @param msg Full services map message.
+     */
+    public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg);
+
+    /**
+     * Handles situations when node leaves topology.
+     *
+     * @param nodeId Left node id.
+     */
+    public void onNodeLeft(UUID nodeId);
 }

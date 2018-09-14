@@ -41,7 +41,6 @@ import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.thread.IgniteThread;
-import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
@@ -61,7 +60,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Events types to listen. */
     private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
 
-    /** Discovery messages listener. */
+    /** Services discovery messages listener. */
     private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
 
     /** Services messages communication listener. */
@@ -123,6 +122,22 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
+    @Override public synchronized void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks) {
+        tasks.descendingIterator().forEachRemaining(task -> {
+            if (!exchWorker.tasksQueue.contains(task)) {
+                exchWorker.tasksQueue.addFirst(task);
+
+                this.tasks.put(task.exchangeId(), task);
+            }
+        });
+    }
+
+    /** {@inheritDoc} */
+    @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
+        return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
+    }
+
+    /** {@inheritDoc} */
     @Override public AffinityTopologyVersion readyTopologyVersion() {
         return readyTopVer.get();
     }
@@ -145,77 +160,13 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         task.event(evt, topVer);
 
-        if (evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED)
-            onNodeLeft(evt.eventNode().id());
-
         if (!exchWorker.tasksQueue.contains(task))
             exchWorker.tasksQueue.offer(task);
     }
 
-    /** {@inheritDoc} */
-    @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-        ServicesDeploymentExchangeTask task = exchangeTask(msg.exchangeId());
-
-        assert task != null;
-
-        task.onReceiveSingleMapMessage(snd, msg);
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
-        if (!tasks.containsKey(msg.exchangeId())) // In case of double delivering
-            return;
-
-        ServicesDeploymentExchangeTask task = exchangeTask(msg.exchangeId());
-
-        assert task != null;
-
-        task.onReceiveFullMapMessage(snd, msg);
-
-        tasks.remove(msg.exchangeId());
-    }
-
-    /** {@inheritDoc} */
-    @Override public void onNodeLeft(UUID nodeId) {
-        for (ServicesDeploymentExchangeTask task : tasks.values())
-            task.onNodeLeft(nodeId);
-
-        if (exchWorker.task != null)
-            exchWorker.task.onNodeLeft(nodeId);
-    }
-
-    /** {@inheritDoc} */
-    @Nullable public ServicesDeploymentExchangeTask task(ServicesDeploymentExchangeId exchId) {
-        ServicesDeploymentExchangeTask task = exchWorker.task;
-
-        if (task != null && task.exchangeId().equals(exchId))
-            return task;
-
-        for (ServicesDeploymentExchangeTask t : exchWorker.tasksQueue) {
-            if (t.exchangeId().equals(exchId))
-                return t;
-        }
-
-        return null;
-    }
-
-    /** {@inheritDoc} */
-    @Override public synchronized void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks) {
-        tasks.descendingIterator().forEachRemaining(task -> {
-            if (!exchWorker.tasksQueue.contains(task)) {
-                exchWorker.tasksQueue.addFirst(task);
-
-                this.tasks.put(task.exchangeId(), task);
-            }
-        });
-    }
-
-    /** {@inheritDoc} */
-    @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
-        return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
-    }
-
     /**
+     * Returns services deployment tasks with given exchange id, if task is not exists than creates new one.
+     *
      * @param exchId Exchange id.
      * @return Service deployment exchange task.
      */
@@ -356,13 +307,25 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                         msg instanceof ChangeGlobalStateMessage)
                         processEvent(evt, discoCache.version());
                     else if (msg instanceof ServicesFullMapMessage) {
+                        ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
+
                         if (log.isDebugEnabled()) {
                             log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
                                 ", sender=" + evt.eventNode().id() +
-                                ", msg=" + msg + ']');
+                                ", msg=" + msg0 + ']');
                         }
 
-                        onReceiveFullMapMessage(evt.eventNode().id(), (ServicesFullMapMessage)msg);
+                        ServicesDeploymentExchangeId exchId = msg0.exchangeId();
+
+                        if (tasks.containsKey(msg0.exchangeId())) { // In case of double delivering
+                            ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+
+                            assert task != null;
+
+                            task.onReceiveFullMapMessage(evt.eventNode().id(), msg0);
+
+                            tasks.remove(msg0.exchangeId());
+                        }
                     }
 
                     return;
@@ -371,6 +334,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 switch (evt.type()) {
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
+
+                        tasks.values().forEach(t -> t.onNodeLeft(evt.eventNode().id()));
+
                     case EVT_NODE_JOINED:
 
                         processEvent(evt, discoCache.version());
@@ -401,12 +367,18 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
             try {
                 if (msg instanceof ServicesSingleMapMessage) {
+                    ServicesSingleMapMessage msg0 = (ServicesSingleMapMessage)msg;
+
                     if (log.isDebugEnabled()) {
                         log.debug("Received services single map message, locId=" + ctx.localNodeId() +
-                            ", msg=" + msg + ']');
+                            ", msg=" + msg0 + ']');
                     }
 
-                    onReceiveSingleMapMessage(nodeId, (ServicesSingleMapMessage)msg);
+                    ServicesDeploymentExchangeTask task = exchangeTask(msg0.exchangeId());
+
+                    assert task != null;
+
+                    task.onReceiveSingleMapMessage(nodeId, msg0);
                 }
             }
             finally {

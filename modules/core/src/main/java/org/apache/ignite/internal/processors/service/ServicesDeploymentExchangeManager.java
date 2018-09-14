@@ -21,20 +21,11 @@ import java.util.concurrent.LinkedBlockingDeque;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Defines methods to manage a services deployment and reassignments exchange across Ignite cluster.
  */
-public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExchangeManageable {
-    /**
-     * Special handler for local join event, because of regular event for local join is not generated.
-     *
-     * @param evt Discovery event.
-     * @param discoCache Discovery cache.
-     */
-    public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache);
-
+public interface ServicesDeploymentExchangeManager {
     /**
      * Starts processing of services deployments exchange tasks.
      */
@@ -44,19 +35,6 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
      * Stops processing of services deployments exchange tasks.
      */
     public void stopProcessing();
-
-    /**
-     * @return Ready topology version.
-     */
-    public AffinityTopologyVersion readyTopologyVersion();
-
-    /**
-     * Gets services deployment exchange task with given id.
-     *
-     * @param exchId Services deployment exchange id.
-     * @return Services deployment task. Possible may be {@code}.
-     */
-    @Nullable public ServicesDeploymentExchangeTask task(ServicesDeploymentExchangeId exchId);
 
     /**
      * Returns queue of deployments tasks.
@@ -71,4 +49,17 @@ public interface ServicesDeploymentExchangeManager extends ServicesDeploymentExc
      * @param tasks Queue of deployment tasks.
      */
     public void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks);
+
+    /**
+     * @return Ready topology version.
+     */
+    public AffinityTopologyVersion readyTopologyVersion();
+
+    /**
+     * Special handler for local join event, because of regular event for local join is not generated.
+     *
+     * @param evt Discovery event.
+     * @param discoCache Discovery cache.
+     */
+    public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache);
 }
