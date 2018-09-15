@@ -66,6 +66,9 @@ public interface GridComponent {
         /** Authentication processor. */
         AUTH_PROC,
 
+        /** */
+        CACHE_CRD_PROC,
+
         /** Service processor. */
         SERVICE_PROC
     }
