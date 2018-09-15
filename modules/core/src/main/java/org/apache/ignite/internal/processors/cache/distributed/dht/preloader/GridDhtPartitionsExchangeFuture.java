@@ -1030,8 +1030,6 @@ public class GridDhtPartitionsExchangeFuture extends GridDhtTopologyFutureAdapte
                 try {
                     cctx.kernalContext().dataStructures().onDeActivate(cctx.kernalContext());
 
-                    cctx.kernalContext().service().onDeActivate(cctx.kernalContext());
-
                     cctx.affinity().onCacheChangeRequest(this, crd, exchActions);
 
                     if (log.isInfoEnabled()) {

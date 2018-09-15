@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteIllegalStateException;
@@ -36,30 +37,45 @@ import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.IgniteInternalFuture;
+import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
+import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
+import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
+import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
+import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
+import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 
 /**
- * Services deployment exchange future.
+ * Services deployment exchange task.
  */
-public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object> implements ServicesDeploymentExchangeTask, Externalizable {
+public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object>
+    implements ServicesDeploymentExchangeTask, Externalizable {
     /** */
     private static final long serialVersionUID = 0L;
+
+    /** Indicates that cause discovery event is set. */
+    private final CountDownLatch evtLatch = new CountDownLatch(1);
+
+    /** Task's initialization future. */
+    private final GridFutureAdapter<?> initFut = new GridFutureAdapter<>();
 
     /** Single service messages to process. */
     @GridToStringInclude
@@ -70,7 +86,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** Deployment errors. */
     @GridToStringInclude
-    private final Map<IgniteUuid, Throwable> depErrors = new HashMap<>();
+    private final Map<IgniteUuid, Collection<Throwable>> depErrors = new HashMap<>();
 
     /** Remaining nodes to received single node assignments message. */
     @GridToStringInclude
@@ -79,18 +95,29 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Mutex. */
     private final Object mux = new Object();
 
+    /** Exchange id. */
+    @GridToStringInclude
+    private ServicesDeploymentExchangeId exchId;
+
     /** Discovery event. */
     @GridToStringInclude
     private DiscoveryEvent evt;
 
     /** Cause event topology version. */
+    @GridToStringInclude
     private AffinityTopologyVersion evtTopVer;
-
-    /** Exchange id. */
-    private ServicesDeploymentExchangeId exchId;
 
     /** Kernal context. */
     private GridKernalContext ctx;
+
+    /** Logger. */
+    private IgniteLogger log;
+
+    /** Service processor. */
+    private GridServiceProcessor proc;
+
+    /** Local deployed services. */
+    private Map<IgniteUuid, Collection<ServiceContextImpl>> locSvcs;
 
     /** Services deployments. */
     private Map<IgniteUuid, GridServiceDeployment> srvcsDeps;
@@ -98,8 +125,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Services topologies. */
     private Map<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
 
-    /** Logger. */
-    private IgniteLogger log;
+    /** Coordinator node id. */
+    private volatile UUID crdId;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -108,71 +135,105 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * @param evt Discovery event.
-     * @param evtTopVer Topology version.
+     * @param exchId Service deployment exchange id.
      */
-    public ServicesDeploymentExchangeFutureTask(GridKernalContext ctx, DiscoveryEvent evt,
-        AffinityTopologyVersion evtTopVer,
-        ServicesDeploymentExchangeId exchId) {
+    public ServicesDeploymentExchangeFutureTask(ServicesDeploymentExchangeId exchId) {
+        this.exchId = exchId;
+    }
+
+    /** {@inheritDoc} */
+    @Override public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer) {
+        if (evtLatch.getCount() < 1)
+            return;
+
+        assert evt != null && evtTopVer != null;
+
         this.evt = evt;
         this.evtTopVer = evtTopVer;
-        this.exchId = exchId;
+
+        evtLatch.countDown();
+    }
+
+    /**
+     * Prepare this task for initialization.
+     *
+     * @param ctx Kernal context.
+     */
+    private void init0(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
-        this.srvcsDeps = ctx.service().deployments();
+        this.proc = ctx.service();
+        this.locSvcs = ctx.service().localServices();
+        this.srvcsDeps = ctx.service().servicesDeployments();
         this.srvcsTops = ctx.service().servicesTopologies();
     }
 
     /** {@inheritDoc} */
-    @Override public void init() throws IgniteCheckedException {
-        if (isDone())
+    @Override public void init(GridKernalContext kCtx) throws IgniteCheckedException {
+        if (isComplete())
             return;
 
+        Exception initEx = null;
+
         try {
+            U.await(evtLatch);
+
+            init0(kCtx);
+
             if (log.isDebugEnabled()) {
                 log.debug("Started services exchange future init: [exchId=" + exchangeId() +
                     ", locId=" + ctx.localNodeId() +
                     ", evt=" + evt + ']');
             }
 
-            synchronized (mux) {
-                for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
-                    if (ctx.discovery().alive(node))
-                        remaining.add(node.id());
+            ClusterNode crd = proc.coordinator();
+
+            if (crd != null) {
+                crdId = crd.id();
+
+                if (crd.isLocal()) {
+                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
+                        if (ctx.discovery().alive(node))
+                            remaining.add(node.id());
+                    }
                 }
             }
 
             if (evt instanceof DiscoveryCustomEvent) {
                 DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                if (msg instanceof DynamicServicesChangeRequestBatchMessage)
+                if (msg instanceof ChangeGlobalStateMessage)
+                    onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg);
+                else if (!proc.isActive())
+                    processInactive();
+                else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
                     onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
                 else if (msg instanceof DynamicCacheChangeBatch)
                     onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
                 else if (msg instanceof CacheAffinityChangeMessage)
-                    initFullReassignment(evtTopVer);
+                    onCacheAffinityChangeMessage();
                 else
-                    complete(new IgniteIllegalStateException("Unexpected discovery custom message, msg=" + msg), true);
+                    complete(new IgniteIllegalStateException("Unexpected type of discovery custom message" +
+                        ", msg=" + msg), true);
             }
+            else if (!proc.isActive())
+                processInactive();
             else {
-                if (!srvcsDeps.isEmpty()) {
-                    switch (evt.type()) {
-                        case EVT_NODE_JOINED:
-                        case EVT_NODE_LEFT:
-                        case EVT_NODE_FAILED:
+                switch (evt.type()) {
+                    case EVT_NODE_JOINED:
+                    case EVT_NODE_LEFT:
+                    case EVT_NODE_FAILED:
 
-                            initFullReassignment(evtTopVer);
+                        initReassignment(srvcsDeps.keySet(), evtTopVer);
 
-                            break;
+                        break;
 
-                        default:
-                            complete(new IgniteIllegalStateException("Unexpected discovery event, evt=" + evt), true);
+                    default:
+                        complete(new IgniteIllegalStateException("Unexpected type of discovery event" +
+                            ", evt=" + evt), true);
 
-                            break;
-                    }
+                        break;
                 }
-                else
-                    complete(null, false);
             }
 
             if (log.isDebugEnabled()) {
@@ -183,8 +244,43 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         catch (Exception e) {
             log.error("Error occurred during deployment task initialization, err=" + e.getMessage(), e);
 
+            initEx = e;
+
             throw new IgniteCheckedException(e);
         }
+        finally {
+            if (initEx != null)
+                initFut.onDone(initEx);
+            else
+                initFut.onDone();
+        }
+    }
+
+    /**
+     * @param req Change cluster state message.
+     * @throws IgniteCheckedException In case of an error.
+     */
+    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req) throws IgniteCheckedException {
+        if (req.activate()) {
+            proc.onActivate(ctx);
+
+            createAndSendSingleMapMessage(exchId, depErrors);
+        }
+        else {
+            proc.onDeActivate(ctx);
+
+            complete(null, false);
+        }
+    }
+
+    /**
+     * Handles cause event with inactive service processor.
+     */
+    private void processInactive() {
+        complete(null, false);
+
+        if (log.isDebugEnabled())
+            log.debug("Skip exchange event, Service Processor is inactive: " + evt);
     }
 
     /**
@@ -192,15 +288,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private void onServiceChangeRequest(DynamicServicesChangeRequestBatchMessage batch,
-        AffinityTopologyVersion topVer) {
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
         Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
-        Collection<IgniteUuid> srvcsToUndeploy = new ArrayList<>();
+        Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
         for (DynamicServiceChangeRequest req : batch.requests()) {
             IgniteUuid srvcId = req.serviceId();
 
-            if (req.deploy()) {
+            if (req.undeploy())
+                srvcsToUndeploy.add(srvcId);
+            else if (req.deploy()) {
                 ServiceConfiguration cfg = req.configuration();
 
                 Map<UUID, Integer> srvcTop = srvcsTops.get(srvcId);
@@ -235,7 +333,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         if (oldSrvcId != null)
                             srvcId = oldSrvcId;
 
-                        srvcTop = ctx.service().reassign(cfg, topVer);
+                        srvcTop = proc.reassign(srvcId, cfg, topVer);
                     }
                     catch (IgniteCheckedException e) {
                         th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
@@ -248,7 +346,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (th != null) {
                     log.error(th.getMessage(), th);
 
-                    depErrors.put(req.serviceId(), th);
+                    Collection<Throwable> errors = depErrors.computeIfAbsent(req.serviceId(), e -> new ArrayList<>());
+
+                    errors.add(th);
 
                     continue;
                 }
@@ -259,72 +359,85 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         ", top=" + srvcTop);
                 }
 
+                srvcsDeps.computeIfAbsent(srvcId, dep -> new GridServiceDeployment(evt.eventNode().id(), cfg));
+
                 srvcsToDeploy.put(srvcId, srvcTop);
             }
-            else if (req.undeploy())
-                srvcsToUndeploy.add(srvcId);
         }
 
-        if (srvcsToDeploy.isEmpty() && srvcsToUndeploy.isEmpty()) {
-            ServicesFullMapMessage msg = createFullMapMessageUsingServicesTopology();
-
-            sendCustomEvent(msg);
-        }
-        else {
-            ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
-
-            if (!srvcsToDeploy.isEmpty())
-                msg.servicesToDeploy(srvcsToDeploy);
-
-            if (!srvcsToUndeploy.isEmpty())
-                msg.servicesToUndeploy(srvcsToUndeploy);
-
-            sendCustomEvent(msg);
-        }
+        changeServices(srvcsToDeploy, srvcsToUndeploy);
     }
 
     /**
-     * @param req Cacje state change request.
+     * @throws IgniteCheckedException In case of an error.
      */
-    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) {
-        Set<String> cacheToStop = new HashSet<>();
+    private void onCacheAffinityChangeMessage() throws IgniteCheckedException {
+        Set<IgniteUuid> toReassign = new HashSet<>();
+
+        srvcsDeps.forEach((srvcId, dep) -> {
+            if (dep.configuration().getCacheName() != null)
+                toReassign.add(srvcId);
+        });
+
+        if (toReassign.isEmpty()) {
+            complete(null, false);
+
+            return;
+        }
+
+        initReassignment(toReassign, evtTopVer);
+    }
+
+    /**
+     * @param req Cache state change request.
+     * @throws IgniteCheckedException In case of an error.
+     */
+    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) throws IgniteCheckedException {
+        Set<String> cachesToStop = new HashSet<>();
 
         for (DynamicCacheChangeRequest chReq : req.requests()) {
             if (chReq.stop())
-                cacheToStop.add(chReq.cacheName());
+                cachesToStop.add(chReq.cacheName());
         }
 
         Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
         srvcsDeps.forEach((id, dep) -> {
-            if (cacheToStop.contains(dep.configuration().getCacheName()))
+            if (cachesToStop.contains(dep.configuration().getCacheName()))
                 srvcsToUndeploy.add(id);
         });
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
+        if (srvcsToUndeploy.isEmpty()) {
+            complete(null, false);
 
-        msg.servicesToUndeploy(srvcsToUndeploy);
+            return;
+        }
 
-        sendCustomEvent(msg);
+        changeServices(Collections.emptyMap(), srvcsToUndeploy);
     }
 
     /**
+     * @param toReassign Services to reassign.
      * @param topVer Topology version.
+     * @throws IgniteCheckedException In case of an error.
      */
-    private void initFullReassignment(AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, Map<UUID, Integer>> fullTops = new HashMap<>();
+    private void initReassignment(Set<IgniteUuid> toReassign,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
-        final Set<IgniteUuid> servicesToUndeploy = new HashSet<>();
+        final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
-        srvcsDeps.forEach((srvcId, old) -> {
-            ServiceConfiguration cfg = old.configuration();
+        for (IgniteUuid srvcId : toReassign) {
+            GridServiceDeployment dep = srvcsDeps.get(srvcId);
+
+            ServiceConfiguration cfg = dep.configuration();
 
             Map<UUID, Integer> top = null;
 
             Throwable th = null;
 
             try {
-                top = ctx.service().reassign(cfg, topVer);
+                top = proc.reassign(srvcId, cfg, topVer);
             }
             catch (Throwable e) {
                 log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);
@@ -336,7 +449,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (log.isDebugEnabled())
                     log.debug("Calculated service assignments: " + top);
 
-                fullTops.put(srvcId, top);
+                srvcsToDeploy.put(srvcId, top);
             }
             else {
                 if (th != null) {
@@ -345,29 +458,101 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         ", cfg=" + cfg);
                 }
 
-                depErrors.put(srvcId, th);
+                Collection<Throwable> errors = depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
 
-                servicesToUndeploy.add(srvcId);
+                errors.add(th);
+
+                srvcsToUndeploy.add(srvcId);
             }
+        }
+
+        expDeps.putAll(srvcsToDeploy);
+
+        changeServices(srvcsToDeploy, srvcsToUndeploy);
+    }
+
+    /**
+     * @param srvcsToDeploy Services to deploy.
+     * @param srvcsToUndeploy Services to undeploy.
+     * @throws IgniteCheckedException In case of an error.
+     */
+    private void changeServices(Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy,
+        Set<IgniteUuid> srvcsToUndeploy) throws IgniteCheckedException {
+        final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
+
+        for (IgniteUuid srvcId : srvcsToUndeploy)
+            proc.undeploy(srvcId);
+
+        srvcsToDeploy.forEach((srvcId, top) -> {
+            proc.deployIfNeeded(srvcId, top, errors);
         });
 
-        expDeps.putAll(fullTops);
+        createAndSendSingleMapMessage(exchId, errors);
+    }
 
-        ServicesAssignmentsRequestMessage msg = new ServicesAssignmentsRequestMessage(exchId);
+    /**
+     * @param exchId Exchange id.
+     * @param errors Deployment errors.
+     * @throws IgniteCheckedException In case of an error.
+     */
+    protected void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
+        final Map<IgniteUuid, Collection<Throwable>> errors) throws IgniteCheckedException {
+        ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
-        if (!fullTops.isEmpty())
-            msg.servicesToDeploy(fullTops);
+        if (crdId == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Failed to resolve coordinator to perform services single map message" +
+                    ", locId=" + ctx.localNodeId() +
+                    ", msg=" + msg);
+            }
 
-        if (!servicesToUndeploy.isEmpty())
-            msg.servicesToUndeploy(servicesToUndeploy);
+            return;
+        }
 
-        sendCustomEvent(msg);
+        try {
+            if (ctx.localNodeId().equals(crdId))
+                onReceiveSingleMapMessage(ctx.localNodeId(), msg);
+            else
+                ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
+
+            if (log.isDebugEnabled())
+                log.debug("Send services single assignments message, msg=" + msg);
+        }
+        catch (IgniteCheckedException e) {
+            if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
+                log.debug("Topology changed while message send: " + e.getMessage());
+
+            log.error("Failed to send message over communication spi, msg=" + msg, e);
+
+            throw e;
+        }
     }
 
     /** {@inheritDoc} */
     @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
+        initFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
+            @Override public void apply(IgniteInternalFuture<?> fut) {
+                try {
+                    fut.get();
+                }
+                catch (IgniteCheckedException e) {
+                    log.error("Failed to initialize task: " + this, e);
+
+                    return;
+                }
+
+                onReceiveSingleMapMessage0(snd, msg);
+            }
+        });
+    }
+
+    /**
+     * @param snd Sender id.
+     * @param msg Service single map message.
+     */
+    public void onReceiveSingleMapMessage0(UUID snd, ServicesSingleMapMessage msg) {
         synchronized (mux) {
             if (remaining.remove(snd)) {
                 singleMapMsgs.put(snd, msg);
@@ -384,6 +569,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
+        proc.processFullMap(msg);
+
         complete(null, false);
     }
 
@@ -391,9 +578,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * Creates full assignments message and send it across over discovery.
      */
     private void onAllReceived() {
-        ServicesFullMapMessage msg = createFullMapMessageUsingSingleDeploymentsResults();
+        ServicesFullMapMessage msg = createFullMapMessage();
 
-        sendCustomEvent(msg);
+        try {
+            ctx.discovery().sendCustomEvent(msg);
+        }
+        catch (IgniteCheckedException e) {
+            log.error("Failed to send message across the ring, msg=" + msg, e);
+        }
     }
 
     /**
@@ -401,7 +593,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      *
      * @return Services full map message.
      */
-    private ServicesFullMapMessage createFullMapMessageUsingSingleDeploymentsResults() {
+    private ServicesFullMapMessage createFullMapMessage() {
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
 
         singleMapMsgs.forEach((nodeId, msg) -> {
@@ -436,47 +628,29 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Processes services topology messages to build full map message.
-     *
-     * @return Services full map message.
-     */
-    private ServicesFullMapMessage createFullMapMessageUsingServicesTopology() {
-        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
-
-        srvcsTops.forEach((srvcId, top) -> {
-            Map<UUID, ServiceSingleDeploymentsResults> depResults = new HashMap<>();
-
-            top.forEach((nodeId, cnt) -> {
-                depResults.put(nodeId, new ServiceSingleDeploymentsResults(cnt));
-            });
-
-            results.put(srvcId, depResults);
-        });
-
-        return createFullMapMessage0(results);
-    }
-
-    /**
      * @param results Services per node single deployments results.
      * @return Services full map message.
      */
     private ServicesFullMapMessage createFullMapMessage0(
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
-        depErrors.forEach((id, err) -> {
-            byte[] arr = null;
+        depErrors.forEach((id, arr) -> {
+            Collection<byte[]> srvcErrors = new ArrayList<>(arr.size());
 
-            try {
-                arr = U.marshal(ctx, err);
+            for (Throwable th : arr) {
+                byte[] err = null;
+
+                try {
+                    err = U.marshal(ctx, th);
+                }
+                catch (IgniteCheckedException e) {
+                    log.error("Failed to marshal reassignments error.", e);
+                }
+
+                if (err != null)
+                    srvcErrors.add(err);
             }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to marshal reassignments error.", e);
-            }
 
-            if (arr != null) {
-                Collection<byte[]> srvcErrors = new ArrayList<>(1);
-
-                srvcErrors.add(arr);
-
+            if (!srvcErrors.isEmpty()) {
                 Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
 
                 ServiceSingleDeploymentsResults singleDepRes = depResults.computeIfAbsent(
@@ -492,6 +666,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
 
         results.forEach((srvcId, dep) -> {
+            if (dep.values().stream().anyMatch(r -> !r.errors().isEmpty() && srvcsDeps.containsKey(srvcId))) {
+                GridServiceDeployment srvcDep = srvcsDeps.get(srvcId);
+
+                ServiceDeploymentFailuresPolicy plc = srvcDep.configuration().getPolicy();
+
+                if (plc == ServiceDeploymentFailuresPolicy.CANCEL)
+                    dep.values().forEach(r -> r.count(0));
+            }
+
             ServiceFullDeploymentsResults res = new ServiceFullDeploymentsResults(srvcId, dep);
 
             fullResults.add(res);
@@ -501,29 +684,97 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Sends given message over discovery.
-     *
-     * @param msg Message to send.
+     * @param exchId Exchange id.
+     * @param errors Deployment errors.
+     * @return Services single map message.
      */
-    private void sendCustomEvent(DiscoveryCustomMessage msg) {
-        try {
-            ctx.discovery().sendCustomEvent(msg);
-        }
-        catch (IgniteCheckedException e) {
-            log.error("Failed to send message across the ring, msg=" + msg, e);
-        }
+    private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
+        Map<IgniteUuid, Collection<Throwable>> errors) {
+        Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
+
+        locSvcs.forEach((id, ctxs) -> {
+            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(ctxs.size());
+
+            Collection<Throwable> err = errors.get(id);
+
+            if (err != null && !err.isEmpty()) {
+                Collection<byte[]> errorsBytes = new ArrayList<>();
+
+                for (Throwable th : err) {
+                    try {
+                        byte[] arr = U.marshal(ctx, th);
+
+                        errorsBytes.add(arr);
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error("Failed to marshal a deployment exception: " + th.getMessage() + ']', e);
+                    }
+                }
+
+                depRes.errors(errorsBytes);
+            }
+
+            results.put(id, depRes);
+        });
+
+        return new ServicesSingleMapMessage(exchId, results);
     }
 
     /** {@inheritDoc} */
     @Override public void onNodeLeft(UUID nodeId) {
-        if (isDone() || remaining.isEmpty())
+        initFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
+            @Override public void apply(IgniteInternalFuture<?> fut) {
+
+                try {
+                    fut.get();
+                }
+                catch (IgniteCheckedException e) {
+                    log.error("Failed to initialize task: " + this, e);
+
+                    return;
+                }
+
+                onNodeLeft0(nodeId);
+            }
+        });
+    }
+
+    /**
+     * @param nodeId Node id.
+     */
+    private void onNodeLeft0(UUID nodeId) {
+        if (isComplete())
             return;
 
         synchronized (mux) {
-            remaining.remove(nodeId);
+            final boolean crdChanged = nodeId.equals(crdId);
 
-            if (remaining.isEmpty())
-                onAllReceived();
+            if (crdChanged) {
+                try {
+                    crdId = nodeId;
+
+                    Set<UUID> excluded = new HashSet<>(singleMapMsgs.keySet());
+
+                    excluded.add(nodeId);
+
+                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
+                        if (ctx.discovery().alive(node) && !excluded.contains(node.id()))
+                            remaining.add(node.id());
+                    }
+
+                    if (remaining.contains(ctx.localNodeId()))
+                        createAndSendSingleMapMessage(exchId, depErrors);
+                }
+                catch (IgniteCheckedException e) {
+                    log.error(e.getMessage(), e);
+                }
+            }
+            else if (ctx.localNodeId().equals(crdId)) {
+                remaining.remove(nodeId);
+
+                if (remaining.isEmpty())
+                    onAllReceived();
+            }
         }
     }
 
@@ -564,16 +815,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
+        out.writeObject(exchId);
         out.writeObject(evt);
         out.writeObject(evtTopVer);
-        out.writeObject(exchId);
     }
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+        exchId = (ServicesDeploymentExchangeId)in.readObject();
         evt = (DiscoveryEvent)in.readObject();
         evtTopVer = (AffinityTopologyVersion)in.readObject();
-        exchId = (ServicesDeploymentExchangeId)in.readObject();
+
+        if (evt != null)
+            evtLatch.countDown();
     }
 
     /** {@inheritDoc} */
@@ -596,6 +850,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesDeploymentExchangeFutureTask.class, this);
+        return S.toString(ServicesDeploymentExchangeFutureTask.class, this, "locNodeId", ctx.localNodeId());
     }
 }
