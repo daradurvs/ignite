@@ -85,9 +85,7 @@ import static org.apache.ignite.IgniteSystemProperties.getString;
 import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
 import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
-import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
-import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.ACTIVATED;
 import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.DEACTIVATED;
 import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.STARTED;
@@ -1392,80 +1390,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param exchId Exchange id.
-     * @param errors Deployment errors.
-     * @throws IgniteCheckedException In case of an error.
-     */
-    protected void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        final Map<IgniteUuid, Collection<Throwable>> errors) throws IgniteCheckedException {
-        ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
-
-        ClusterNode crd = coordinator();
-
-        if (crd == null) {
-            if (log.isDebugEnabled()) {
-                log.debug("Failed to resolve coordinator to perform services single map message" +
-                    ", locId=" + ctx.localNodeId() +
-                    ", msg=" + msg);
-            }
-
-            return;
-        }
-
-        try {
-            ctx.io().sendToGridTopic(crd, TOPIC_SERVICES, msg, SERVICE_POOL);
-
-            if (log.isDebugEnabled())
-                log.debug("Send services single assignments message, msg=" + msg);
-        }
-        catch (IgniteCheckedException e) {
-            if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
-                log.debug("Topology changed while message send: " + e.getMessage());
-
-            log.error("Failed to send message over communication spi, msg=" + msg, e);
-
-            throw e;
-        }
-    }
-
-    /**
-     * @param exchId Exchange id.
-     * @param errors Deployment errors.
-     * @return Services single map message.
-     */
-    private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, Collection<Throwable>> errors) {
-        Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
-
-        locSvcs.forEach((id, ctxs) -> {
-            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(ctxs.size());
-
-            Collection<Throwable> err = errors.get(id);
-
-            if (err != null && !err.isEmpty()) {
-                Collection<byte[]> errorsBytes = new ArrayList<>();
-
-                for (Throwable th : err) {
-                    try {
-                        byte[] arr = U.marshal(ctx, th);
-
-                        errorsBytes.add(arr);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Failed to marshal a deployment exception: " + th.getMessage() + ']', e);
-                    }
-                }
-
-                depRes.errors(errorsBytes);
-            }
-
-            results.put(id, depRes);
-        });
-
-        return new ServicesSingleMapMessage(exchId, results);
-    }
-
-    /**
      * Handles services full map message.
      *
      * @param msg Services full map message.
@@ -1719,6 +1643,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         /** */
         DEACTIVATED
+    }
+
+    /**
+     * @return Local deployed services.
+     */
+    protected Map<IgniteUuid, Collection<ServiceContextImpl>> localServices() {
+        return locSvcs;
     }
 
     /**

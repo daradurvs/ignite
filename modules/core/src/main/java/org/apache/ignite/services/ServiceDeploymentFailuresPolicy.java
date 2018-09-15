@@ -26,9 +26,16 @@ public enum ServiceDeploymentFailuresPolicy {
     /**
      * When service deployment failures policy is {@code CANCEL} and there are errors on deployment/reassignment
      * requests, coordinator will initiate cancellation of existing services in Ingite cluster and propogates deployment
-     * errors to all nodes..
+     * errors to all nodes.
      */
-    CANCEL;
+    CANCEL,
+
+    /**
+     * When service deployment failures policy is {@code IGNORE} and there are errors on deployment/reassignment
+     * requests, coordinator will ignore them and services will be deployed as is and propogates deployment errors to
+     * all nodes.
+     */
+    IGNORE;
 
     /** Enumerated values. */
     private static final ServiceDeploymentFailuresPolicy[] VALS = values();
