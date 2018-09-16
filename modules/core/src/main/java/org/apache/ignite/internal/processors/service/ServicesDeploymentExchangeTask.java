@@ -87,7 +87,7 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
      *
      * @return {@code true} if the task completed, otherwise {@code false}.
      */
-    public boolean isComplete();
+    public boolean isCompleted();
 
     /**
      * Synchronously waits for completion of the task for up to the given timeout.

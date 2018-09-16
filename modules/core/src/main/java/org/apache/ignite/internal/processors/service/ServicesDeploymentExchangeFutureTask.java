@@ -74,8 +74,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Indicates that cause discovery event is set. */
     private final CountDownLatch evtLatch = new CountDownLatch(1);
 
-    /** Task's initialization future. */
-    private final GridFutureAdapter<?> initFut = new GridFutureAdapter<>();
+    /** Task's completion of initialization future. */
+    private final GridFutureAdapter<?> initTaskFut = new GridFutureAdapter<>();
+
+    /** Task's completion of remaining nodes ids initialization future. */
+    private final GridFutureAdapter<?> initRemainingFut = new GridFutureAdapter<>();
 
     /** Single service messages to process. */
     @GridToStringInclude
@@ -154,23 +157,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         evtLatch.countDown();
     }
 
-    /**
-     * Prepare this task for initialization.
-     *
-     * @param ctx Kernal context.
-     */
-    private void init0(GridKernalContext ctx) {
-        this.ctx = ctx;
-        this.log = ctx.log(getClass());
-        this.proc = ctx.service();
-        this.locSvcs = ctx.service().localServices();
-        this.srvcsDeps = ctx.service().servicesDeployments();
-        this.srvcsTops = ctx.service().servicesTopologies();
-    }
-
     /** {@inheritDoc} */
     @Override public void init(GridKernalContext kCtx) throws IgniteCheckedException {
-        if (isComplete())
+        if (isCompleted())
             return;
 
         Exception initEx = null;
@@ -191,12 +180,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (crd != null) {
                 crdId = crd.id();
 
-                if (crd.isLocal()) {
-                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
-                        if (ctx.discovery().alive(node))
-                            remaining.add(node.id());
-                    }
-                }
+                if (crd.isLocal())
+                    initRemaining(evtTopVer);
             }
 
             if (evt instanceof DiscoveryCustomEvent) {
@@ -250,9 +235,48 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
         finally {
             if (initEx != null)
-                initFut.onDone(initEx);
+                initTaskFut.onDone(initEx);
             else
-                initFut.onDone();
+                initTaskFut.onDone();
+        }
+    }
+
+    /**
+     * Prepare this task for initialization.
+     *
+     * @param ctx Kernal context.
+     */
+    private void init0(GridKernalContext ctx) {
+        this.ctx = ctx;
+        this.log = ctx.log(getClass());
+        this.proc = ctx.service();
+        this.locSvcs = ctx.service().localServices();
+        this.srvcsDeps = ctx.service().servicesDeployments();
+        this.srvcsTops = ctx.service().servicesTopologies();
+    }
+
+    /**
+     * Initiates collection of remaining ids.
+     */
+    private void initRemaining(AffinityTopologyVersion topVer) {
+        Throwable th = null;
+
+        try {
+            for (ClusterNode node : ctx.discovery().nodes(topVer)) {
+                if (ctx.discovery().alive(node))
+                    remaining.add(node.id());
+            }
+        }
+        catch (Throwable t) {
+            th = t;
+
+            log.error("Error occurred while initialization of remaining collection.", t);
+        }
+        finally {
+            if (th != null)
+                initRemainingFut.onDone(th);
+            else
+                initRemainingFut.onDone();
         }
     }
 
@@ -280,7 +304,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         complete(null, false);
 
         if (log.isDebugEnabled())
-            log.debug("Skip exchange event, Service Processor is inactive: " + evt);
+            log.debug("Skip exchange event, because of Service Processor is inactive, evt=" + evt);
     }
 
     /**
@@ -309,38 +333,39 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
                         ", srvcTop=" + srvcTop);
                 }
-
-                GridServiceDeployment oldSrvcDep = null;
-                IgniteUuid oldSrvcId = null;
-
-                for (Map.Entry<IgniteUuid, GridServiceDeployment> e : srvcsDeps.entrySet()) {
-                    GridServiceDeployment dep = e.getValue();
-
-                    if (dep.configuration().getName().equals(cfg.getName())) {
-                        oldSrvcDep = dep;
-                        oldSrvcId = e.getKey();
-
-                        break;
-                    }
-                }
-
-                if (oldSrvcDep != null && !oldSrvcDep.configuration().equalsIgnoreNodeFilter(cfg)) {
-                    th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                        "different configuration) [deployed=" + oldSrvcDep.configuration() + ", new=" + cfg + ']');
-                }
                 else {
-                    try {
-                        if (oldSrvcId != null)
-                            srvcId = oldSrvcId;
+                    GridServiceDeployment oldSrvcDep = null;
+                    IgniteUuid oldSrvcId = null;
 
-                        srvcTop = proc.reassign(srvcId, cfg, topVer);
-                    }
-                    catch (IgniteCheckedException e) {
-                        th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+                    for (Map.Entry<IgniteUuid, GridServiceDeployment> e : srvcsDeps.entrySet()) {
+                        GridServiceDeployment dep = e.getValue();
+
+                        if (dep.configuration().getName().equals(cfg.getName())) {
+                            oldSrvcDep = dep;
+                            oldSrvcId = e.getKey();
+
+                            break;
+                        }
                     }
 
-                    if (srvcTop != null && srvcTop.isEmpty())
-                        th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
+                    if (oldSrvcDep != null && !oldSrvcDep.configuration().equalsIgnoreNodeFilter(cfg)) {
+                        th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                            "different configuration) [deployed=" + oldSrvcDep.configuration() + ", new=" + cfg + ']');
+                    }
+                    else {
+                        try {
+                            if (oldSrvcId != null)
+                                srvcId = oldSrvcId;
+
+                            srvcTop = proc.reassign(srvcId, cfg, topVer);
+                        }
+                        catch (IgniteCheckedException e) {
+                            th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+                        }
+
+                        if (srvcTop != null && srvcTop.isEmpty())
+                            th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
+                    }
                 }
 
                 if (th != null) {
@@ -493,13 +518,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /**
      * @param exchId Exchange id.
      * @param errors Deployment errors.
-     * @throws IgniteCheckedException In case of an error.
      */
     protected void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        final Map<IgniteUuid, Collection<Throwable>> errors) throws IgniteCheckedException {
+        final Map<IgniteUuid, Collection<Throwable>> errors) {
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
-        if (crdId == null) {
+        ClusterNode crd = ctx.service().coordinator();
+
+        if (crd == null) {
             if (log.isDebugEnabled()) {
                 log.debug("Failed to resolve coordinator to perform services single map message" +
                     ", locId=" + ctx.localNodeId() +
@@ -510,10 +536,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
 
         try {
-            if (ctx.localNodeId().equals(crdId))
-                onReceiveSingleMapMessage(ctx.localNodeId(), msg);
-            else
-                ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
+            ctx.io().sendToGridTopic(crd, TOPIC_SERVICES, msg, SERVICE_POOL);
 
             if (log.isDebugEnabled())
                 log.debug("Send services single assignments message, msg=" + msg);
@@ -523,8 +546,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 log.debug("Topology changed while message send: " + e.getMessage());
 
             log.error("Failed to send message over communication spi, msg=" + msg, e);
-
-            throw e;
         }
     }
 
@@ -532,7 +553,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
 
-        initFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
+        initTaskFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
             @Override public void apply(IgniteInternalFuture<?> fut) {
                 try {
                     fut.get();
@@ -553,16 +574,18 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param msg Service single map message.
      */
     public void onReceiveSingleMapMessage0(UUID snd, ServicesSingleMapMessage msg) {
-        synchronized (mux) {
-            if (remaining.remove(snd)) {
-                singleMapMsgs.put(snd, msg);
+        initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+            synchronized (mux) {
+                if (remaining.remove(snd)) {
+                    singleMapMsgs.put(snd, msg);
 
-                if (remaining.isEmpty())
-                    onAllReceived();
+                    if (remaining.isEmpty())
+                        onAllReceived();
+                }
+                else
+                    log.warning("Unexpected service assignments message received, msg=" + msg);
             }
-            else
-                log.warning("Unexpected service assignments message received, msg=" + msg);
-        }
+        });
     }
 
     /** {@inheritDoc} */
@@ -578,6 +601,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * Creates full assignments message and send it across over discovery.
      */
     private void onAllReceived() {
+        if (isCompleted())
+            return;
+
         ServicesFullMapMessage msg = createFullMapMessage();
 
         try {
@@ -722,7 +748,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void onNodeLeft(UUID nodeId) {
-        initFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
+        initTaskFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
             @Override public void apply(IgniteInternalFuture<?> fut) {
 
                 try {
@@ -743,31 +769,23 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param nodeId Node id.
      */
     private void onNodeLeft0(UUID nodeId) {
-        if (isComplete())
+        if (isCompleted())
             return;
 
         synchronized (mux) {
             final boolean crdChanged = nodeId.equals(crdId);
 
             if (crdChanged) {
-                try {
-                    crdId = nodeId;
+                ClusterNode crd = ctx.service().coordinator();
 
-                    Set<UUID> excluded = new HashSet<>(singleMapMsgs.keySet());
+                if (crd != null) {
+                    crdId = crd.id();
 
-                    excluded.add(nodeId);
-
-                    for (ClusterNode node : ctx.discovery().nodes(evtTopVer)) {
-                        if (ctx.discovery().alive(node) && !excluded.contains(node.id()))
-                            remaining.add(node.id());
-                    }
-
-                    if (remaining.contains(ctx.localNodeId()))
-                        createAndSendSingleMapMessage(exchId, depErrors);
+                    if (crd.isLocal())
+                        initRemaining(evtTopVer);
                 }
-                catch (IgniteCheckedException e) {
-                    log.error(e.getMessage(), e);
-                }
+
+                createAndSendSingleMapMessage(exchId, depErrors);
             }
             else if (ctx.localNodeId().equals(crdId)) {
                 remaining.remove(nodeId);
@@ -789,7 +807,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public boolean isComplete() {
+    @Override public boolean isCompleted() {
         return isDone();
     }
 

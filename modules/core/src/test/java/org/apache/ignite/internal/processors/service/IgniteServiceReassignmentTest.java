@@ -121,6 +121,7 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
         node2.close();
 
         waitForService(node1);
+        waitForService(node3);
 
         assertEquals(42, serviceProxy(node1).foo());
         assertEquals(42, serviceProxy(node3).foo());
