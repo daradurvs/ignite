@@ -163,6 +163,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
     @Override public void onKernalStart(boolean active) throws IgniteCheckedException {
+        if (ctx.isDaemon())
+            return;
+
         if (ctx.discovery().localNode().order() == 1)
             exchMgr.startProcessing();
         else {
@@ -180,10 +183,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         state = STARTED;
 
-        if (ctx.isDaemon() || !active)
-            return;
-
-        onKernalStart0(true);
+        if (active)
+            onKernalStart0(true);
     }
 
     /**
@@ -231,17 +232,26 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /** {@inheritDoc} */
-    @Override public void stop(boolean cancel) throws IgniteCheckedException {
-        super.stop(cancel);
-
-        exchMgr.stopProcessing();
-    }
-
-    /** {@inheritDoc} */
     @Override public void onKernalStop(boolean cancel) {
         if (ctx.isDaemon())
             return;
 
+        state = STOPPED;
+
+        exchMgr.stopProcessing();
+
+        Exception ex = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
+
+        stopProcessor(ex);
+
+        if (log.isDebugEnabled())
+            log.debug("Stopped service processor.");
+    }
+
+    /**
+     * @param ex Error to cancel waiting futures.
+     */
+    private void stopProcessor(Exception ex) {
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
         synchronized (locSvcs) {
@@ -282,20 +292,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             catch (InterruptedException ignore) {
                 Thread.currentThread().interrupt();
 
-                U.error(log, "Got interrupted while waiting for service to shutdown (will continue stopping node): " +
-                    ctx.name());
+                U.error(log, "Got interrupted while waiting for service to shutdown (will continue stopping " +
+                    "or deactivating node): " + ctx.name());
             }
         }
 
-        Exception err = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
-
-        cancelFutures(depFuts, err);
-        cancelFutures(undepFuts, err);
-
-        state = STOPPED;
-
-        if (log.isDebugEnabled())
-            log.debug("Stopped service processor.");
+        cancelFutures(depFuts, ex);
+        cancelFutures(undepFuts, ex);
     }
 
     /** {@inheritDoc} */
@@ -352,13 +355,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             log.debug("DeActivate service processor [nodeId=" + ctx.localNodeId() +
                 " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
 
-        cancelFutures(depFuts, new IgniteCheckedException("Failed to deploy service, cluster in active."));
-
-        cancelFutures(undepFuts, new IgniteCheckedException("Failed to undeploy service, cluster in active."));
-
-        onKernalStop(true);
-
         state = DEACTIVATED;
+
+        Exception ex = new IgniteCheckedException("Failed to deploy service, cluster in active.");
+
+        stopProcessor(ex);
+
+        if (log.isDebugEnabled())
+            log.debug("Deactivated service processor.");
     }
 
     /** {@inheritDoc} */
@@ -560,12 +564,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs,  null);
+            return deployAll(cfgs, null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs,  prj.predicate());
+            return deployAll(cfgs, prj.predicate());
     }
 
     /**

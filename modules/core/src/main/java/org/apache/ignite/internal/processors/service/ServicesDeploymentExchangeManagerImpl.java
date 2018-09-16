@@ -110,11 +110,11 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
             U.join(exchWorker, log);
 
-            exchWorker.tasksQueue.forEach(t -> t.complete(null, true));
-
-            exchWorker.tasksQueue.clear();
+            tasks.values().forEach(t -> t.complete(null, true));
 
             tasks.clear();
+
+            exchWorker.tasksQueue.clear();
         }
         catch (Exception e) {
             log.error("Error occurred during stopping exchange worker.");

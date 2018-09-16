@@ -551,30 +551,22 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+        assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        initTaskFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
-            @Override public void apply(IgniteInternalFuture<?> fut) {
-                try {
-                    fut.get();
-                }
-                catch (IgniteCheckedException e) {
-                    log.error("Failed to initialize task: " + this, e);
-
-                    return;
-                }
-
-                onReceiveSingleMapMessage0(snd, msg);
-            }
-        });
-    }
-
-    /**
-     * @param snd Sender id.
-     * @param msg Service single map message.
-     */
-    public void onReceiveSingleMapMessage0(UUID snd, ServicesSingleMapMessage msg) {
         initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+            try {
+                fut.get();
+            }
+            catch (IgniteCheckedException e) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Failed to wait initialization of remaining list to perform services single map message" +
+                        ", error=" + e.getMessage() +
+                        ", msg=" + msg);
+                }
+
+                return;
+            }
+
             synchronized (mux) {
                 if (remaining.remove(snd)) {
                     singleMapMsgs.put(snd, msg);
@@ -582,15 +574,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     if (remaining.isEmpty())
                         onAllReceived();
                 }
-                else
-                    log.warning("Unexpected service assignments message received, msg=" + msg);
+                else if (log.isDebugEnabled())
+                    log.debug("Unexpected service assignments message received, msg=" + msg);
             }
         });
     }
 
     /** {@inheritDoc} */
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
-        assert exchId.equals(msg.exchangeId()) : "Wrong messages exchange id, msg=" + msg;
+        assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
         proc.processFullMap(msg);
 
@@ -750,12 +742,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onNodeLeft(UUID nodeId) {
         initTaskFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
             @Override public void apply(IgniteInternalFuture<?> fut) {
-
                 try {
                     fut.get();
                 }
                 catch (IgniteCheckedException e) {
-                    log.error("Failed to initialize task: " + this, e);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Failed to wait task's initialization future, to perform node left callback" +
+                            ", error: " + e.getMessage() +
+                            ", task: " + this);
+                    }
 
                     return;
                 }
@@ -804,6 +799,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** {@inheritDoc} */
     @Override public void complete(@Nullable Throwable err, boolean cancel) {
         onDone(null, err, cancel);
+
+        if (!initTaskFut.isDone())
+            initTaskFut.onCancelled();
+
+        if (!initRemainingFut.isDone())
+            initRemainingFut.onCancelled();
     }
 
     /** {@inheritDoc} */
