@@ -166,6 +166,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
+        state = STARTED;
+
+        if (active) {
+            onKernalStart0();
+
+            state = ACTIVATED;
+        }
+
         if (ctx.discovery().localNode().order() == 1)
             exchMgr.startProcessing();
         else {
@@ -181,20 +189,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             });
         }
 
-        state = STARTED;
+        if (active) {
+            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
-        if (active)
-            onKernalStart0(true);
+            if (cfgs != null)
+                deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate()).get();
+        }
+
+        if (log.isDebugEnabled())
+            log.debug("Started service processor.");
     }
 
     /**
      * Do kernal start.
-     *
-     * @param waitForDeploy Whether it is necessary to wait finish of deployment of predefined services configuration
-     * synchronously, in case of starting processor in active mode.
-     * @throws IgniteCheckedException If failed.
      */
-    private void onKernalStart0(boolean waitForDeploy) throws IgniteCheckedException {
+    private void onKernalStart0() {
         srvcsDeps.forEach((srvcId, dep) -> {
             Map<UUID, Integer> top = srvcsTops.get(srvcId);
 
@@ -205,30 +214,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     redeploy(srvcId, cfg, top);
                 }
                 catch (Exception e) {
-                    log.error("Failed to redeploy service on kernal start, srcvId=" + srvcId +
+                    log.error("Failed to redeploy service on service processor activation, srcvId=" + srvcId +
                         ", top=" + top +
                         ", cfg=" + cfg);
                 }
             }
         });
-
-        ServiceProcessorState prev = state;
-
-        state = ACTIVATED;
-
-        if (prev == STARTED) {
-            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
-
-            if (cfgs != null) {
-                IgniteInternalFuture<?> fut = deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
-
-                if (waitForDeploy)
-                    fut.get();
-            }
-        }
-
-        if (log.isDebugEnabled())
-            log.debug("Started service processor.");
     }
 
     /** {@inheritDoc} */
@@ -346,7 +337,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         start();
 
-        onKernalStart0(false);
+        onKernalStart0();
+
+        ServiceProcessorState prev = state;
+
+        state = ACTIVATED;
+
+        if (prev == STARTED) {
+            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
+
+            if (cfgs != null)
+                deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
+        }
+
+        if (log.isDebugEnabled())
+            log.debug("Activated service processor.");
     }
 
     /** {@inheritDoc} */

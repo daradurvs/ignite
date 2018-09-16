@@ -558,7 +558,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 fut.get();
             }
             catch (IgniteCheckedException e) {
-                if (log.isDebugEnabled()) {
+                if (log != null && log.isDebugEnabled()) {
                     log.debug("Failed to wait initialization of remaining list to perform services single map message" +
                         ", error=" + e.getMessage() +
                         ", msg=" + msg);
@@ -746,7 +746,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     fut.get();
                 }
                 catch (IgniteCheckedException e) {
-                    if (log.isDebugEnabled()) {
+                    if (log != null && log.isDebugEnabled()) {
                         log.debug("Failed to wait task's initialization future, to perform node left callback" +
                             ", error: " + e.getMessage() +
                             ", task: " + this);
