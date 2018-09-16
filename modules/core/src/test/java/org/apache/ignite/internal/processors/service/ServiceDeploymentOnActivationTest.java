@@ -34,8 +34,8 @@ import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
 /**
- * After reworked Service Grid on using messages instead of internal cache, it doesn't matter if nodes use persistence
- * or not. Node restores service state on activation if it had been deactivated before.
+ * After reworked Service Grid on using messages instead of internal cache, it doesn't matter at node activation if
+ * nodes use persistence or not. Node restores service state on activation if it had been deactivated before.
  */
 public class ServiceDeploymentOnActivationTest extends GridCommonAbstractTest {
     /** */

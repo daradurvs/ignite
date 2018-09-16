@@ -35,7 +35,7 @@ import org.jetbrains.annotations.Nullable;
  * configurations of failed services.
  */
 public class GridServiceDeploymentCompoundFuture extends GridCompoundFuture<Object, Object> {
-    /** Names of services written to cache during current deployment. */
+    /** Ids of services written to cache during current deployment. */
     private Collection<IgniteUuid> svcsToRollback;
 
     /** */
@@ -84,7 +84,7 @@ public class GridServiceDeploymentCompoundFuture extends GridCompoundFuture<Obje
     }
 
     /**
-     * @return Collection of names of services that were written to cache during current deployment.
+     * @return Collection of ids of services that were written to cache during current deployment.
      */
     public Collection<IgniteUuid> servicesToRollback() {
         if (svcsToRollback != null)

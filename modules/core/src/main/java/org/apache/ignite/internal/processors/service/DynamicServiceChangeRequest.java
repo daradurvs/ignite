@@ -23,7 +23,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 
 /**
- * Service change state request.
+ * Service change request.
  */
 public class DynamicServiceChangeRequest implements Serializable {
     /** */
@@ -52,6 +52,8 @@ public class DynamicServiceChangeRequest implements Serializable {
     }
 
     /**
+     * Creates deployment request with given id an configuration.
+     *
      * @param srvcId Service id.
      * @param cfg Service configuration.
      * @return Deployment request.
@@ -66,6 +68,8 @@ public class DynamicServiceChangeRequest implements Serializable {
     }
 
     /**
+     * Creates undeployment request for service with given id.
+     *
      * @param srvcId Service id.
      * @return Undeployment request.
      */

@@ -42,8 +42,7 @@ public class ServiceFullDeploymentsResults implements Serializable {
      * @param srvcId Service id.
      * @param results Deployments results.
      */
-    public ServiceFullDeploymentsResults(IgniteUuid srvcId,
-        Map<java.util.UUID, ServiceSingleDeploymentsResults> results) {
+    public ServiceFullDeploymentsResults(IgniteUuid srvcId, Map<UUID, ServiceSingleDeploymentsResults> results) {
         this.srvcId = srvcId;
         this.results = results;
     }

@@ -241,7 +241,7 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
             // Expect correct value after being read back.
             int r = 1000;
 
-            while (r-- > 0)
+            while(r-- > 0)
                 assertEquals(expected, proxy.getValue());
 
             assertEquals("Expected 1 deployed service", 1, services.serviceDescriptors().size());

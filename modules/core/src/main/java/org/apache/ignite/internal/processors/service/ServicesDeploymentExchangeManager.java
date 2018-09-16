@@ -44,9 +44,9 @@ public interface ServicesDeploymentExchangeManager {
     public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks();
 
     /**
-     * Inserts given deployment tasks in begin of queue.
+     * Inserts given deployments tasks in begin of queue.
      *
-     * @param tasks Queue of deployment tasks.
+     * @param tasks Queue of deployments tasks.
      */
     public void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks);
 

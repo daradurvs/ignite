@@ -64,7 +64,7 @@ import static org.apache.ignite.internal.GridTopic.TOPIC_SERVICES;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 
 /**
- * Services deployment exchange task.
+ * Services deployment exchange task implementation based on {@link GridFutureAdapter}.
  */
 public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object>
     implements ServicesDeploymentExchangeTask, Externalizable {
@@ -257,6 +257,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /**
      * Initiates collection of remaining ids.
+     *
+     * @param topVer Topology version.
      */
     private void initRemaining(AffinityTopologyVersion topVer) {
         Throwable th = null;
@@ -301,10 +303,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * Handles cause event with inactive service processor.
      */
     private void processInactive() {
-        complete(null, false);
-
         if (log.isDebugEnabled())
             log.debug("Skip exchange event, because of Service Processor is inactive, evt=" + evt);
+
+        complete(null, false);
     }
 
     /**
@@ -499,10 +501,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /**
      * @param srvcsToDeploy Services to deploy.
      * @param srvcsToUndeploy Services to undeploy.
-     * @throws IgniteCheckedException In case of an error.
      */
-    private void changeServices(Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy,
-        Set<IgniteUuid> srvcsToUndeploy) throws IgniteCheckedException {
+    private void changeServices(Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy, Set<IgniteUuid> srvcsToUndeploy) {
         final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
         for (IgniteUuid srvcId : srvcsToUndeploy)
@@ -519,7 +519,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param exchId Exchange id.
      * @param errors Deployment errors.
      */
-    protected void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
+    private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
