@@ -182,7 +182,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     fut.get();
                 }
                 catch (IgniteCheckedException e) {
-                    log.error(e.getMessage(), e);
+                    log.error("Failed to wait data receiving on node joining.", e);
+
+                    return;
                 }
 
                 exchMgr.startProcessing();
@@ -234,6 +236,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Exception ex = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
 
         stopProcessor(ex);
+
+        if (!dataReceivedfut.isDone())
+            dataReceivedfut.onCancelled();
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
@@ -314,9 +319,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             InitialServicesData initData = (InitialServicesData)data.commonData();
 
-            initData.srvcsDeps.forEach(srvcsDeps::putIfAbsent);
+            initData.srvcsDeps.forEach(srvcsDeps::put);
 
-            initData.srvcsTops.forEach(srvcsTops::putIfAbsent);
+            initData.srvcsTops.forEach(srvcsTops::put);
 
             exchMgr.insertFirst(initData.exchQueue);
         }
