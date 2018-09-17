@@ -584,7 +584,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        proc.processFullMap(msg);
+        if (proc != null)
+            proc.processFullMap(msg);
 
         complete(null, false);
     }
