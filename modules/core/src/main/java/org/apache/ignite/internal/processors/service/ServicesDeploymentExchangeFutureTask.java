@@ -359,10 +359,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                             if (oldSrvcId != null)
                                 srvcId = oldSrvcId;
 
-                            srvcTop = proc.reassign(srvcId, cfg, topVer);
+                            srvcTop = reassign(srvcId, cfg, topVer);
                         }
                         catch (IgniteCheckedException e) {
-                            th = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+                            th = e;
                         }
 
                         if (srvcTop != null && srvcTop.isEmpty())
@@ -464,11 +464,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             Throwable th = null;
 
             try {
-                top = proc.reassign(srvcId, cfg, topVer);
+                top = reassign(srvcId, cfg, topVer);
             }
             catch (Throwable e) {
-                log.error("Failed to recalculate assignments for service, cfg=" + cfg, e);
-
                 th = e;
             }
 
@@ -604,6 +602,33 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
         catch (IgniteCheckedException e) {
             log.error("Failed to send message across the ring, msg=" + msg, e);
+        }
+    }
+
+    /**
+     * Reassigns service to nodes.
+     *
+     * @param cfg Service configuration.
+     * @param topVer Topology version.
+     * @throws IgniteCheckedException If failed.
+     */
+    public Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        try {
+            return proc.reassign(srvcId, cfg, topVer);
+        }
+        catch (Throwable e) {
+            AffinityTopologyVersion joinedTopVer = ctx.discovery().localJoin().discoCache().version();
+
+            if (joinedTopVer.compareTo(topVer) < 0)
+                return Collections.emptyMap();
+            else {
+                IgniteCheckedException ex = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+
+                log.error(ex.getMessage(), ex);
+
+                throw ex;
+            }
         }
     }
 
