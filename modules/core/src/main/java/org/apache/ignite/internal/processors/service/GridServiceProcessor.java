@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -119,10 +118,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadLocal<String> svcName = new ThreadLocal<>();
 
     /** Contains all services deployments, not only locally deployed. */
-    private final ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps = new ConcurrentHashMap<>();
+    private final HashMap<IgniteUuid, GridServiceDeployment> srvcsDeps = new HashMap<>();
 
     /** Services topologies snapshots over cluster. */
-    private final ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops = new ConcurrentHashMap<>();
+    private final HashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops = new HashMap<>();
 
     /** Services deployment exchange manager. */
     private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
@@ -303,11 +302,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return;
 
         if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
-            InitialServicesData initData = new InitialServicesData(
-                new ConcurrentHashMap<>(srvcsDeps),
-                new ConcurrentHashMap<>(srvcsTops),
-                new LinkedBlockingDeque<>(exchMgr.tasks())
-            );
+            InitialServicesData initData = new InitialServicesData(srvcsDeps, srvcsTops, exchMgr.tasks());
 
             dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
         }
@@ -717,7 +712,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         while (true) {
             res = new GridCompoundFuture<>();
 
-            Set<IgniteUuid> toRollback = new TreeSet<>();
+            Set<IgniteUuid> toRollback = new HashSet<>();
 
             List<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
@@ -1588,7 +1583,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Service's id if exists, otherwise {@code null};
      */
     @Nullable private IgniteUuid lookupId(IgnitePredicate<GridServiceDeployment> p) {
-        return srvcsDeps.search(20, (id, deps) -> p.apply(deps) ? id : null);
+        for (Map.Entry<IgniteUuid, GridServiceDeployment> e : srvcsDeps.entrySet()) {
+            IgniteUuid srvcId = e.getKey();
+            GridServiceDeployment dep = e.getValue();
+
+            if (p.apply(dep))
+                return srvcId;
+        }
+
+        return null;
     }
 
     /**
@@ -1613,10 +1616,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         private static final long serialVersionUID = 0L;
 
         /** Services deployments. */
-        private ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps;
+        private HashMap<IgniteUuid, GridServiceDeployment> srvcsDeps;
 
         /** Services topologies. */
-        private ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
+        private HashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
 
         /** Services deployment exchange queue to initialize exchange manager. */
         private LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue;
@@ -1627,8 +1630,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
          * @param exchQueue Services deployment exchange queue to initialize exchange manager.
          */
         public InitialServicesData(
-            ConcurrentHashMap<IgniteUuid, GridServiceDeployment> srvcsDeps,
-            ConcurrentHashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops,
+            HashMap<IgniteUuid, GridServiceDeployment> srvcsDeps,
+            HashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops,
             LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue
         ) {
             this.srvcsDeps = srvcsDeps;
