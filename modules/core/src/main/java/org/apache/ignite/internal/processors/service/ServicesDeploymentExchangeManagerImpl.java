@@ -32,7 +32,6 @@ import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.communication.GridMessageListener;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
-import org.apache.ignite.internal.managers.discovery.DiscoveryLocalJoinData;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
@@ -102,12 +101,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void startProcessing() {
-        DiscoveryLocalJoinData locJoinData = ctx.discovery().localJoin();
-
-        synchronized (mux) {
-            onLocalJoin(locJoinData.event(), locJoinData.discoCache());
-        }
-
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
@@ -156,7 +149,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache) {
-        discoLsnr.onEvent(evt, discoCache);
+        synchronized (mux) {
+            discoLsnr.onEvent(evt, discoCache);
+        }
     }
 
     /**

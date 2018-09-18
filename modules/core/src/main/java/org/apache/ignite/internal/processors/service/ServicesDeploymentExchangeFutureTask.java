@@ -480,7 +480,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (th != null) {
                     th = new IgniteException("Failed to determine suitable nodes to deploy service" +
                         ", srvcId=" + srvcId +
-                        ", cfg=" + cfg);
+                        ", cfg=" + cfg, th);
                 }
 
                 Collection<Throwable> errors = depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
