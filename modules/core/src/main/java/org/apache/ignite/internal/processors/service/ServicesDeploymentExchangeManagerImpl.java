@@ -400,18 +400,13 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
      * @return {@code true} if entered to busy state.
      */
     private boolean enterBusy() {
-        GridSpinBusyLock busyLock = this.busyLock;
-
-        return busyLock != null && busyLock.enterBusy();
+        return busyLock.enterBusy();
     }
 
     /**
      * Leaves busy state.
      */
     private void leaveBusy() {
-        GridSpinBusyLock busyLock = this.busyLock;
-
-        if (busyLock != null)
-            busyLock.leaveBusy();
+        busyLock.leaveBusy();
     }
 }
