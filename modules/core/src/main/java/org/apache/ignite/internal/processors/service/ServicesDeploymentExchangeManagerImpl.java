@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteCheckedException;
@@ -37,6 +36,7 @@ import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
+import org.apache.ignite.internal.util.GridBoundedLinkedHashMap;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
@@ -70,7 +70,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     private final GridMessageListener commLsnr = new ServiceCommunicationListener();
 
     /** Services deploymentst tasks. */
-    private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
+    private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new GridBoundedLinkedHashMap<>(5);
 
     /** Kernal context. */
     private final GridKernalContext ctx;
@@ -292,8 +292,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             AffinityTopologyVersion readyVer = readyTopVer.get();
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
-
-            tasks.remove(task.exchangeId());
         }
     }
 
