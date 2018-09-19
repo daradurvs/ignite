@@ -114,9 +114,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
         oomeHnd);
 
-    /** Thread local for service name. */
-    private ThreadLocal<String> svcName = new ThreadLocal<>();
-
     /** Contains all services deployments, not only locally deployed. */
     private final HashMap<IgniteUuid, GridServiceDeployment> srvcsDeps = new HashMap<>();
 
