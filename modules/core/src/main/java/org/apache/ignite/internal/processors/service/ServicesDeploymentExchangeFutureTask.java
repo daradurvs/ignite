@@ -29,7 +29,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteIllegalStateException;
@@ -70,9 +69,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     implements ServicesDeploymentExchangeTask, Externalizable {
     /** */
     private static final long serialVersionUID = 0L;
-
-    /** Indicates that cause discovery event is set. */
-    private final CountDownLatch evtLatch = new CountDownLatch(1);
 
     /** Task's completion of initialization future. */
     private final GridFutureAdapter<?> initTaskFut = new GridFutureAdapter<>();
@@ -146,15 +142,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer) {
-        if (evtLatch.getCount() < 1)
-            return;
-
         assert evt != null && evtTopVer != null;
 
         this.evt = evt;
         this.evtTopVer = evtTopVer;
-
-        evtLatch.countDown();
     }
 
     /** {@inheritDoc} */
@@ -162,11 +153,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (isCompleted())
             return;
 
+        assert evt != null;
+        assert evtTopVer != null;
+
         Exception initEx = null;
 
         try {
-            U.await(evtLatch);
-
             init0(kCtx);
 
             if (log.isDebugEnabled()) {
@@ -268,7 +260,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             Throwable th = null;
 
             try {
-
                 for (ClusterNode node : ctx.discovery().nodes(topVer)) {
                     if (ctx.discovery().alive(node))
                         remaining.add(node.id());
@@ -786,30 +777,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public void onNodeLeft(UUID nodeId) {
-        initTaskFut.listen(new IgniteInClosure<IgniteInternalFuture<?>>() {
-            @Override public void apply(IgniteInternalFuture<?> fut) {
-                try {
-                    fut.get();
-                }
-                catch (IgniteCheckedException e) {
-                    if (log != null && log.isDebugEnabled()) {
-                        log.debug("Failed to wait task's initialization future, to perform node left callback" +
-                            ", error: " + e.getMessage() +
-                            ", task: " + this);
-                    }
-
-                    return;
-                }
-
-                onNodeLeft0(nodeId);
-            }
-        });
-    }
-
-    /**
-     * @param nodeId Node id.
-     */
-    private void onNodeLeft0(UUID nodeId) {
         if (isCompleted())
             return;
 
@@ -828,12 +795,28 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             createAndSendSingleMapMessage(exchId, depErrors);
         }
         else if (ctx.localNodeId().equals(crdId)) {
-            initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)future -> {
-                synchronized (mux) {
-                    remaining.remove(nodeId);
+            initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+                try {
+                    fut.get();
+                }
+                catch (IgniteCheckedException e) {
+                    if (log != null && log.isDebugEnabled()) {
+                        log.debug("Failed to wait task's initialization future, to perform node left callback" +
+                            ", error: " + e.getMessage() +
+                            ", task: " + this);
+                    }
 
-                    if (remaining.isEmpty())
+                    return;
+                }
+
+                synchronized (mux) {
+                    boolean rmvd = remaining.remove(nodeId);
+
+                    if (rmvd && remaining.isEmpty()) {
+                        singleMapMsgs.remove(nodeId);
+
                         onAllReceived();
+                    }
                 }
             });
         }
@@ -892,9 +875,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         exchId = (ServicesDeploymentExchangeId)in.readObject();
         evt = (DiscoveryEvent)in.readObject();
         evtTopVer = (AffinityTopologyVersion)in.readObject();
-
-        if (evt != null)
-            evtLatch.countDown();
     }
 
     /** {@inheritDoc} */
