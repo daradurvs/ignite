@@ -139,7 +139,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
-        return new LinkedBlockingDeque<>(exchWorker.tasksQueue);
+        return exchWorker.tasksQueue;
     }
 
     /** {@inheritDoc} */

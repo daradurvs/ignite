@@ -302,7 +302,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return;
 
         if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
-            InitialServicesData initData = new InitialServicesData(srvcsDeps, srvcsTops, exchMgr.tasks());
+            InitialServicesData initData = new InitialServicesData(
+                new HashMap<>(srvcsDeps),
+                new HashMap<>(srvcsTops),
+                new LinkedBlockingDeque<>(exchMgr.tasks()));
 
             dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
         }
