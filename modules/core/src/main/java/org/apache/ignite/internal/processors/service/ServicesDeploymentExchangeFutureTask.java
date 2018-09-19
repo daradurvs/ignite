@@ -261,24 +261,31 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private void initRemaining(AffinityTopologyVersion topVer) {
-        Throwable th = null;
+        synchronized (mux) {
+            if (initRemainingFut.isDone())
+                return;
 
-        try {
-            for (ClusterNode node : ctx.discovery().nodes(topVer)) {
-                if (ctx.discovery().alive(node))
-                    remaining.add(node.id());
+            Throwable th = null;
+
+            try {
+
+                for (ClusterNode node : ctx.discovery().nodes(topVer)) {
+                    if (ctx.discovery().alive(node))
+                        remaining.add(node.id());
+                }
+
             }
-        }
-        catch (Throwable t) {
-            th = t;
+            catch (Throwable t) {
+                th = t;
 
-            log.error("Error occurred while initialization of remaining collection.", t);
-        }
-        finally {
-            if (th != null)
-                initRemainingFut.onDone(th);
-            else
-                initRemainingFut.onDone();
+                log.error("Error occurred while initialization of remaining collection.", t);
+            }
+            finally {
+                if (th != null)
+                    initRemainingFut.onDone(th);
+                else
+                    initRemainingFut.onDone();
+            }
         }
     }
 
@@ -582,10 +589,23 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        if (proc != null)
-            proc.processFullMap(msg);
+        if (isCompleted())
+            return;
 
-        complete(null, false);
+        Throwable th = null;
+
+        try {
+            if (proc != null)
+                proc.processFullMap(msg);
+        }
+        catch (Throwable t) {
+            log.error("Failed to process services deployment full map, msg=" + msg, t);
+
+            th = t;
+        }
+        finally {
+            complete(th, false);
+        }
     }
 
     /**
@@ -620,7 +640,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         catch (Throwable e) {
             AffinityTopologyVersion joinedTopVer = ctx.discovery().localJoin().discoCache().version();
 
-            if (joinedTopVer.compareTo(topVer) < 0)
+            if (joinedTopVer.compareTo(topVer) > 0)
                 return Collections.emptyMap();
             else {
                 IgniteCheckedException ex = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
@@ -793,27 +813,29 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (isCompleted())
             return;
 
-        synchronized (mux) {
-            final boolean crdChanged = nodeId.equals(crdId);
+        final boolean crdChanged = nodeId.equals(crdId);
 
-            if (crdChanged) {
-                ClusterNode crd = ctx.service().coordinator();
+        if (crdChanged) {
+            ClusterNode crd = ctx.service().coordinator();
 
-                if (crd != null) {
-                    crdId = crd.id();
+            if (crd != null) {
+                crdId = crd.id();
 
-                    if (crd.isLocal())
-                        initRemaining(evtTopVer);
+                if (crd.isLocal())
+                    initRemaining(evtTopVer);
+            }
+
+            createAndSendSingleMapMessage(exchId, depErrors);
+        }
+        else if (ctx.localNodeId().equals(crdId)) {
+            initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)future -> {
+                synchronized (mux) {
+                    remaining.remove(nodeId);
+
+                    if (remaining.isEmpty())
+                        onAllReceived();
                 }
-
-                createAndSendSingleMapMessage(exchId, depErrors);
-            }
-            else if (ctx.localNodeId().equals(crdId)) {
-                remaining.remove(nodeId);
-
-                if (remaining.isEmpty())
-                    onAllReceived();
-            }
+            });
         }
     }
 

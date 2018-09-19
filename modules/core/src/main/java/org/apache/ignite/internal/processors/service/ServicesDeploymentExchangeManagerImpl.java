@@ -131,7 +131,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 if (!exchWorker.tasksQueue.contains(t)) {
                     exchWorker.tasksQueue.addFirst(t);
 
-                    this.tasks.put(t.exchangeId(), t);
+                    this.tasks.putIfAbsent(t.exchangeId(), t);
                 }
             });
         }
