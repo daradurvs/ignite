@@ -38,6 +38,9 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
     /** */
     private static final String SERVICE_NAME = "testService";
 
+    /** */
+    private static final long SERVICE_TOP_WAIT_TIMEOUT = 500L;
+
     /** {@inheritDoc} */
     @Override protected int nodeCount() {
         return 1;
@@ -160,7 +163,7 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         waitForReadyTopology(grid, topVer);
 
-        Map<UUID, Integer> srvcDeps = grid.context().service().serviceTopology(SERVICE_NAME, 500);
+        Map<UUID, Integer> srvcDeps = grid.context().service().serviceTopology(SERVICE_NAME, SERVICE_TOP_WAIT_TIMEOUT);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.context().discovery().aliveServerNodes(), F.node2id());
 

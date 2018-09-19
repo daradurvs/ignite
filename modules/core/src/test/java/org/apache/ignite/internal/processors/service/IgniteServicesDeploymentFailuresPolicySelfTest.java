@@ -54,9 +54,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
      * @throws Exception In case of an error.
      */
     public void testServiceDeploymentIgnorePolicy() throws Exception {
-        final String name = "testIgnorePolicy";
-
-        ServiceConfiguration cfg = serviceConfiguration(name, IGNORE);
+        ServiceConfiguration cfg = serviceConfiguration("testIgnorePolicy", IGNORE);
 
         IgniteEx ignite = grid(0);
 
@@ -73,7 +71,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
 
         assertEquals(1, descs.size());
 
-        Map<UUID, Integer> top = ignite.context().service().serviceTopology(name, 0);
+        Map<UUID, Integer> top = ignite.context().service().serviceTopology("testIgnorePolicy", 0);
 
         assertEquals(2, top.size());
     }
@@ -82,9 +80,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
      * @throws Exception In case of an error.
      */
     public void testServiceDeploymentCancelPolicy() throws Exception {
-        final String name = "testCancelPolicy";
-
-        ServiceConfiguration cfg = serviceConfiguration(name, CANCEL);
+        ServiceConfiguration cfg = serviceConfiguration("testCancelPolicy", CANCEL);
 
         IgniteEx ignite = grid(0);
 
@@ -101,7 +97,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
 
         assertEquals(0, descs.size());
 
-        assertNull(ignite.context().service().serviceTopology(name, 0));
+        assertNull(ignite.context().service().serviceTopology("testCancelPolicy", 0));
     }
 
     /**

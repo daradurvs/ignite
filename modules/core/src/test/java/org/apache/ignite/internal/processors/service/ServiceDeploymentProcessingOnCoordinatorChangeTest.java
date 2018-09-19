@@ -41,9 +41,7 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
             IgniteEx ignite2 = grid(2);
 
             IgniteFuture fut = ignite2.services().deployNodeSingletonAsync("testService", new TestService());
-
             IgniteFuture fut2 = ignite2.services().deployNodeSingletonAsync("testService2", new TestService());
-
             IgniteFuture fut3 = ignite2.services().deployNodeSingletonAsync("testService3", new TestService());
 
             IgniteEx ignite0 = grid(0);
@@ -53,17 +51,13 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
             ignite0.close();
 
             fut.get();
-
             fut2.get();
-
             fut3.get();
 
             IgniteEx ignite3 = grid(3);
 
             assertNotNull(ignite3.services().service("testService"));
-
             assertNotNull(ignite3.services().service("testService2"));
-
             assertNotNull(ignite3.services().service("testService3"));
         }
         finally {
@@ -81,7 +75,6 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
             IgniteEx ignite4 = grid(4);
 
             IgniteFuture depFut = ignite4.services().deployNodeSingletonAsync("testService", new TestService());
-
             IgniteFuture depFut2 = ignite4.services().deployNodeSingletonAsync("testService2", new TestService());
 
             IgniteEx ignite0 = grid(0);
@@ -91,17 +84,14 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
             ignite0.close();
 
             depFut.get();
-
             depFut2.get();
 
             Ignite ignite2 = grid(2);
 
             assertNotNull(ignite2.services().service("testService"));
-
             assertNotNull(ignite2.services().service("testService2"));
 
             IgniteFuture undepFut = ignite4.services().cancelAsync("testService");
-
             IgniteFuture undepFut2 = ignite4.services().cancelAsync("testService2");
 
             IgniteEx ignite1 = grid(1);
@@ -111,11 +101,9 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
             ignite1.close();
 
             undepFut.get();
-
             undepFut2.get();
 
             assertNull(ignite4.services().service("testService"));
-
             assertNull(ignite4.services().service("testService2"));
         }
         finally {
@@ -134,7 +122,7 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
 
         /** {@inheritDoc} */
         @Override public void init(ServiceContext ctx) throws Exception {
-            U.sleep(5_000);
+            U.sleep(5_000L);
         }
 
         /** {@inheritDoc} */
