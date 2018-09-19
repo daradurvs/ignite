@@ -124,7 +124,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final HashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops = new HashMap<>();
 
     /** Services deployment exchange manager. */
-    private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
+    private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
     /** Service processor state. */
     private volatile ServiceProcessorState state = STOPPED;

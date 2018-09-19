@@ -54,9 +54,6 @@ import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVE
  * Services deployment exchange manager.
  */
 public class ServicesDeploymentExchangeManagerImpl implements ServicesDeploymentExchangeManager {
-    /** Discovery events types to listen. */
-    private static final int[] EVTS = {EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT};
-
     /** Busy lock. */
     private final GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
@@ -92,7 +89,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         this.ctx = ctx;
         this.log = ctx.log(getClass());
 
-        ctx.event().addDiscoveryEventListener(discoLsnr, EVTS);
+        ctx.event().addDiscoveryEventListener(discoLsnr,
+            EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT);
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
