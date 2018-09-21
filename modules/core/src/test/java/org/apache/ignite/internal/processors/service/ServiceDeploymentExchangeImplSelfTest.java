@@ -30,7 +30,6 @@ import org.apache.ignite.testframework.config.GridTestProperties;
 import org.apache.ignite.testframework.junits.GridTestKernalContext;
 import org.apache.ignite.testframework.junits.logger.GridTestLog4jLogger;
 import org.jetbrains.annotations.Nullable;
-import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -69,7 +68,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         assertEquals(tasks.size(), exchMgr.tasks().size());
 
         for (ServicesDeploymentExchangeTask task : exchMgr.tasks())
-            Assert.assertSame(tasks.poll(), task);
+            assertSame(tasks.poll(), task);
     }
 
     /**
@@ -105,7 +104,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         assertEquals(tasks.size(), exchMgr.tasks().size());
 
         for (ServicesDeploymentExchangeTask task : exchMgr.tasks())
-            Assert.assertSame(tasks.poll(), task);
+            assertSame(tasks.poll(), task);
     }
 
     /**
