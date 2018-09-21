@@ -17,10 +17,11 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
@@ -32,6 +33,7 @@ import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.communication.GridMessageListener;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
+import org.apache.ignite.internal.managers.discovery.DiscoveryLocalJoinData;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
@@ -99,6 +101,22 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void startProcessing() {
+        DiscoveryLocalJoinData locJoinData = ctx.discovery().localJoin();
+
+        DiscoveryEvent locJoinEvt = locJoinData.event();
+        AffinityTopologyVersion locJoinTopVer = locJoinData.joinTopologyVersion();
+
+        ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(locJoinEvt, locJoinTopVer);
+
+        ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+
+        task.event(locJoinEvt, locJoinTopVer);
+
+        synchronized (mux) {
+            if (!exchWorker.tasksQueue.contains(task))
+                exchWorker.tasksQueue.addFirst(task);
+        }
+
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
@@ -123,7 +141,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks) {
+    @Override public void insertFirst(Deque<ServicesDeploymentExchangeTask> tasks) {
         synchronized (mux) {
             tasks.descendingIterator().forEachRemaining(t -> {
                 if (!exchWorker.tasksQueue.contains(t)) {
@@ -136,7 +154,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks() {
+    @Override public ArrayDeque<ServicesDeploymentExchangeTask> tasks() {
         return exchWorker.tasksQueue;
     }
 
@@ -146,10 +164,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache) {
-        synchronized (mux) {
-            discoLsnr.onEvent(evt, discoCache);
-        }
+    @Override public void onLocalEvent(DiscoveryEvent evt, DiscoCache discoCache) {
+        discoLsnr.onEvent(evt, discoCache);
     }
 
     /**
@@ -165,8 +181,12 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         task.event(evt, topVer);
 
-        if (!exchWorker.tasksQueue.contains(task))
-            exchWorker.tasksQueue.offer(task);
+        synchronized (mux) {
+            if (!exchWorker.tasksQueue.contains(task))
+                exchWorker.tasksQueue.add(task);
+
+            mux.notifyAll();
+        }
     }
 
     /**
@@ -188,7 +208,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
      */
     private class ServicesDeploymentExchangeWorker extends GridWorker {
         /** Queue to process. */
-        private final LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasksQueue;
+        private final ArrayDeque<ServicesDeploymentExchangeTask> tasksQueue;
 
         /** Exchange future in work. */
         volatile ServicesDeploymentExchangeTask task = null;
@@ -198,7 +218,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             super(ctx.igniteInstanceName(), "services-deployment-exchanger",
                 ServicesDeploymentExchangeManagerImpl.this.log, ctx.workersRegistry());
 
-            this.tasksQueue = new LinkedBlockingDeque<>();
+            this.tasksQueue = new ArrayDeque<>();
         }
 
         /** {@inheritDoc} */
@@ -233,12 +253,25 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
          */
         private void body0() throws InterruptedException, IgniteCheckedException {
             while (!isCancelled()) {
-                task = null;
+                synchronized (mux) {
+                    // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
+                    // event on newly joined node where the queue will be transferred.
+                    task = tasksQueue.peek();
+
+                    if (task == null) {
+                        mux.wait();
+
+                        continue;
+                    }
+                    else if (task.isCompleted()) {
+                        tasksQueue.poll();
+
+                        continue;
+                    }
+                }
 
                 if (isCancelled())
                     Thread.currentThread().interrupt();
-
-                task = tasksQueue.take();
 
                 try {
                     task.init(ctx);
@@ -292,6 +325,10 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
 
             tasks.remove(task.exchangeId());
+
+            synchronized (mux) {
+                tasksQueue.poll();
+            }
         }
     }
 

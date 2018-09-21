@@ -264,7 +264,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     if (ctx.discovery().alive(node))
                         remaining.add(node.id());
                 }
-
             }
             catch (Throwable t) {
                 th = t;
@@ -658,10 +657,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 int cnt = res.count();
 
                 if (cnt != 0) {
-                    Map<UUID, Integer> expSrvcTop = expDeps.get(srvcId);
+                    Map<UUID, Integer> expTop = expDeps.get(srvcId);
 
-                    if (expSrvcTop != null) {
-                        Integer expCnt = expSrvcTop.get(nodeId);
+                    if (expTop != null) {
+                        Integer expCnt = expTop.get(nodeId);
 
                         if (expCnt == null)
                             cnt = 0;
@@ -780,35 +779,36 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (isCompleted())
             return;
 
-        final boolean crdChanged = nodeId.equals(crdId);
-
-        if (crdChanged) {
-            ClusterNode crd = ctx.service().coordinator();
-
-            if (crd != null) {
-                crdId = crd.id();
-
-                if (crd.isLocal())
-                    initRemaining(evtTopVer);
+        initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+            try {
+                fut.get();
             }
-
-            createAndSendSingleMapMessage(exchId, depErrors);
-        }
-        else if (ctx.localNodeId().equals(crdId)) {
-            initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
-                try {
-                    fut.get();
-                }
-                catch (IgniteCheckedException e) {
-                    if (log != null && log.isDebugEnabled()) {
-                        log.debug("Failed to wait task's initialization future, to perform node left callback" +
-                            ", error: " + e.getMessage() +
-                            ", task: " + this);
-                    }
+            catch (IgniteCheckedException e) {
+                if (log != null) {
+                    log.error("Failed to wait task's initialization future.", e);
 
                     return;
                 }
+            }
 
+            if (fut.isCancelled())
+                return;
+
+            final boolean crdChanged = nodeId.equals(crdId);
+
+            if (crdChanged) {
+                ClusterNode crd = ctx.service().coordinator();
+
+                if (crd != null) {
+                    crdId = crd.id();
+
+                    if (crd.isLocal())
+                        initRemaining(evtTopVer);
+                }
+
+                createAndSendSingleMapMessage(exchId, depErrors);
+            }
+            else if (ctx.localNodeId().equals(crdId)) {
                 synchronized (mux) {
                     boolean rmvd = remaining.remove(nodeId);
 
@@ -818,8 +818,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         onAllReceived();
                     }
                 }
-            });
-        }
+            }
+        });
     }
 
     /** {@inheritDoc} */

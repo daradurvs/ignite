@@ -17,7 +17,8 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
@@ -41,14 +42,14 @@ public interface ServicesDeploymentExchangeManager {
      *
      * @return Queue of deployment tasks.
      */
-    public LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks();
+    public ArrayDeque<ServicesDeploymentExchangeTask> tasks();
 
     /**
      * Inserts given deployments tasks in begin of queue.
      *
      * @param tasks Queue of deployments tasks.
      */
-    public void insertFirst(LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks);
+    public void insertFirst(Deque<ServicesDeploymentExchangeTask> tasks);
 
     /**
      * @return Ready topology version.
@@ -56,10 +57,11 @@ public interface ServicesDeploymentExchangeManager {
     public AffinityTopologyVersion readyTopologyVersion();
 
     /**
-     * Special handler for local join event, because of regular event for local join is not generated.
+     * Special handler for local discovery events for which the regular events are not generated, e.g. local join and
+     * client reconnect events.
      *
      * @param evt Discovery event.
      * @param discoCache Discovery cache.
      */
-    public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache);
+    public void onLocalEvent(DiscoveryEvent evt, DiscoCache discoCache);
 }

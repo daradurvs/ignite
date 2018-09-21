@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.service;
 
 import java.io.Serializable;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -36,7 +37,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import org.apache.ignite.IgniteCheckedException;
@@ -302,7 +302,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             InitialServicesData initData = new InitialServicesData(
                 new HashMap<>(srvcsDeps),
                 new HashMap<>(srvcsTops),
-                new LinkedBlockingDeque<>(exchMgr.tasks()));
+                new ArrayDeque<>(exchMgr.tasks()));
 
             dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
         }
@@ -1622,7 +1622,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         private HashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops;
 
         /** Services deployment exchange queue to initialize exchange manager. */
-        private LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue;
+        private ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
 
         /**
          * @param srvcsDeps Services deployments.
@@ -1632,7 +1632,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         public InitialServicesData(
             HashMap<IgniteUuid, GridServiceDeployment> srvcsDeps,
             HashMap<IgniteUuid, HashMap<UUID, Integer>> srvcsTops,
-            LinkedBlockingDeque<ServicesDeploymentExchangeTask> exchQueue
+            ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
         ) {
             this.srvcsDeps = srvcsDeps;
             this.srvcsTops = srvcsTops;

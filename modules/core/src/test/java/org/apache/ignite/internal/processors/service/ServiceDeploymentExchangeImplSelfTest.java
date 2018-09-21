@@ -17,9 +17,9 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.UUID;
-import java.util.concurrent.LinkedBlockingDeque;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
@@ -57,7 +57,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
     public void testInsertFirstTasksInEmptyQueue() {
         ServicesDeploymentExchangeManagerImpl exchMgr = manager();
 
-        LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks = new LinkedBlockingDeque<>();
+        ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
 
         for (int i = 0; i < 5; i++)
             tasks.add(new TestTaskClass());
@@ -89,7 +89,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
 
         assertEquals(2, exchMgr.tasks().size());
 
-        LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasks = new LinkedBlockingDeque<>();
+        ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
 
         for (int i = 0; i < 5; i++)
             tasks.add(new TestTaskClass());
@@ -152,8 +152,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
 
         /** {@inheritDoc} */
         @Override public ServicesDeploymentExchangeId exchangeId() {
-            // No-op.
-            return null;
+            return new ServicesDeploymentExchangeId();
         }
 
         /** {@inheritDoc} */
