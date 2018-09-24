@@ -347,7 +347,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                             th = e;
                         }
 
-                        if (srvcTop != null && srvcTop.isEmpty())
+                        if (srvcTop != null && srvcTop.isEmpty() && !lessThenLocalJoin(topVer))
                             th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
                     }
                 }
@@ -597,18 +597,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     public Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         try {
+            if (lessThenLocalJoin(topVer))
+                return Collections.emptyMap();
+
             return proc.reassign(srvcId, cfg, topVer);
         }
         catch (Throwable e) {
-            if (locJoinTopVer.compareTo(topVer) > 0)
-                return Collections.emptyMap();
-            else {
-                IgniteCheckedException ex = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
+            IgniteCheckedException ex = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
 
-                log.error(ex.getMessage(), ex);
+            log.error(ex.getMessage(), ex);
 
-                throw ex;
-            }
+            throw ex;
         }
     }
 
