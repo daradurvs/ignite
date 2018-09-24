@@ -103,29 +103,24 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** {@inheritDoc} */
     @Override public void startProcessing() {
         ctx.discovery().localJoinFuture().listen((IgniteInClosure<IgniteInternalFuture<DiscoveryLocalJoinData>>)fut -> {
-            try {
-                DiscoveryLocalJoinData locJoinData = fut.get();
+            DiscoveryLocalJoinData locJoinData = fut.result();
 
-                DiscoveryEvent locJoinEvt = locJoinData.event();
+            DiscoveryEvent locJoinEvt = locJoinData.event();
 
-                AffinityTopologyVersion locJoinTopVer = locJoinData.joinTopologyVersion();
+            AffinityTopologyVersion locJoinTopVer = locJoinData.joinTopologyVersion();
 
-                ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(locJoinEvt, locJoinTopVer);
+            ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(locJoinEvt, locJoinTopVer);
 
-                ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+            ServicesDeploymentExchangeTask task = exchangeTask(exchId);
 
-                task.event(locJoinEvt, locJoinTopVer);
+            task.event(locJoinEvt, locJoinTopVer);
 
-                synchronized (mux) {
-                    if (!exchWorker.tasksQueue.contains(task))
-                        exchWorker.tasksQueue.addFirst(task);
-                }
-
-                new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
+            synchronized (mux) {
+                if (!exchWorker.tasksQueue.contains(task))
+                    exchWorker.tasksQueue.addFirst(task);
             }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to wait local join future to start service deployment exchange manager.", e);
-            }
+
+            new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
         });
     }
 
@@ -350,6 +345,24 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                             continue;
                         }
+                        else if (!ctx.service().isActive()) {
+                            DiscoveryEvent evt = task.event();
+
+                            if (!(evt instanceof DiscoveryCustomEvent) ||
+                                !(((DiscoveryCustomEvent)evt).customMessage() instanceof ChangeGlobalStateMessage)) {
+
+                                if (log.isDebugEnabled()) {
+                                    log.debug("Skip exchange event, because of Service Processor is inactive" +
+                                        ", evt=" + evt);
+                                }
+
+                                task.complete(null, false);
+
+                                tasksQueue.poll();
+
+                                continue;
+                            }
+                        }
                     }
 
                     try {
@@ -423,6 +436,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 tasksQueue.poll();
             }
         }
+
     }
 
     /**
