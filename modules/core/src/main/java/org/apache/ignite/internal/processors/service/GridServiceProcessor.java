@@ -329,12 +329,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         state = DEACTIVATED;
 
-        Exception ex = new IgniteCheckedException("Failed to deploy service, cluster in active.");
+        Exception ex = new IgniteCheckedException("Operation has been cancelled (node is deactivating).");
 
         stopProcessor(ex);
-
-        if (log.isDebugEnabled())
-            log.debug("Deactivated service processor.");
     }
 
     /** {@inheritDoc} */
