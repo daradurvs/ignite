@@ -344,36 +344,39 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             try {
                 UUID snd = evt.eventNode().id();
 
-                if (evt instanceof DiscoveryCustomEvent) {
-                    DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
-                    if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
-                        msg instanceof DynamicCacheChangeBatch ||
-                        msg instanceof CacheAffinityChangeMessage ||
-                        msg instanceof ChangeGlobalStateMessage)
-                        processEvent(evt, discoCache.version());
-                    else if (msg instanceof ServicesFullMapMessage) {
-                        ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
-
-                        if (log.isDebugEnabled()) {
-                            log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                ", sender=" + snd +
-                                ", msg=" + msg0 + ']');
-                        }
-
-                        ServicesDeploymentExchangeId exchId = msg0.exchangeId();
-
-                        if (tasks.containsKey(exchId)) { // In case of double delivering
-                            ServicesDeploymentExchangeTask task = exchangeTask(exchId);
-
-                            task.onReceiveFullMapMessage(snd, msg0);
-                        }
-                    }
-
-                    return;
-                }
+                assert snd != null;
 
                 switch (evt.type()) {
+                    case EVT_DISCOVERY_CUSTOM_EVT:
+                        DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                        if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
+                            msg instanceof DynamicCacheChangeBatch ||
+                            msg instanceof CacheAffinityChangeMessage ||
+                            msg instanceof ChangeGlobalStateMessage)
+                            processEvent(evt, discoCache.version());
+                        else if (msg instanceof ServicesFullMapMessage) {
+                            ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
+
+                            if (log.isDebugEnabled()) {
+                                log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
+                                    ", sender=" + snd +
+                                    ", msg=" + msg0 + ']');
+                            }
+
+                            ServicesDeploymentExchangeId exchId = msg0.exchangeId();
+
+                            if (tasks.containsKey(exchId)) { // In case of double delivering
+                                ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+
+                                assert task != null;
+
+                                task.onReceiveFullMapMessage(snd, msg0);
+                            }
+                        }
+
+                        break;
+
                     case EVT_NODE_LEFT:
                     case EVT_NODE_FAILED:
 
