@@ -162,23 +162,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         exchMgr.startProcessing();
 
-        if (active) {
-            onKernalStart0();
-
-            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
-
-            if (cfgs != null)
-                deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate()).get();
-        }
-
-        if (log.isDebugEnabled())
-            log.debug("Started service processor.");
+        if (active)
+            startProcessor(true, false);
     }
 
     /**
-     * Do kernal start.
+     * @param deploy If it is necessary to deploy services predefined in instance configuration.
+     * @param async Deploy predefined services asynchronously or not.
+     * @throws IgniteCheckedException In case of an error.
      */
-    private void onKernalStart0() {
+    private void startProcessor(boolean deploy, boolean async) throws IgniteCheckedException {
         srvcsDeps.forEach((srvcId, dep) -> {
             Map<UUID, Integer> top = srvcsTops.get(srvcId);
 
@@ -195,6 +188,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
         });
+
+        ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
+
+        if (cfgs != null && deploy) {
+            IgniteInternalFuture<?> fut = deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
+
+            if (!async)
+                fut.get();
+        }
+
+        if (log.isDebugEnabled())
+            log.debug("Started service processor.");
     }
 
     /** {@inheritDoc} */
@@ -309,21 +314,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         start();
 
-        onKernalStart0();
-
-        ServiceProcessorState prev = state;
+        boolean deploy = state == STARTED;
 
         state = ACTIVATED;
 
-        if (prev == STARTED) {
-            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
-
-            if (cfgs != null)
-                deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
-        }
-
-        if (log.isDebugEnabled())
-            log.debug("Activated service processor.");
+        startProcessor(deploy, true);
     }
 
     /** {@inheritDoc} */

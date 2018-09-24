@@ -319,9 +319,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         /** Queue to process. */
         private final ArrayDeque<ServicesDeploymentExchangeTask> tasksQueue;
 
-        /** Exchange future in work. */
-        private volatile ServicesDeploymentExchangeTask task = null;
-
         /** {@inheritDoc} */
         private ServicesDeploymentExchangeWorker() {
             super(ctx.igniteInstanceName(), "services-deployment-exchanger",
@@ -335,6 +332,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             Throwable err = null;
 
             try {
+                ServicesDeploymentExchangeTask task;
+
                 while (!isCancelled()) {
                     synchronized (mux) {
                         // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
