@@ -320,7 +320,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         private final ArrayDeque<ServicesDeploymentExchangeTask> tasksQueue;
 
         /** Exchange future in work. */
-        volatile ServicesDeploymentExchangeTask task = null;
+        private volatile ServicesDeploymentExchangeTask task = null;
 
         /** {@inheritDoc} */
         private ServicesDeploymentExchangeWorker() {
@@ -335,7 +335,60 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
             Throwable err = null;
 
             try {
-                body0();
+                while (!isCancelled()) {
+                    synchronized (mux) {
+                        // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
+                        // event on newly joined node where the queue will be transferred.
+                        task = tasksQueue.peek();
+
+                        if (task == null) {
+                            mux.wait();
+
+                            continue;
+                        }
+                        else if (task.isCompleted()) {
+                            tasksQueue.poll();
+
+                            continue;
+                        }
+                    }
+
+                    try {
+                        task.init(ctx);
+                    }
+                    catch (Exception e) {
+                        log.error("Error occurred during init service exchange future.", e);
+
+                        task.complete(e, false);
+
+                        throw e;
+                    }
+
+                    long timeout = ctx.config().getNetworkTimeout() * 5;
+
+                    while (true) {
+                        try {
+                            task.waitForComplete(timeout);
+
+                            taskPostProcessing(task);
+
+                            break;
+                        }
+                        catch (IgniteCheckedException e) {
+                            if (isCancelled)
+                                return;
+
+                            log.warning("Error occurred during waiting for exchange future completion " +
+                                "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
+
+                            if (task.isCompleted()) {
+                                taskPostProcessing(task);
+
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -354,74 +407,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                     ctx.failure().process(new FailureContext(CRITICAL_ERROR, err));
                 else if (err != null)
                     ctx.failure().process(new FailureContext(SYSTEM_WORKER_TERMINATION, err));
-            }
-        }
-
-        /**
-         * @throws InterruptedException If interrupted.
-         */
-        private void body0() throws InterruptedException, IgniteCheckedException {
-            while (!isCancelled()) {
-                synchronized (mux) {
-                    // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
-                    // event on newly joined node where the queue will be transferred.
-                    task = tasksQueue.peek();
-
-                    if (task == null) {
-                        mux.wait();
-
-                        continue;
-                    }
-                    else if (task.isCompleted()) {
-                        tasksQueue.poll();
-
-                        continue;
-                    }
-                }
-
-                if (isCancelled())
-                    Thread.currentThread().interrupt();
-
-                try {
-                    task.init(ctx);
-                }
-                catch (Exception e) {
-                    log.error("Error occurred during init service exchange future.", e);
-
-                    task.complete(e, false);
-
-                    throw e;
-                }
-
-                long timeout = ctx.config().getNetworkTimeout() * 5;
-
-                while (true) {
-                    try {
-                        task.waitForComplete(timeout);
-
-                        taskPostProcessing(task);
-
-                        break;
-                    }
-                    catch (IgniteCheckedException e) {
-                        if (isCancelled)
-                            return;
-
-                        log.error("Error occurred during waiting for exchange future completion " +
-                            "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
-
-                        if (task.isCompleted()) {
-                            taskPostProcessing(task);
-
-                            break;
-                        }
-
-                        for (UUID uuid : task.remaining()) {
-                            if (!ctx.discovery().alive(uuid))
-                                task.onNodeLeft(uuid);
-                        }
-                    }
-                }
             }
         }
 
