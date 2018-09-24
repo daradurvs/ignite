@@ -62,7 +62,6 @@ import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
-import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.marshaller.Marshaller;
@@ -126,9 +125,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Service processor state. */
     private volatile ServiceProcessorState state = STOPPED;
 
-    /** Future to wait initital data receiving on node join to topology. */
-    private final GridFutureAdapter<?> dataReceivedfut = new GridFutureAdapter<>();
-
     /**
      * @param ctx Kernal context.
      */
@@ -162,32 +158,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
-        state = STARTED;
+        state = active ? ACTIVATED : STARTED;
+
+        exchMgr.startProcessing();
 
         if (active) {
             onKernalStart0();
 
-            state = ACTIVATED;
-        }
-
-        if (ctx.discovery().localNode().order() == 1)
-            exchMgr.startProcessing();
-        else {
-            dataReceivedfut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
-                try {
-                    fut.get();
-                }
-                catch (IgniteCheckedException e) {
-                    log.error("Failed to wait data receiving on node joining.", e);
-
-                    return;
-                }
-
-                exchMgr.startProcessing();
-            });
-        }
-
-        if (active) {
             ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
             if (cfgs != null)
@@ -232,9 +209,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Exception ex = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
 
         stopProcessor(ex);
-
-        if (!dataReceivedfut.isDone())
-            dataReceivedfut.onCancelled();
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
@@ -320,8 +294,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             exchMgr.insertFirst(initData.exchQueue);
         }
-
-        dataReceivedfut.onDone();
     }
 
     /** {@inheritDoc} */
