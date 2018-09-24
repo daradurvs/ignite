@@ -28,6 +28,7 @@ import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.communication.GridMessageListener;
@@ -42,6 +43,7 @@ import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
+import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.thread.IgniteThread;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
@@ -65,11 +67,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Services discovery messages listener. */
     private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
 
-    /** Services communication messages listener. */
-    private final GridMessageListener commLsnr = new ServiceCommunicationListener();
-
     /** Services deploymentst tasks. */
-    private Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
+    private final Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
 
     /** Kernal context. */
     private final GridKernalContext ctx;
@@ -94,6 +93,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         ctx.event().addDiscoveryEventListener(discoLsnr,
             EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT);
 
+        GridMessageListener commLsnr = new ServiceCommunicationListener();
+
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
         this.exchWorker = new ServicesDeploymentExchangeWorker();
@@ -101,23 +102,31 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void startProcessing() {
-        DiscoveryLocalJoinData locJoinData = ctx.discovery().localJoin();
+        ctx.discovery().localJoinFuture().listen((IgniteInClosure<IgniteInternalFuture<DiscoveryLocalJoinData>>)fut -> {
+            try {
+                DiscoveryLocalJoinData locJoinData = fut.get();
 
-        DiscoveryEvent locJoinEvt = locJoinData.event();
-        AffinityTopologyVersion locJoinTopVer = locJoinData.joinTopologyVersion();
+                DiscoveryEvent locJoinEvt = locJoinData.event();
 
-        ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(locJoinEvt, locJoinTopVer);
+                AffinityTopologyVersion locJoinTopVer = locJoinData.joinTopologyVersion();
 
-        ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+                ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(locJoinEvt, locJoinTopVer);
 
-        task.event(locJoinEvt, locJoinTopVer);
+                ServicesDeploymentExchangeTask task = exchangeTask(exchId);
 
-        synchronized (mux) {
-            if (!exchWorker.tasksQueue.contains(task))
-                exchWorker.tasksQueue.addFirst(task);
-        }
+                task.event(locJoinEvt, locJoinTopVer);
 
-        new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
+                synchronized (mux) {
+                    if (!exchWorker.tasksQueue.contains(task))
+                        exchWorker.tasksQueue.addFirst(task);
+                }
+
+                new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to wait local join future to start service deployment exchange manager.", e);
+            }
+        });
     }
 
     /** {@inheritDoc} */
@@ -201,6 +210,106 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         ServicesDeploymentExchangeTask old = tasks.putIfAbsent(exchId, task);
 
         return old != null ? old : task;
+    }
+
+    /**
+     * Services discovery messages listener.
+     */
+    private class ServiceDiscoveryListener implements DiscoveryEventListener {
+        /** {@inheritDoc} */
+        @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
+            if (!enterBusy())
+                return;
+
+            try {
+                UUID snd = evt.eventNode().id();
+
+                assert snd != null;
+
+                switch (evt.type()) {
+                    case EVT_DISCOVERY_CUSTOM_EVT:
+                        DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                        if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
+                            msg instanceof DynamicCacheChangeBatch ||
+                            msg instanceof CacheAffinityChangeMessage ||
+                            msg instanceof ChangeGlobalStateMessage)
+                            processEvent(evt, discoCache.version());
+                        else if (msg instanceof ServicesFullMapMessage) {
+                            ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
+
+                            if (log.isDebugEnabled()) {
+                                log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
+                                    ", sender=" + snd +
+                                    ", msg=" + msg0 + ']');
+                            }
+
+                            ServicesDeploymentExchangeId exchId = msg0.exchangeId();
+
+                            if (tasks.containsKey(exchId)) { // In case of double delivering
+                                ServicesDeploymentExchangeTask task = exchangeTask(exchId);
+
+                                assert task != null;
+
+                                task.onReceiveFullMapMessage(snd, msg0);
+                            }
+                        }
+
+                        break;
+
+                    case EVT_NODE_LEFT:
+                    case EVT_NODE_FAILED:
+
+                        tasks.values().forEach(t -> t.onNodeLeft(snd));
+
+                    case EVT_NODE_JOINED:
+
+                        processEvent(evt, discoCache.version());
+
+                        break;
+
+                    default:
+                        if (log.isDebugEnabled())
+                            log.debug("Unexpected event was received, evt=" + evt);
+
+                        break;
+                }
+            }
+            finally {
+                leaveBusy();
+            }
+        }
+    }
+
+    /**
+     * Services messages communication listener.
+     */
+    private class ServiceCommunicationListener implements GridMessageListener {
+        /** {@inheritDoc} */
+        @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
+            if (!enterBusy())
+                return;
+
+            try {
+                if (msg instanceof ServicesSingleMapMessage) {
+                    ServicesSingleMapMessage msg0 = (ServicesSingleMapMessage)msg;
+
+                    if (log.isDebugEnabled()) {
+                        log.debug("Received services single map message, locId=" + ctx.localNodeId() +
+                            ", msg=" + msg0 + ']');
+                    }
+
+                    ServicesDeploymentExchangeTask task = exchangeTask(msg0.exchangeId());
+
+                    assert task != null;
+
+                    task.onReceiveSingleMapMessage(nodeId, msg0);
+                }
+            }
+            finally {
+                leaveBusy();
+            }
+        }
     }
 
     /**
@@ -328,106 +437,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
             synchronized (mux) {
                 tasksQueue.poll();
-            }
-        }
-    }
-
-    /**
-     * Services discovery messages listener.
-     */
-    private class ServiceDiscoveryListener implements DiscoveryEventListener {
-        /** {@inheritDoc} */
-        @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
-            if (!enterBusy())
-                return;
-
-            try {
-                UUID snd = evt.eventNode().id();
-
-                assert snd != null;
-
-                switch (evt.type()) {
-                    case EVT_DISCOVERY_CUSTOM_EVT:
-                        DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
-                        if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
-                            msg instanceof DynamicCacheChangeBatch ||
-                            msg instanceof CacheAffinityChangeMessage ||
-                            msg instanceof ChangeGlobalStateMessage)
-                            processEvent(evt, discoCache.version());
-                        else if (msg instanceof ServicesFullMapMessage) {
-                            ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
-
-                            if (log.isDebugEnabled()) {
-                                log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                    ", sender=" + snd +
-                                    ", msg=" + msg0 + ']');
-                            }
-
-                            ServicesDeploymentExchangeId exchId = msg0.exchangeId();
-
-                            if (tasks.containsKey(exchId)) { // In case of double delivering
-                                ServicesDeploymentExchangeTask task = exchangeTask(exchId);
-
-                                assert task != null;
-
-                                task.onReceiveFullMapMessage(snd, msg0);
-                            }
-                        }
-
-                        break;
-
-                    case EVT_NODE_LEFT:
-                    case EVT_NODE_FAILED:
-
-                        tasks.values().forEach(t -> t.onNodeLeft(snd));
-
-                    case EVT_NODE_JOINED:
-
-                        processEvent(evt, discoCache.version());
-
-                        break;
-
-                    default:
-                        if (log.isDebugEnabled())
-                            log.debug("Unexpected event was received, evt=" + evt);
-
-                        break;
-                }
-            }
-            finally {
-                leaveBusy();
-            }
-        }
-    }
-
-    /**
-     * Services messages communication listener.
-     */
-    private class ServiceCommunicationListener implements GridMessageListener {
-        /** {@inheritDoc} */
-        @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
-            if (!enterBusy())
-                return;
-
-            try {
-                if (msg instanceof ServicesSingleMapMessage) {
-                    ServicesSingleMapMessage msg0 = (ServicesSingleMapMessage)msg;
-
-                    if (log.isDebugEnabled()) {
-                        log.debug("Received services single map message, locId=" + ctx.localNodeId() +
-                            ", msg=" + msg0 + ']');
-                    }
-
-                    ServicesDeploymentExchangeTask task = exchangeTask(msg0.exchangeId());
-
-                    assert task != null;
-
-                    task.onReceiveSingleMapMessage(nodeId, msg0);
-                }
-            }
-            finally {
-                leaveBusy();
             }
         }
     }
