@@ -67,6 +67,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     /** Services discovery messages listener. */
     private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
 
+    /** Services communication messages listener. */
+    private final GridMessageListener commLsnr = new ServiceCommunicationListener();
+
     /** Services deploymentst tasks. */
     private final Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
 
@@ -92,8 +95,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
         ctx.event().addDiscoveryEventListener(discoLsnr,
             EVT_NODE_JOINED, EVT_NODE_LEFT, EVT_NODE_FAILED, EVT_DISCOVERY_CUSTOM_EVT);
-
-        GridMessageListener commLsnr = new ServiceCommunicationListener();
 
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
@@ -129,9 +130,17 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         try {
             busyLock.block();
 
+            ctx.event().removeDiscoveryEventListener(discoLsnr);
+
+            ctx.io().removeMessageListener(commLsnr);
+
             U.cancel(exchWorker);
 
             U.join(exchWorker, log);
+
+            synchronized (mux) {
+                mux.notifyAll();
+            }
 
             tasks.values().forEach(t -> t.complete(null, true));
 
@@ -436,7 +445,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 tasksQueue.poll();
             }
         }
-
     }
 
     /**
