@@ -489,33 +489,40 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void changeServices(Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy, Set<IgniteUuid> srvcsToUndeploy) {
         final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
-        for (IgniteUuid srvcId : srvcsToUndeploy)
-            proc.undeploy(srvcId);
+        try {
+            proc.exchange().exchangerBlockingSectionBegin();
 
-        srvcsToDeploy.forEach((srvcId, top) -> {
-            Integer expCnt = top.get(ctx.localNodeId());
+            for (IgniteUuid srvcId : srvcsToUndeploy)
+                proc.undeploy(srvcId);
 
-            boolean needDeploy = false;
+            srvcsToDeploy.forEach((srvcId, top) -> {
+                Integer expCnt = top.get(ctx.localNodeId());
 
-            if (expCnt != null && expCnt > 0) {
-                Collection<ServiceContextImpl> ctxs = locSvcs.get(srvcId);
+                boolean needDeploy = false;
 
-                needDeploy = (ctxs == null) || (ctxs.size() != expCnt);
-            }
+                if (expCnt != null && expCnt > 0) {
+                    Collection<ServiceContextImpl> ctxs = locSvcs.get(srvcId);
 
-            if (needDeploy) {
-                try {
-                    GridServiceDeployment dep = srvcsDeps.get(srvcId);
-
-                    proc.redeploy(srvcId, dep.configuration(), top);
+                    needDeploy = (ctxs == null) || (ctxs.size() != expCnt);
                 }
-                catch (Error | RuntimeException t) {
-                    Collection<Throwable> err = errors.computeIfAbsent(srvcId, e -> new ArrayList<>());
 
-                    err.add(t);
+                if (needDeploy) {
+                    try {
+                        GridServiceDeployment dep = srvcsDeps.get(srvcId);
+
+                        proc.redeploy(srvcId, dep.configuration(), top);
+                    }
+                    catch (Error | RuntimeException t) {
+                        Collection<Throwable> err = errors.computeIfAbsent(srvcId, e -> new ArrayList<>());
+
+                        err.add(t);
+                    }
                 }
-            }
-        });
+            });
+        }
+        finally {
+            proc.exchange().exchangerBlockingSectionEnd();
+        }
 
         createAndSendSingleMapMessage(exchId, errors);
     }

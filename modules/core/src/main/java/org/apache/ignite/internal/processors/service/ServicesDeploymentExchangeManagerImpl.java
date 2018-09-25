@@ -181,6 +181,20 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
         discoLsnr.onEvent(evt, discoCache);
     }
 
+    /** {@inheritDoc} */
+    @Override public void exchangerBlockingSectionBegin() {
+        assert exchWorker != null && Thread.currentThread() == exchWorker.runner();
+
+        exchWorker.blockingSectionBegin();
+    }
+
+    /** {@inheritDoc} */
+    @Override public void exchangerBlockingSectionEnd() {
+        assert exchWorker != null && Thread.currentThread() == exchWorker.runner();
+
+        exchWorker.blockingSectionEnd();
+    }
+
     /**
      * Handles discovery event.
      *
@@ -339,13 +353,22 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 ServicesDeploymentExchangeTask task;
 
                 while (!isCancelled()) {
+                    onIdle();
+
                     synchronized (mux) {
                         // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
                         // event on newly joined node where the queue will be transferred.
                         task = tasksQueue.peek();
 
                         if (task == null) {
-                            mux.wait();
+                            try {
+                                blockingSectionBegin();
+
+                                mux.wait();
+                            }
+                            finally {
+                                blockingSectionEnd();
+                            }
 
                             continue;
                         }
@@ -389,6 +412,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                     while (true) {
                         try {
+                            blockingSectionBegin();
+
                             task.waitForComplete(timeout);
 
                             taskPostProcessing(task);
@@ -407,6 +432,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                                 break;
                             }
+                        }
+                        finally {
+                            blockingSectionEnd();
                         }
                     }
                 }

@@ -22,6 +22,7 @@ import java.util.Deque;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.worker.GridWorker;
 
 /**
  * Defines methods to manage a services deployment and reassignments exchange across Ignite cluster.
@@ -36,6 +37,20 @@ public interface ServicesDeploymentExchangeManager {
      * Stops processing of services deployments exchange tasks.
      */
     public void stopProcessing();
+
+    /**
+     * Invokes {@link GridWorker#blockingSectionBegin()} for service deployment exchange worker.
+     * <p/>
+     * Should be called from service deployment exchange worker thread.
+     */
+    public void exchangerBlockingSectionBegin();
+
+    /**
+     * Invokes {@link GridWorker#blockingSectionEnd()} for service deployment exchange worker.
+     * <p/>
+     * Should be called from service deployment exchange worker thread.
+     */
+    public void exchangerBlockingSectionEnd();
 
     /**
      * Returns queue of deployments tasks.
