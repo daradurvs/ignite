@@ -730,6 +730,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         errorsBytes.add(arr);
                     }
                     catch (IgniteCheckedException e) {
+                        log.error("Failed to marshal deployment error, err=" + th, e);
                     }
                 }
 
