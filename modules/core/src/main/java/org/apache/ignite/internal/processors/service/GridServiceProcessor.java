@@ -1109,7 +1109,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param cfg Service configuration.
      * @param top Service assignments.
      */
-    private void redeploy(IgniteUuid id, ServiceConfiguration cfg, Map<UUID, Integer> top) {
+    protected void redeploy(IgniteUuid id, ServiceConfiguration cfg, Map<UUID, Integer> top) {
         String name = cfg.getName();
         String cacheName = cfg.getCacheName();
         Object affKey = cfg.getAffinityKey();
@@ -1325,39 +1325,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctxs != null) {
             synchronized (ctxs) {
                 cancel(ctxs, ctxs.size());
-            }
-        }
-    }
-
-    /**
-     * Deploys service with given name if a number of local instances less than its number in given topology.
-     *
-     * @param id Service id.
-     * @param top Service topology.
-     * @param errors Deployment errors container to fill in.
-     */
-    protected void deployIfNeeded(IgniteUuid id, Map<UUID, Integer> top,
-        Map<IgniteUuid, Collection<Throwable>> errors) {
-        Integer expCnt = top.get(ctx.localNodeId());
-
-        boolean needDeploy = false;
-
-        if (expCnt != null && expCnt > 0) {
-            Collection<ServiceContextImpl> ctxs = locSvcs.get(id);
-
-            needDeploy = (ctxs == null) || (ctxs.size() != expCnt);
-        }
-
-        if (needDeploy) {
-            try {
-                GridServiceDeployment dep = srvcsDeps.get(id);
-
-                redeploy(id, dep.configuration(), top);
-            }
-            catch (Error | RuntimeException t) {
-                Collection<Throwable> err = errors.computeIfAbsent(id, e -> new ArrayList<>());
-
-                err.add(t);
             }
         }
     }

@@ -478,6 +478,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
+     * Deploys service with given ids {@param srvcsToDeploy} if a number of local instances less than its number in
+     * given topology.
+     *
+     * Undeploys service with given ids {@param srvcsToDeploy}.
+     *
      * @param srvcsToDeploy Services to deploy.
      * @param srvcsToUndeploy Services to undeploy.
      */
@@ -488,7 +493,28 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             proc.undeploy(srvcId);
 
         srvcsToDeploy.forEach((srvcId, top) -> {
-            proc.deployIfNeeded(srvcId, top, errors);
+            Integer expCnt = top.get(ctx.localNodeId());
+
+            boolean needDeploy = false;
+
+            if (expCnt != null && expCnt > 0) {
+                Collection<ServiceContextImpl> ctxs = locSvcs.get(srvcId);
+
+                needDeploy = (ctxs == null) || (ctxs.size() != expCnt);
+            }
+
+            if (needDeploy) {
+                try {
+                    GridServiceDeployment dep = srvcsDeps.get(srvcId);
+
+                    proc.redeploy(srvcId, dep.configuration(), top);
+                }
+                catch (Error | RuntimeException t) {
+                    Collection<Throwable> err = errors.computeIfAbsent(srvcId, e -> new ArrayList<>());
+
+                    err.add(t);
+                }
+            }
         });
 
         createAndSendSingleMapMessage(exchId, errors);
