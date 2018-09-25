@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,13 +27,11 @@ import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
-import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.communication.GridMessageListener;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
-import org.apache.ignite.internal.managers.discovery.DiscoveryLocalJoinData;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
@@ -43,7 +40,6 @@ import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
-import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.thread.IgniteThread;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
@@ -103,26 +99,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void startProcessing() {
-        ctx.discovery().localJoinFuture().listen((IgniteInClosure<IgniteInternalFuture<DiscoveryLocalJoinData>>)fut -> {
-            DiscoveryLocalJoinData locJoinData = fut.result();
-
-            DiscoveryEvent locJoinEvt = locJoinData.event();
-
-            AffinityTopologyVersion locJoinTopVer = locJoinData.joinTopologyVersion();
-
-            ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(locJoinEvt, locJoinTopVer);
-
-            ServicesDeploymentExchangeTask task = exchangeTask(exchId);
-
-            task.event(locJoinEvt, locJoinTopVer);
-
-            synchronized (mux) {
-                if (!exchWorker.tasksQueue.contains(task))
-                    exchWorker.tasksQueue.addFirst(task);
-            }
-
-            new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
-        });
+        new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
     /** {@inheritDoc} */
@@ -154,16 +131,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /** {@inheritDoc} */
-    @Override public void insertFirst(Deque<ServicesDeploymentExchangeTask> tasks) {
-        synchronized (mux) {
-            tasks.descendingIterator().forEachRemaining(t -> {
-                if (!exchWorker.tasksQueue.contains(t)) {
-                    exchWorker.tasksQueue.addFirst(t);
-
-                    this.tasks.putIfAbsent(t.exchangeId(), t);
-                }
-            });
-        }
+    @Override public void addTask(ServicesDeploymentExchangeTask task) {
+        processEvent(task.event(), task.topologyVersion());
     }
 
     /** {@inheritDoc} */

@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayDeque;
-import java.util.Deque;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
@@ -60,11 +59,11 @@ public interface ServicesDeploymentExchangeManager {
     public ArrayDeque<ServicesDeploymentExchangeTask> tasks();
 
     /**
-     * Inserts given deployments tasks in begin of queue.
+     * Addes given task to tail of exchange queue.
      *
-     * @param tasks Queue of deployments tasks.
+     * @param task Service deployment exchange task.
      */
-    public void insertFirst(Deque<ServicesDeploymentExchangeTask> tasks);
+    public void addTask(ServicesDeploymentExchangeTask task);
 
     /**
      * @return Ready topology version.

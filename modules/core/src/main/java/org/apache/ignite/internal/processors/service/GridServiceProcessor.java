@@ -297,7 +297,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             initData.srvcsTops.forEach(srvcsTops::put);
 
-            exchMgr.insertFirst(initData.exchQueue);
+            initData.exchQueue.forEach(exchMgr::addTask);
         }
     }
 
