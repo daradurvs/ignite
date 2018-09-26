@@ -84,10 +84,6 @@ import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
 import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
-import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.ACTIVATED;
-import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.DEACTIVATED;
-import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.STARTED;
-import static org.apache.ignite.internal.processors.service.GridServiceProcessor.ServiceProcessorState.STOPPED;
 
 /**
  * Grid service processor.
@@ -122,8 +118,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
-    /** Service processor state. */
-    private volatile ServiceProcessorState state = STOPPED;
+    /** Pending configurations. */
+    private ServiceConfiguration[] pendingCrfgs = null;
 
     /**
      * @param ctx Kernal context.
@@ -143,6 +139,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
+        pendingCrfgs = ctx.config().getServiceConfiguration();
+
         IgniteConfiguration cfg = ctx.config();
 
         DeploymentMode depMode = cfg.getDeploymentMode();
@@ -158,20 +156,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
-        state = active ? ACTIVATED : STARTED;
-
         exchMgr.startProcessing();
 
         if (active)
-            startProcessor(true, false);
+            startProcessor(false);
     }
 
     /**
-     * @param deploy If it is necessary to deploy services predefined in instance configuration.
      * @param async Deploy predefined services asynchronously or not.
      * @throws IgniteCheckedException In case of an error.
      */
-    private void startProcessor(boolean deploy, boolean async) throws IgniteCheckedException {
+    private void startProcessor(boolean async) throws IgniteCheckedException {
         srvcsDeps.forEach((srvcId, dep) -> {
             Map<UUID, Integer> top = srvcsTops.get(srvcId);
 
@@ -189,13 +184,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         });
 
-        ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
-
-        if (cfgs != null && deploy) {
-            IgniteInternalFuture<?> fut = deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
+        if (pendingCrfgs != null) {
+            IgniteInternalFuture<?> fut = deployAll(Arrays.asList(pendingCrfgs), ctx.cluster().get().forServers().predicate());
 
             if (!async)
                 fut.get();
+
+            pendingCrfgs = null;
         }
 
         if (log.isDebugEnabled())
@@ -206,8 +201,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     @Override public void onKernalStop(boolean cancel) {
         if (ctx.isDaemon())
             return;
-
-        state = STOPPED;
 
         exchMgr.stopProcessing();
 
@@ -314,11 +307,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         start();
 
-        boolean deploy = state == STARTED;
-
-        state = ACTIVATED;
-
-        startProcessor(deploy, true);
+        startProcessor(true);
     }
 
     /** {@inheritDoc} */
@@ -326,8 +315,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (log.isDebugEnabled())
             log.debug("DeActivate service processor [nodeId=" + ctx.localNodeId() +
                 " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
-
-        state = DEACTIVATED;
 
         Exception ex = new IgniteCheckedException("Operation has been cancelled (node is deactivating).");
 
@@ -533,12 +520,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs,  null);
+            return deployAll(cfgs, null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs,  prj.predicate());
+            return deployAll(cfgs, prj.predicate());
     }
 
     /**
@@ -1577,23 +1564,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Service processor's state.
-     */
-    protected enum ServiceProcessorState {
-        /** */
-        STARTED,
-
-        /** */
-        STOPPED,
-
-        /** */
-        ACTIVATED,
-
-        /** */
-        DEACTIVATED
-    }
-
-    /**
      * @return Local deployed services.
      */
     protected Map<IgniteUuid, Collection<ServiceContextImpl>> localServices() {
@@ -1619,12 +1589,5 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public ServicesDeploymentExchangeManager exchange() {
         return exchMgr;
-    }
-
-    /**
-     * @return If this service processor is activated.
-     */
-    public boolean isActive() {
-        return state == ACTIVATED;
     }
 }

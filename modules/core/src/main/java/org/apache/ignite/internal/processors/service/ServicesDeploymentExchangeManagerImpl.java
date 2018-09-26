@@ -346,7 +346,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                             continue;
                         }
-                        else if (!ctx.service().isActive()) {
+                        else if (!ctx.state().clusterState().active()) {
                             DiscoveryEvent evt = task.event();
 
                             if (!(evt instanceof DiscoveryCustomEvent) ||
