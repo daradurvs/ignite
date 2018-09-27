@@ -75,7 +75,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private final GridFutureAdapter<?> initTaskFut = new GridFutureAdapter<>();
 
     /** Task's completion of remaining nodes ids initialization future. */
-    private final GridFutureAdapter<?> initRemainingFut = new GridFutureAdapter<>();
+    private final GridFutureAdapter<?> initCrdFut = new GridFutureAdapter<>();
 
     /** Single service messages to process. */
     @GridToStringInclude
@@ -183,7 +183,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 crdId = crd.id();
 
                 if (crd.isLocal())
-                    initRemaining(evtTopVer);
+                    initCoordinator(evtTopVer);
             }
 
             switch (evt.type()) {
@@ -198,7 +198,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         if (msg instanceof DynamicCacheChangeBatch)
                             onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
                         else if (msg instanceof CacheAffinityChangeMessage)
-                            onCacheAffinityChangeMessage();
+                            onCacheAffinityChangeMessage(evtTopVer);
                         else
                             complete(new IgniteIllegalStateException("Unexpected type of discovery custom message" +
                                 ", msg=" + msg), true);
@@ -243,13 +243,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Initiates collection of remaining ids.
+     * Prepares the coordinator to manage exchange.
      *
-     * @param topVer Topology version.
+     * @param topVer Topology version to initialize {@link #remaining} collection.
      */
-    private void initRemaining(AffinityTopologyVersion topVer) {
+    private void initCoordinator(AffinityTopologyVersion topVer) {
         synchronized (mux) {
-            if (initRemainingFut.isDone())
+            if (initCrdFut.isDone())
                 return;
 
             Throwable th = null;
@@ -267,9 +267,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
             finally {
                 if (th != null)
-                    initRemainingFut.onDone(th);
+                    initCrdFut.onDone(th);
                 else
-                    initRemainingFut.onDone();
+                    initCrdFut.onDone();
             }
         }
     }
@@ -379,9 +379,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     *
+     * @param topVer Topology version.
      */
-    private void onCacheAffinityChangeMessage() {
+    private void onCacheAffinityChangeMessage(AffinityTopologyVersion topVer) {
         Set<IgniteUuid> toReassign = new HashSet<>();
 
         srvcsDeps.forEach((srvcId, dep) -> {
@@ -395,14 +395,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             return;
         }
 
-        initReassignment(toReassign, evtTopVer);
+        initReassignment(toReassign, topVer);
     }
 
     /**
      * @param req Cache state change request.
-     * @throws IgniteCheckedException In case of an error.
      */
-    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) throws IgniteCheckedException {
+    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) {
         Set<String> cachesToStop = new HashSet<>();
 
         for (DynamicCacheChangeRequest chReq : req.requests()) {
@@ -563,7 +562,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        initRemainingFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+        initCrdFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
             if (isCompleted())
                 return;
 
@@ -584,23 +583,24 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        if (isCompleted())
-            return;
+        initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+            if (isCompleted())
+                return;
 
-        Throwable th = null;
+            Throwable th = null;
 
-        try {
-            if (proc != null)
+            try {
                 proc.processFullMap(msg);
-        }
-        catch (Throwable t) {
-            log.error("Failed to process services deployment full map, msg=" + msg, t);
+            }
+            catch (Throwable t) {
+                log.error("Failed to process services deployment full map, msg=" + msg, t);
 
-            th = t;
-        }
-        finally {
-            complete(th, false);
-        }
+                th = t;
+            }
+            finally {
+                complete(th, false);
+            }
+        });
     }
 
     /**
@@ -794,7 +794,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     crdId = crd.id();
 
                     if (crd.isLocal())
-                        initRemaining(evtTopVer);
+                        initCoordinator(evtTopVer);
                 }
 
                 createAndSendSingleMapMessage(exchId, depErrors);
@@ -834,8 +834,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (!initTaskFut.isDone())
             initTaskFut.onDone();
 
-        if (!initRemainingFut.isDone())
-            initRemainingFut.onDone();
+        if (!initCrdFut.isDone())
+            initCrdFut.onDone();
     }
 
     /** {@inheritDoc} */
