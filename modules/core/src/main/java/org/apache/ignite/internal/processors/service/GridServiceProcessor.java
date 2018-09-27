@@ -118,8 +118,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
 
-    /** Pending configurations. */
-    private ServiceConfiguration[] pendingCrfgs = null;
+    /** Configurations which should be deployed on first activation. */
+    private ServiceConfiguration[] cfgsOnStart = null;
 
     /**
      * @param ctx Kernal context.
@@ -139,7 +139,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
-        pendingCrfgs = ctx.config().getServiceConfiguration();
+        cfgsOnStart = ctx.config().getServiceConfiguration();
 
         IgniteConfiguration cfg = ctx.config();
 
@@ -158,43 +158,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         exchMgr.startProcessing();
 
-        if (active)
-            startProcessor(false);
-    }
+        if (active) {
+            onActivate(ctx);
 
-    /**
-     * @param async Deploy predefined services asynchronously or not.
-     * @throws IgniteCheckedException In case of an error.
-     */
-    private void startProcessor(boolean async) throws IgniteCheckedException {
-        srvcsDeps.forEach((srvcId, dep) -> {
-            Map<UUID, Integer> top = srvcsTops.get(srvcId);
-
-            if (top != null) {
-                ServiceConfiguration cfg = dep.configuration();
-
-                try {
-                    redeploy(srvcId, cfg, top);
-                }
-                catch (Exception e) {
-                    log.error("Failed to redeploy service on service processor activation, srcvId=" + srvcId +
-                        ", top=" + top +
-                        ", cfg=" + cfg);
-                }
-            }
-        });
-
-        if (pendingCrfgs != null) {
-            IgniteInternalFuture<?> fut = deployAll(Arrays.asList(pendingCrfgs), ctx.cluster().get().forServers().predicate());
-
-            if (!async)
-                fut.get();
-
-            pendingCrfgs = null;
+            if (log.isDebugEnabled())
+                log.debug("Started service processor.");
         }
-
-        if (log.isDebugEnabled())
-            log.debug("Started service processor.");
     }
 
     /** {@inheritDoc} */
@@ -305,9 +274,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             log.debug("Activate service processor [nodeId=" + ctx.localNodeId() +
                 " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
 
-        start();
+        if (cfgsOnStart != null) {
+            deployAll(Arrays.asList(cfgsOnStart), ctx.cluster().get().forServers().predicate());
 
-        startProcessor(true);
+            cfgsOnStart = null;
+        }
     }
 
     /** {@inheritDoc} */

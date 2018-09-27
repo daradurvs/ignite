@@ -191,7 +191,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
                     if (msg instanceof ChangeGlobalStateMessage)
-                        onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg);
+                        onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg, evtTopVer);
                     else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
                         onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
                     else if (!lessThenLocalJoin(evtTopVer)) {
@@ -276,13 +276,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /**
      * @param req Change cluster state message.
+     * @param topVer Topology version.
      * @throws IgniteCheckedException In case of an error.
      */
-    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req) throws IgniteCheckedException {
+    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
+        AffinityTopologyVersion topVer) throws IgniteCheckedException {
         if (req.activate()) {
             proc.onActivate(ctx);
 
-            createAndSendSingleMapMessage(exchId, depErrors);
+            initReassignment(srvcsDeps.keySet(), topVer);
         }
         else {
             proc.onDeActivate(ctx);

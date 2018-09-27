@@ -19,15 +19,13 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.ignite.Ignite;
-import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
-import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
-import org.apache.ignite.internal.util.typedef.PA;
+import org.apache.ignite.internal.IgniteInterruptedCheckedException;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -45,6 +43,9 @@ import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
     /** */
     private static final TcpDiscoveryIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder(true);
+
+    /** Service deployment wait timeout. */
+    protected static final int SERVICE_DEPLOYMENT_WAIT_TIMEOUT = 10_000;
 
     /** */
     private ServiceConfiguration srvcCfg;
@@ -90,23 +91,23 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
     public void testNodeRestart1() throws Exception {
         srvcCfg = serviceConfiguration();
 
-        Ignite node1 = startGrid(1);
+        IgniteEx node1 = startGrid(1);
 
         assertEquals(42, serviceProxy(node1).foo());
 
         srvcCfg = serviceConfiguration();
 
-        Ignite node2 = startGrid(2);
+        IgniteEx node2 = startGrid(2);
 
         node1.close();
 
-        waitForService(node2);
+        waitForReadyTopology(node2, node2.context().discovery().topologyVersionEx());
 
         assertEquals(42, serviceProxy(node2).foo());
 
         srvcCfg = serviceConfiguration();
 
-        Ignite node3 = startGrid(3);
+        IgniteEx node3 = startGrid(3);
 
         assertEquals(42, serviceProxy(node3).foo());
 
@@ -120,8 +121,8 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
 
         node2.close();
 
-        waitForService(node1);
-        waitForService(node3);
+        waitForReadyTopology(node1, node1.context().discovery().topologyVersionEx());
+        waitForReadyTopology(node3, node3.context().discovery().topologyVersionEx());
 
         assertEquals(42, serviceProxy(node1).foo());
         assertEquals(42, serviceProxy(node3).foo());
@@ -161,7 +162,7 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
     public void testNodeRestartRandom() throws Exception {
         final int NODES = 5;
 
-        Ignite ignite = startGridsMultiThreaded(NODES);
+        IgniteEx ignite = (IgniteEx)startGridsMultiThreaded(NODES);
 
         ignite.services().deploy(serviceConfiguration());
 
@@ -176,7 +177,9 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
                 if (nodeIdx == stopIdx)
                     continue;
 
-                waitForService(ignite(nodeIdx));
+                IgniteEx grid = grid(nodeIdx);
+
+                waitForReadyTopology(grid, grid.context().discovery().topologyVersionEx());
 
                 assertEquals(42, serviceProxy(ignite(nodeIdx)).foo());
             }
@@ -189,22 +192,18 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
     }
 
     /**
-     * @param node Node.
-     * @throws Exception If failed.
+     * @param ignite Ignite instance.
+     * @param topVer Topology version to wait.
+     * @return If given topology ready.
+     * @throws IgniteInterruptedCheckedException If interrupted.
      */
-    private void waitForService(final Ignite node) throws Exception {
-        assertTrue(GridTestUtils.waitForCondition(new PA() {
-            @Override public boolean apply() {
-                try {
-                    serviceProxy(node).foo();
+    protected boolean waitForReadyTopology(final IgniteEx ignite,
+        final AffinityTopologyVersion topVer) throws IgniteInterruptedCheckedException {
+        return GridTestUtils.waitForCondition(() -> {
+            AffinityTopologyVersion readyTopVer = ignite.context().service().exchange().readyTopologyVersion();
 
-                    return true;
-                }
-                catch (IgniteException ignored) {
-                    return false;
-                }
-            }
-        }, 5000));
+            return topVer.compareTo(readyTopVer) <= 0;
+        }, SERVICE_DEPLOYMENT_WAIT_TIMEOUT);
     }
 
     /**

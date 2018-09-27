@@ -18,6 +18,8 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,10 +38,12 @@ import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateFinishMessage;
 import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.GridSpinBusyLock;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
+import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.thread.IgniteThread;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
@@ -68,6 +72,9 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** Services deploymentst tasks. */
     private final Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
+
+    /** Discovery events received while cluster state transition was in progress. */
+    private final List<IgniteBiTuple<DiscoveryEvent, AffinityTopologyVersion>> pendingEvts = new ArrayList<>();
 
     /** Kernal context. */
     private final GridKernalContext ctx;
@@ -119,6 +126,8 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 mux.notifyAll();
             }
 
+            pendingEvts.clear();
+
             tasks.values().forEach(t -> t.complete(null, true));
 
             tasks.clear();
@@ -132,7 +141,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void addTask(ServicesDeploymentExchangeTask task) {
-        processEvent(task.event(), task.topologyVersion());
+        addEvent(task.event(), task.topologyVersion());
     }
 
     /** {@inheritDoc} */
@@ -165,12 +174,27 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /**
-     * Handles discovery event.
+     * Handles discovery event with check if cluster is active or not.
+     *
+     * @param evt Discovery event.
+     * @param cache Discovery cache.
+     */
+    private void processEvent(DiscoveryEvent evt, DiscoCache cache) {
+        if (cache.state().transition())
+            pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
+        else if (cache.state().active())
+            addEvent(evt, cache.version());
+        else if (log.isDebugEnabled())
+            log.debug("Ignore event, cluster is inactive, evt=" + evt);
+    }
+
+    /**
+     * Addeds discovery event to exchange queue.
      *
      * @param evt Discovery event.
      * @param topVer Topology version.
      */
-    private void processEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+    private void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
 
         ServicesDeploymentExchangeTask task = exchangeTask(exchId);
@@ -217,11 +241,22 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                     case EVT_DISCOVERY_CUSTOM_EVT:
                         DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                        if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
+                        if (msg instanceof ChangeGlobalStateFinishMessage) {
+                            ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
+
+                            if (msg0.clusterActive())
+                                pendingEvts.forEach((t) -> addEvent(t.get1(), t.get2()));
+                            else if (log.isDebugEnabled())
+                                pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
+
+                            pendingEvts.clear();
+                        }
+                        else if (msg instanceof ChangeGlobalStateMessage)
+                            addEvent(evt, discoCache.version());
+                        else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
                             msg instanceof DynamicCacheChangeBatch ||
-                            msg instanceof CacheAffinityChangeMessage ||
-                            msg instanceof ChangeGlobalStateMessage)
-                            processEvent(evt, discoCache.version());
+                            msg instanceof CacheAffinityChangeMessage)
+                            processEvent(evt, discoCache);
                         else if (msg instanceof ServicesFullMapMessage) {
                             ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
@@ -251,7 +286,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                     case EVT_NODE_JOINED:
 
-                        processEvent(evt, discoCache.version());
+                        processEvent(evt, discoCache);
 
                         break;
 
@@ -346,24 +381,6 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                             continue;
                         }
-                        else if (!ctx.state().clusterState().active()) {
-                            DiscoveryEvent evt = task.event();
-
-                            if (!(evt instanceof DiscoveryCustomEvent) ||
-                                !(((DiscoveryCustomEvent)evt).customMessage() instanceof ChangeGlobalStateMessage)) {
-
-                                if (log.isDebugEnabled()) {
-                                    log.debug("Skip exchange event, because of Service Processor is inactive" +
-                                        ", evt=" + evt);
-                                }
-
-                                task.complete(null, false);
-
-                                tasksQueue.poll();
-
-                                continue;
-                            }
-                        }
                     }
 
                     try {
@@ -442,6 +459,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                 tasksQueue.poll();
             }
         }
+
     }
 
     /**
