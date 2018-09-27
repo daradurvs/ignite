@@ -174,12 +174,12 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     }
 
     /**
-     * Handles discovery event with check if cluster is active or not.
+     * Addeds discovery event to exchange queue with check if cluster is active or not.
      *
      * @param evt Discovery event.
      * @param cache Discovery cache.
      */
-    private void processEvent(DiscoveryEvent evt, DiscoCache cache) {
+    private void checkStateAndAddEvent(DiscoveryEvent evt, DiscoCache cache) {
         if (cache.state().transition())
             pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
         else if (cache.state().active())
@@ -256,7 +256,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
                         else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
                             msg instanceof DynamicCacheChangeBatch ||
                             msg instanceof CacheAffinityChangeMessage)
-                            processEvent(evt, discoCache);
+                            checkStateAndAddEvent(evt, discoCache);
                         else if (msg instanceof ServicesFullMapMessage) {
                             ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
@@ -286,7 +286,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
                     case EVT_NODE_JOINED:
 
-                        processEvent(evt, discoCache);
+                        checkStateAndAddEvent(evt, discoCache);
 
                         break;
 
