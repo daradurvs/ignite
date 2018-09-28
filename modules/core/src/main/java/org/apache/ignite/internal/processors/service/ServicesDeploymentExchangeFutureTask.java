@@ -46,6 +46,7 @@ import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -78,23 +79,24 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** Task's completion of remaining nodes ids initialization future. */
     private final GridFutureAdapter<?> initCrdFut = new GridFutureAdapter<>();
 
+    /** Coordinator initialization actions mutex. */
+    private final Object initCrdMux = new Object();
+
     /** Single service messages to process. */
     @GridToStringInclude
     private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new HashMap<>();
 
     /** Expected services assignments. */
+    @GridToStringExclude
     private final Map<IgniteUuid, Map<UUID, Integer>> expDeps = new HashMap<>();
 
     /** Deployment errors. */
-    @GridToStringInclude
+    @GridToStringExclude
     private final Map<IgniteUuid, Collection<Throwable>> depErrors = new HashMap<>();
 
     /** Remaining nodes to received single node assignments message. */
     @GridToStringInclude
     private final Set<UUID> remaining = new HashSet<>();
-
-    /** Coordinator initialization actions mutex. */
-    private final Object initCrdMux = new Object();
 
     /** Exchange id. */
     @GridToStringInclude

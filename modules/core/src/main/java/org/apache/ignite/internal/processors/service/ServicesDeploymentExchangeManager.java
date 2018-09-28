@@ -24,11 +24,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.IgniteFutureTimeoutCheckedException;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.communication.GridMessageListener;
@@ -46,6 +46,8 @@ import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.thread.IgniteThread;
 
+import static org.apache.ignite.IgniteSystemProperties.IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT;
+import static org.apache.ignite.IgniteSystemProperties.getLong;
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.events.EventType.EVT_NODE_LEFT;
@@ -62,7 +64,7 @@ public class ServicesDeploymentExchangeManager {
     private final GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
     /** Mutex. */
-    private final Object mux = new Object();
+    private final Object newEvtMux = new Object();
 
     /** Services discovery messages listener. */
     private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
@@ -124,8 +126,8 @@ public class ServicesDeploymentExchangeManager {
 
             U.cancel(exchWorker);
 
-            synchronized (mux) {
-                mux.notify();
+            synchronized (newEvtMux) {
+                newEvtMux.notify();
             }
 
             U.join(exchWorker, log);
@@ -217,14 +219,14 @@ public class ServicesDeploymentExchangeManager {
     public void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, ServicesDeploymentExchangeFutureTask::new);
 
-        synchronized (mux) {
+        synchronized (newEvtMux) {
             if (!exchWorker.tasksQueue.contains(task)) {
                 task.event(evt, topVer);
 
                 exchWorker.tasksQueue.add(task);
             }
 
-            mux.notify();
+            newEvtMux.notify();
         }
     }
 
@@ -363,7 +365,7 @@ public class ServicesDeploymentExchangeManager {
                 while (!isCancelled()) {
                     onIdle();
 
-                    synchronized (mux) {
+                    synchronized (newEvtMux) {
                         // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
                         // event on newly joined node where the queue will be transferred.
                         task = tasksQueue.peek();
@@ -372,7 +374,7 @@ public class ServicesDeploymentExchangeManager {
                             try {
                                 blockingSectionBegin();
 
-                                mux.wait();
+                                newEvtMux.wait();
                             }
                             finally {
                                 blockingSectionEnd();
@@ -398,25 +400,38 @@ public class ServicesDeploymentExchangeManager {
                         throw e;
                     }
 
-                    // TODO
-                    long timeout = ctx.config().getNetworkTimeout() * 5;
+                    final long dumpTimeout = 2 * ctx.config().getNetworkTimeout();
+
+                    long nextDumpTime = 0;
 
                     while (true) {
                         try {
                             blockingSectionBegin();
 
-                            task.waitForComplete(timeout);
+                            task.waitForComplete(dumpTimeout);
 
                             taskPostProcessing(task);
 
                             break;
                         }
-                        catch (IgniteCheckedException e) {
+                        catch (IgniteFutureTimeoutCheckedException ignored) {
                             if (isCancelled)
                                 return;
 
-                            log.warning("Error occurred during waiting for exchange future completion " +
-                                "or timeout had been reached, timeout=" + timeout + ", task=" + task, e);
+                            updateHeartbeat();
+
+                            if (nextDumpTime <= U.currentTimeMillis()) {
+                                log.warning("Failed to wait service deployment exchange or timeout had been reached" +
+                                    ", timeout=" + dumpTimeout + ", task=" + task);
+
+                                long limit = getLong(IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT, 30 * 60_000);
+
+                                limit = limit <= 0 ? 30 * 60_000 : limit;
+
+                                long nextTimeout = U.currentTimeMillis() + dumpTimeout * 2;
+
+                                nextDumpTime = nextTimeout <= limit ? nextTimeout : limit;
+                            }
 
                             if (task.isCompleted()) {
                                 taskPostProcessing(task);
@@ -460,7 +475,7 @@ public class ServicesDeploymentExchangeManager {
 
             tasks.remove(task.exchangeId());
 
-            synchronized (mux) {
+            synchronized (newEvtMux) {
                 tasksQueue.poll();
             }
         }
