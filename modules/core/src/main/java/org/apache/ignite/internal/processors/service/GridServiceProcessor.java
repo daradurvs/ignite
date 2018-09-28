@@ -711,6 +711,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @throws IgniteCheckedException On error.
      */
     public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
+        assert timeout >= 0;
+
         IgniteUuid id = lookupId(name);
 
         if (id == null) {
@@ -727,7 +729,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Map<UUID, Integer> dep = desc != null ? desc.topologySnapshot() : null;
 
-        if (dep == null || dep.isEmpty()) {
+        if ((dep == null || dep.isEmpty()) && timeout > 0) {
             synchronized (srvcsDescs) {
                 try {
                     srvcsDescs.wait(timeout);
@@ -744,7 +746,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Collection of service descriptors.
+     * @return Collection of deployed service descriptors.
      */
     public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
@@ -1457,7 +1459,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param name Service name;
      * @return @return Service's id if exists, otherwise {@code null};
      */
-    @Nullable public IgniteUuid lookupId(String name) {
+    @Nullable protected IgniteUuid lookupId(String name) {
         return lookupId(p -> p.configuration().getName().equals(name));
     }
 
@@ -1465,7 +1467,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param p Predicate to search.
      * @return Service's id if exists, otherwise {@code null};
      */
-    @Nullable private IgniteUuid lookupId(IgnitePredicate<ServiceMetaDescriptor> p) {
+    @Nullable protected IgniteUuid lookupId(IgnitePredicate<ServiceMetaDescriptor> p) {
         for (Map.Entry<IgniteUuid, ServiceMetaDescriptor> e : srvcsDescs.entrySet()) {
             IgniteUuid srvcId = e.getKey();
             ServiceMetaDescriptor desc = e.getValue();

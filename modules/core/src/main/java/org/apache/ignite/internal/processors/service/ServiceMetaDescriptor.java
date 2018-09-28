@@ -17,7 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.IgniteException;
@@ -43,7 +43,7 @@ public class ServiceMetaDescriptor implements ServiceDescriptor {
 
     /** Topology snapshot. */
     @GridToStringInclude
-    private final Map<UUID, Integer> top = new HashMap<>();
+    private Map<UUID, Integer> top = Collections.emptyMap();
 
     /**
      * @param nodeId Initiating node id.
@@ -60,8 +60,7 @@ public class ServiceMetaDescriptor implements ServiceDescriptor {
      * @param top Topology snapshot.
      */
     public void topologySnapshot(Map<UUID, Integer> top) {
-        this.top.clear();
-        this.top.putAll(top);
+        this.top = top;
     }
 
     /**
