@@ -405,9 +405,9 @@ public class ServicesDeploymentExchangeManager {
                     long nextDumpTime = 0;
 
                     while (true) {
-                        try {
-                            blockingSectionBegin();
+                        blockingSectionBegin();
 
+                        try {
                             task.waitForComplete(dumpTimeout);
 
                             taskPostProcessing(task);
@@ -417,8 +417,6 @@ public class ServicesDeploymentExchangeManager {
                         catch (IgniteFutureTimeoutCheckedException ignored) {
                             if (isCancelled)
                                 return;
-
-                            updateHeartbeat();
 
                             if (nextDumpTime <= U.currentTimeMillis()) {
                                 log.warning("Failed to wait service deployment exchange or timeout had been reached" +
@@ -445,7 +443,7 @@ public class ServicesDeploymentExchangeManager {
                     }
                 }
             }
-            catch (InterruptedException e) {
+            catch (InterruptedException | IgniteInterruptedCheckedException e) {
                 Thread.currentThread().interrupt();
 
                 if (!isCancelled)
