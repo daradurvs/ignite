@@ -29,9 +29,9 @@ import org.apache.ignite.services.ServiceDescriptor;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Service descriptor implementation.
+ * Service's information container.
  */
-public class ServiceMetaDescriptor implements ServiceDescriptor {
+public class ServiceInfo implements ServiceDescriptor {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -49,7 +49,7 @@ public class ServiceMetaDescriptor implements ServiceDescriptor {
      * @param nodeId Initiating node id.
      * @param cfg Service configuration.
      */
-    public ServiceMetaDescriptor(UUID nodeId, ServiceConfiguration cfg) {
+    public ServiceInfo(UUID nodeId, ServiceConfiguration cfg) {
         this.nodeId = nodeId;
         this.cfg = cfg;
     }
@@ -127,6 +127,6 @@ public class ServiceMetaDescriptor implements ServiceDescriptor {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServiceMetaDescriptor.class, this);
+        return S.toString(ServiceInfo.class, this);
     }
 }

@@ -121,7 +121,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private Map<IgniteUuid, Collection<ServiceContextImpl>> locSvcs;
 
     /** Services descriptors. */
-    private Map<IgniteUuid, ServiceMetaDescriptor> srvcsDescs;
+    private Map<IgniteUuid, ServiceInfo> srvcsDescs;
 
     /** Coordinator node id. */
     private volatile UUID crdId;
@@ -162,7 +162,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         this.log = kCtx.log(getClass());
         this.proc = kCtx.service();
         this.locSvcs = kCtx.service().localServices();
-        this.srvcsDescs = kCtx.service().serviceMetaDescriptors();
+        this.srvcsDescs = kCtx.service().services();
         this.locJoinTopVer = kCtx.discovery().localJoin().joinTopologyVersion();
 
         if (log.isDebugEnabled()) {
@@ -319,11 +319,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         ", srvcTop=" + srvcTop);
                 }
                 else {
-                    ServiceMetaDescriptor oldSrvcDesc = null;
+                    ServiceInfo oldSrvcDesc = null;
                     IgniteUuid oldSrvcId = null;
 
-                    for (Map.Entry<IgniteUuid, ServiceMetaDescriptor> e : srvcsDescs.entrySet()) {
-                        ServiceMetaDescriptor desc = e.getValue();
+                    for (Map.Entry<IgniteUuid, ServiceInfo> e : srvcsDescs.entrySet()) {
+                        ServiceInfo desc = e.getValue();
 
                         if (desc.configuration().getName().equals(cfg.getName())) {
                             oldSrvcDesc = desc;
@@ -369,7 +369,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         ", top=" + srvcTop);
                 }
 
-                srvcsDescs.computeIfAbsent(srvcId, dep -> new ServiceMetaDescriptor(evt.eventNode().id(), cfg));
+                srvcsDescs.computeIfAbsent(srvcId, dep -> new ServiceInfo(evt.eventNode().id(), cfg));
 
                 srvcsToDeploy.put(srvcId, srvcTop);
             }
@@ -436,7 +436,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
         for (IgniteUuid srvcId : toReassign) {
-            ServiceMetaDescriptor desc = srvcsDescs.get(srvcId);
+            ServiceInfo desc = srvcsDescs.get(srvcId);
 
             ServiceConfiguration cfg = desc.configuration();
 
@@ -508,7 +508,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                 if (needDeploy) {
                     try {
-                        ServiceMetaDescriptor desc = srvcsDescs.get(srvcId);
+                        ServiceInfo desc = srvcsDescs.get(srvcId);
 
                         proc.redeploy(srvcId, desc.configuration(), top);
                     }
@@ -724,7 +724,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         results.forEach((srvcId, dep) -> {
             if (dep.values().stream().anyMatch(r -> !r.errors().isEmpty() && srvcsDescs.containsKey(srvcId))) {
-                ServiceMetaDescriptor srvcDesc = srvcsDescs.get(srvcId);
+                ServiceInfo srvcDesc = srvcsDescs.get(srvcId);
 
                 ServiceDeploymentFailuresPolicy plc = srvcDesc.configuration().getPolicy();
 

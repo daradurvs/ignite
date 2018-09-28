@@ -29,20 +29,20 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 
 /**
- * Tests of {@link ServiceMetaDescriptor} class.
+ * Tests of {@link ServiceInfo} class.
  */
-public class ServiceMetaDescriptorTest {
+public class ServiceInfoSelfTest {
     /** Origin node id. */
     private UUID nodeId = UUID.randomUUID();
 
     /** Service configuration. */
     private ServiceConfiguration cfg = configuration();
 
-    /** Instance under test. */
-    private ServiceMetaDescriptor sut = new ServiceMetaDescriptor(nodeId, cfg);
+    /** Subject under test. */
+    private ServiceInfo sut = new ServiceInfo(nodeId, cfg);
 
     /**
-     * Tests {@link ServiceMetaDescriptor#configuration()}.
+     * Tests {@link ServiceInfo#configuration()}.
      */
     @Test
     public void testConfigurationEquality() {
@@ -60,7 +60,7 @@ public class ServiceMetaDescriptorTest {
     }
 
     /**
-     * Tests {@link ServiceMetaDescriptor#originNodeId()}.
+     * Tests {@link ServiceInfo#originNodeId()}.
      */
     @Test
     public void testOriginNodeIdEquality() {
@@ -68,7 +68,7 @@ public class ServiceMetaDescriptorTest {
     }
 
     /**
-     * Tests {@link ServiceMetaDescriptor#topologySnapshot()}.
+     * Tests {@link ServiceInfo#topologySnapshot()}.
      */
     @Test
     public void testTopologySnapshotEquality() {

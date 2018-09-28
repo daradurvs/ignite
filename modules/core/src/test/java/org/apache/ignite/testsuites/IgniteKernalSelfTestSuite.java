@@ -77,7 +77,7 @@ import org.apache.ignite.internal.processors.service.IgniteServiceReassignmentTe
 import org.apache.ignite.internal.processors.service.IgniteServicesDeploymentFailuresPolicySelfTest;
 import org.apache.ignite.internal.processors.service.ServiceDeploymentExchangeImplSelfTest;
 import org.apache.ignite.internal.processors.service.ServiceDeploymentProcessingOnCoordinatorChangeTest;
-import org.apache.ignite.internal.processors.service.ServiceMetaDescriptorTest;
+import org.apache.ignite.internal.processors.service.ServiceInfoSelfTest;
 import org.apache.ignite.internal.processors.service.ServicePredicateAccessCacheTest;
 import org.apache.ignite.internal.processors.service.ServiceReassignmentFunctionSelfTest;
 import org.apache.ignite.internal.processors.service.SystemCacheNotConfiguredTest;
@@ -178,7 +178,7 @@ public class IgniteKernalSelfTestSuite extends TestSuite {
         suite.addTestSuite(IgniteServicesDeploymentFailuresPolicySelfTest.class);
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceReassignmentFunctionSelfTest.class));
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceDeploymentExchangeImplSelfTest.class));
-        suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceMetaDescriptorTest.class));
+        suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceInfoSelfTest.class));
 
         return suite;
     }

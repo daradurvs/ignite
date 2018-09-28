@@ -109,8 +109,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
         oomeHnd);
 
-    /** Contains all services descriptors, not only locally deployed. */
-    private final HashMap<IgniteUuid, ServiceMetaDescriptor> srvcsDescs = new HashMap<>();
+    /** Contains all services information across the cluster. Should be serializable to transfer data on joining node. */
+    private final HashMap<IgniteUuid, ServiceInfo> srvcsDescs = new HashMap<>();
 
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
@@ -1329,7 +1329,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
 
-                        ServiceMetaDescriptor srvcDesc = srvcsDescs.get(srvcId);
+                        ServiceInfo srvcDesc = srvcsDescs.get(srvcId);
 
                         if (srvcDesc != null) {
 
@@ -1351,7 +1351,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             synchronized (srvcsDescs) {
                 fullTops.forEach((srvcId, top) -> {
-                    ServiceMetaDescriptor desc = srvcsDescs.get(srvcId);
+                    ServiceInfo desc = srvcsDescs.get(srvcId);
 
                     desc.topologySnapshot(top);
                 });
@@ -1375,7 +1375,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 else {
                     ServiceConfiguration cfg = fut.configuration();
 
-                    for (ServiceMetaDescriptor dep : srvcsDescs.values()) {
+                    for (ServiceInfo dep : srvcsDescs.values()) {
                         if (dep.configuration().equalsIgnoreNodeFilter(cfg)) {
                             fut.onDone();
 
@@ -1467,10 +1467,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param p Predicate to search.
      * @return Service's id if exists, otherwise {@code null};
      */
-    @Nullable protected IgniteUuid lookupId(IgnitePredicate<ServiceMetaDescriptor> p) {
-        for (Map.Entry<IgniteUuid, ServiceMetaDescriptor> e : srvcsDescs.entrySet()) {
+    @Nullable protected IgniteUuid lookupId(IgnitePredicate<ServiceInfo> p) {
+        for (Map.Entry<IgniteUuid, ServiceInfo> e : srvcsDescs.entrySet()) {
             IgniteUuid srvcId = e.getKey();
-            ServiceMetaDescriptor desc = e.getValue();
+            ServiceInfo desc = e.getValue();
 
             if (p.apply(desc))
                 return srvcId;
@@ -1501,7 +1501,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         private static final long serialVersionUID = 0L;
 
         /** Services descriptors. */
-        private HashMap<IgniteUuid, ServiceMetaDescriptor> srvcsDescs;
+        private HashMap<IgniteUuid, ServiceInfo> srvcsDescs;
 
         /** Services deployment exchange queue to initialize exchange manager. */
         private ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
@@ -1511,7 +1511,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
          * @param exchQueue Services deployment exchange queue to initialize exchange manager.
          */
         public InitialServicesData(
-            HashMap<IgniteUuid, ServiceMetaDescriptor> srvcsDescs,
+            HashMap<IgniteUuid, ServiceInfo> srvcsDescs,
             ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
         ) {
             this.srvcsDescs = srvcsDescs;
@@ -1532,9 +1532,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Services deployments.
+     * @return All services descriptors.
      */
-    protected Map<IgniteUuid, ServiceMetaDescriptor> serviceMetaDescriptors() {
+    protected Map<IgniteUuid, ServiceInfo> services() {
         return srvcsDescs;
     }
 
