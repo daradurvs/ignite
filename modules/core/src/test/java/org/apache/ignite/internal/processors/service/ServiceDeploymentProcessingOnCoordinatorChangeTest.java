@@ -19,16 +19,15 @@ package org.apache.ignite.internal.processors.service;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.processors.service.inner.LongInitializedTestService;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
-import org.apache.ignite.services.Service;
-import org.apache.ignite.services.ServiceContext;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
 /**
  * Tests that requests of change service's state won't be missed and will be handled correctly on a coordinator change.
  *
- * It uses {@link TestService} with long running #init method to delay requests processing.
+ * It uses {@link LongInitializedTestService} with long running #init method to delay requests processing.
  */
 public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridCommonAbstractTest {
     /**
@@ -40,9 +39,12 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
 
             IgniteEx ignite2 = grid(2);
 
-            IgniteFuture fut = ignite2.services().deployNodeSingletonAsync("testService", new TestService());
-            IgniteFuture fut2 = ignite2.services().deployNodeSingletonAsync("testService2", new TestService());
-            IgniteFuture fut3 = ignite2.services().deployNodeSingletonAsync("testService3", new TestService());
+            IgniteFuture fut = ignite2.services().deployNodeSingletonAsync("testService",
+                new LongInitializedTestService(5000L));
+            IgniteFuture fut2 = ignite2.services().deployNodeSingletonAsync("testService2",
+                new LongInitializedTestService(5000L));
+            IgniteFuture fut3 = ignite2.services().deployNodeSingletonAsync("testService3",
+                new LongInitializedTestService(5000L));
 
             IgniteEx ignite0 = grid(0);
 
@@ -74,8 +76,10 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
 
             IgniteEx ignite4 = grid(4);
 
-            IgniteFuture depFut = ignite4.services().deployNodeSingletonAsync("testService", new TestService());
-            IgniteFuture depFut2 = ignite4.services().deployNodeSingletonAsync("testService2", new TestService());
+            IgniteFuture depFut = ignite4.services().deployNodeSingletonAsync("testService",
+                new LongInitializedTestService(5000L));
+            IgniteFuture depFut2 = ignite4.services().deployNodeSingletonAsync("testService2",
+                new LongInitializedTestService(5000L));
 
             IgniteEx ignite0 = grid(0);
 
@@ -108,26 +112,6 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
         }
         finally {
             stopAllGrids();
-        }
-    }
-
-    /**
-     * Test service with long initialization to delay processing of exchange queue.
-     */
-    private static class TestService implements Service {
-        /** {@inheritDoc} */
-        @Override public void cancel(ServiceContext ctx) {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public void init(ServiceContext ctx) throws Exception {
-            U.sleep(5_000L);
-        }
-
-        /** {@inheritDoc} */
-        @Override public void execute(ServiceContext ctx) throws Exception {
-            // No-op.
         }
     }
 }

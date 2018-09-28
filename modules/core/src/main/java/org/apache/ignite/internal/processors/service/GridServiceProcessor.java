@@ -39,6 +39,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterGroup;
@@ -117,6 +119,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** If static configurations should be deployed on activation. */
     private volatile boolean isStaticCfgDeployed = false;
+
+    /** Lock. */
+    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+    /** Client disconnected flag. */
+    private boolean disconnected;
 
     /**
      * @param ctx Kernal context.
@@ -244,7 +252,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** {@inheritDoc} */
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
         if (data.commonData() != null) {
-
             InitialServicesData initData = (InitialServicesData)data.commonData();
 
             initData.srvcsDescs.forEach(srvcsDescs::put);
@@ -291,11 +298,34 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void onDisconnected(IgniteFuture<?> reconnectFut) throws IgniteCheckedException {
-        cancelFutures(depFuts, new IgniteClientDisconnectedCheckedException(ctx.cluster().clientReconnectFuture(),
-            "Failed to deploy service, client node disconnected."));
+        rwLock.writeLock().lock();
 
-        cancelFutures(undepFuts, new IgniteClientDisconnectedCheckedException(ctx.cluster().clientReconnectFuture(),
-            "Failed to undeploy service, client node disconnected."));
+        try {
+            disconnected = true;
+
+            IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
+                ctx.cluster().clientReconnectFuture(), "Failed to deploy service, client node disconnected.");
+
+            cancelFutures(depFuts, err);
+            cancelFutures(undepFuts, err);
+        }
+        finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> onReconnected(boolean active) {
+        rwLock.writeLock().lock();
+
+        try {
+            disconnected = false;
+
+            return null;
+        }
+        finally {
+            rwLock.writeLock().unlock();
+        }
     }
 
     /**
@@ -505,88 +535,86 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         @Nullable IgnitePredicate<ClusterNode> dfltNodeFilter) {
         assert cfgs != null;
 
-        PreparedConfigurations srvCfg = prepareServiceConfigurations(cfgs, dfltNodeFilter);
+        rwLock.readLock().lock();
 
-        List<ServiceConfiguration> cfgsCp = srvCfg.cfgs;
+        try {
+            if (disconnected) {
+                IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
+                    ctx.cluster().clientReconnectFuture(), "Failed to deploy services, client node disconnected: " + cfgs);
 
-        List<GridServiceDeploymentFuture> failedFuts = srvCfg.failedFuts;
+                return new GridFinishedFuture<>(err);
+            }
 
-        GridServiceDeploymentCompoundFuture res = new GridServiceDeploymentCompoundFuture();
+            PreparedConfigurations srvCfg = prepareServiceConfigurations(cfgs, dfltNodeFilter);
 
-        if (!cfgsCp.isEmpty()) {
-            cfgsCp.sort(Comparator.comparing(ServiceConfiguration::getName));
+            List<ServiceConfiguration> cfgsCp = srvCfg.cfgs;
 
-            while (true) {
-                try {
-                    Collection<DynamicServiceChangeRequest> reqs = new ArrayList<>();
+            List<GridServiceDeploymentFuture> failedFuts = srvCfg.failedFuts;
 
-                    for (ServiceConfiguration cfg : cfgsCp) {
-                        IgniteUuid srvcId = IgniteUuid.randomUuid();
+            GridServiceDeploymentCompoundFuture res = new GridServiceDeploymentCompoundFuture();
 
-                        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, srvcId);
+            if (!cfgsCp.isEmpty()) {
+                cfgsCp.sort(Comparator.comparing(ServiceConfiguration::getName));
 
-                        res.add(fut, true);
+                while (true) {
+                    try {
+                        Collection<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
-                        DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
+                        for (ServiceConfiguration cfg : cfgsCp) {
+                            IgniteUuid srvcId = IgniteUuid.randomUuid();
 
-                        reqs.add(req);
+                            GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, srvcId);
 
-                        depFuts.put(srvcId, fut);
-                    }
+                            res.add(fut, true);
 
-                    DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
+                            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
 
-                    ctx.discovery().sendCustomEvent(msg);
+                            reqs.add(req);
 
-                    if (log.isDebugEnabled())
-                        log.debug("Services have been sent to deploy, req=" + msg);
+                            depFuts.put(srvcId, fut);
+                        }
 
-                    break;
-                }
-                catch (IgniteException | IgniteCheckedException e) {
-                    for (IgniteUuid id : res.servicesToRollback())
-                        depFuts.remove(id).onDone(e);
+                        DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
 
-                    if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                        res = new GridServiceDeploymentCompoundFuture();
+                        ctx.discovery().sendCustomEvent(msg);
 
                         if (log.isDebugEnabled())
-                            log.debug("Topology changed while deploying services (will retry): " + e.getMessage());
-                    }
-                    else {
-                        res.onDone(new IgniteCheckedException(
-                            new ServiceDeploymentException("Failed to deploy provided services.", e, cfgs)));
+                            log.debug("Services have been sent to deploy, req=" + msg);
 
-                        return res;
+                        break;
+                    }
+                    catch (IgniteException | IgniteCheckedException e) {
+                        for (IgniteUuid id : res.servicesToRollback())
+                            depFuts.remove(id).onDone(e);
+
+                        if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
+                            res = new GridServiceDeploymentCompoundFuture();
+
+                            if (log.isDebugEnabled())
+                                log.debug("Topology changed while deploying services (will retry): " + e.getMessage());
+                        }
+                        else {
+                            res.onDone(new IgniteCheckedException(
+                                new ServiceDeploymentException("Failed to deploy provided services.", e, cfgs)));
+
+                            return res;
+                        }
                     }
                 }
             }
-        }
 
-        //TODO: remove it according to channel comments.
-        if (ctx.clientDisconnected()) {
-            IgniteClientDisconnectedCheckedException err =
-                new IgniteClientDisconnectedCheckedException(ctx.cluster().clientReconnectFuture(),
-                    "Failed to deploy services, client node disconnected: " + cfgs);
-
-            for (IgniteUuid id : res.servicesToRollback()) {
-                GridServiceDeploymentFuture fut = depFuts.remove(id);
-
-                if (fut != null)
-                    fut.onDone(err);
+            if (failedFuts != null) {
+                for (GridServiceDeploymentFuture fut : failedFuts)
+                    res.add(fut, false);
             }
 
-            return new GridFinishedFuture<>(err);
+            res.markInitialized();
+
+            return res;
         }
-
-        if (failedFuts != null) {
-            for (GridServiceDeploymentFuture fut : failedFuts)
-                res.add(fut, false);
+        finally {
+            rwLock.readLock().unlock();
         }
-
-        res.markInitialized();
-
-        return res;
     }
 
     /**
@@ -627,85 +655,101 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     @SuppressWarnings("unchecked")
     private IgniteInternalFuture<?> cancelAll(Set<IgniteUuid> srvcsIds) {
-        GridCompoundFuture res;
+        rwLock.readLock().lock();
 
-        while (true) {
-            res = new GridCompoundFuture<>();
+        try {
+            if (disconnected) {
+                IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
+                    ctx.cluster().clientReconnectFuture(), "Failed to undeploy services, client node disconnected.");
 
-            Set<IgniteUuid> toRollback = new HashSet<>();
+                return new GridFinishedFuture<>(err);
+            }
 
-            List<DynamicServiceChangeRequest> reqs = new ArrayList<>();
+            GridCompoundFuture res = new GridCompoundFuture<>();
 
-            try {
-                for (IgniteUuid srvcId : srvcsIds) {
-                    ServiceDescriptor desc = srvcsDescs.get(srvcId);
+            if (!srvcsIds.isEmpty()) {
+                while (true) {
+                    Set<IgniteUuid> toRollback = new HashSet<>();
+
+                    List<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
                     try {
-                        ctx.security().authorize(desc.name(), SecurityPermission.SERVICE_CANCEL, null);
+                        for (IgniteUuid srvcId : srvcsIds) {
+                            ServiceDescriptor desc = srvcsDescs.get(srvcId);
+
+                            try {
+                                ctx.security().authorize(desc.name(), SecurityPermission.SERVICE_CANCEL, null);
+                            }
+                            catch (SecurityException e) {
+                                res.add(new GridFinishedFuture<>(e));
+
+                                continue;
+                            }
+
+                            GridFutureAdapter<?> fut = new GridFutureAdapter<>();
+
+                            GridFutureAdapter<?> old = undepFuts.putIfAbsent(srvcId, fut);
+
+                            if (old != null) {
+                                res.add(old);
+
+                                continue;
+                            }
+
+                            res.add(fut);
+
+                            if (!srvcsDescs.containsKey(srvcId)) {
+                                fut.onDone();
+
+                                continue;
+                            }
+
+                            toRollback.add(srvcId);
+
+                            DynamicServiceChangeRequest req = DynamicServiceChangeRequest.undeploymentRequest(srvcId);
+
+                            reqs.add(req);
+                        }
+
+                        if (!reqs.isEmpty()) {
+                            DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
+
+                            ctx.discovery().sendCustomEvent(msg);
+
+                            if (log.isDebugEnabled())
+                                log.debug("Services have been sent to cancel, msg=" + msg);
+                        }
+
+                        break;
                     }
-                    catch (SecurityException e) {
-                        res.add(new GridFinishedFuture<>(e));
+                    catch (IgniteException | IgniteCheckedException e) {
+                        for (IgniteUuid id : toRollback)
+                            undepFuts.remove(id).onDone(e);
 
-                        continue;
+                        if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
+                            res = new GridCompoundFuture<>();
+
+                            if (log.isDebugEnabled())
+                                log.debug("Topology changed while cancelling services (will retry): " + e.getMessage());
+                        }
+                        else {
+                            U.error(log, "Failed to undeploy services: " + srvcsIds, e);
+
+                            res.onDone(e);
+
+                            return res;
+                        }
                     }
-
-                    GridFutureAdapter<?> fut = new GridFutureAdapter<>();
-
-                    GridFutureAdapter<?> old = undepFuts.putIfAbsent(srvcId, fut);
-
-                    if (old != null) {
-                        res.add(old);
-
-                        continue;
-                    }
-
-                    res.add(fut);
-
-                    if (!srvcsDescs.containsKey(srvcId)) {
-                        fut.onDone();
-
-                        continue;
-                    }
-
-                    toRollback.add(srvcId);
-
-                    DynamicServiceChangeRequest req = DynamicServiceChangeRequest.undeploymentRequest(srvcId);
-
-                    reqs.add(req);
                 }
-
-                if (!reqs.isEmpty()) {
-                    DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
-
-                    ctx.discovery().sendCustomEvent(msg);
-
-                    if (log.isDebugEnabled())
-                        log.debug("Services have been sent to cancel, msg=" + msg);
-                }
-
-                break;
             }
-            catch (IgniteException | IgniteCheckedException e) {
-                for (IgniteUuid id : toRollback)
-                    undepFuts.remove(id).onDone(e);
 
-                if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                    if (log.isDebugEnabled())
-                        log.debug("Topology changed while cancelling services (will retry): " + e.getMessage());
-                }
-                else {
-                    U.error(log, "Failed to undeploy services: " + srvcsIds, e);
+            res.markInitialized();
 
-                    res.onDone(e);
-
-                    return res;
-                }
-            }
+            return res;
         }
-
-        res.markInitialized();
-
-        return res;
+        finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**

@@ -76,6 +76,7 @@ import org.apache.ignite.internal.processors.service.IgniteServiceProxyTimeoutIn
 import org.apache.ignite.internal.processors.service.IgniteServiceReassignmentTest;
 import org.apache.ignite.internal.processors.service.IgniteServicesDeploymentFailuresPolicySelfTest;
 import org.apache.ignite.internal.processors.service.ServiceDeploymentExchangeImplSelfTest;
+import org.apache.ignite.internal.processors.service.ServiceDeploymentOnClientDisconnectTest;
 import org.apache.ignite.internal.processors.service.ServiceDeploymentProcessingOnCoordinatorChangeTest;
 import org.apache.ignite.internal.processors.service.ServiceInfoSelfTest;
 import org.apache.ignite.internal.processors.service.ServicePredicateAccessCacheTest;
@@ -176,6 +177,7 @@ public class IgniteKernalSelfTestSuite extends TestSuite {
 
         suite.addTestSuite(ServiceDeploymentProcessingOnCoordinatorChangeTest.class);
         suite.addTestSuite(IgniteServicesDeploymentFailuresPolicySelfTest.class);
+        suite.addTestSuite(ServiceDeploymentOnClientDisconnectTest.class);
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceReassignmentFunctionSelfTest.class));
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceDeploymentExchangeImplSelfTest.class));
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceInfoSelfTest.class));
