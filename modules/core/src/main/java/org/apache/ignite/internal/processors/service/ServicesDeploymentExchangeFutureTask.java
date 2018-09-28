@@ -600,7 +600,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void onAllReceived() {
         assert !isCompleted();
 
-        ServicesFullMapMessage msg = createFullMapMessage();
+        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> singleResults = buildSingleDeploymentsResults();
+
+        addDeploymentErrorsToDeploymentResults(singleResults);
+
+        final Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleResults);
+
+        ServicesFullMapMessage msg = new ServicesFullMapMessage(exchId, fullResults);
 
         try {
             ctx.discovery().sendCustomEvent(msg);
@@ -635,11 +641,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Processes single map messages to build full map message.
+     * Processes single map messages to build single deployment results.
      *
-     * @return Services full map message.
+     * @return Services single deployments results.
      */
-    private ServicesFullMapMessage createFullMapMessage() {
+    private Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> buildSingleDeploymentsResults() {
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results = new HashMap<>();
 
         singleMapMsgs.forEach((nodeId, msg) -> {
@@ -670,14 +676,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             });
         });
 
-        return createFullMapMessage0(results);
+        return results;
     }
 
     /**
      * @param results Services per node single deployments results.
-     * @return Services full map message.
      */
-    private ServicesFullMapMessage createFullMapMessage0(
+    private void addDeploymentErrorsToDeploymentResults(
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
         depErrors.forEach((srvcId, errBytes) -> {
             Collection<byte[]> srvcErrors = new ArrayList<>(errBytes.size());
@@ -703,10 +708,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     singleDepRes.errors().addAll(srvcErrors);
             }
         });
+    }
+
+    /**
+     * @param results Services per node single deployments results.
+     * @return Services full deployments results.
+     */
+    private Collection<ServiceFullDeploymentsResults> buildFullDeploymentsResults(
+        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
+        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
 
         final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
-
-        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
 
         results.forEach((srvcId, dep) -> {
             if (dep.values().stream().anyMatch(r -> !r.errors().isEmpty() && srvcsDescs.containsKey(srvcId))) {
@@ -723,7 +735,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             fullResults.add(res);
         });
 
-        return new ServicesFullMapMessage(exchId, fullResults);
+        return fullResults;
     }
 
     /**
