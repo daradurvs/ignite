@@ -41,7 +41,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
- * Tests of {@link ServicesDeploymentExchangeManagerImpl}.
+ * Tests of {@link ServicesDeploymentExchangeManager}.
  */
 public class ServiceDeploymentExchangeImplSelfTest {
     /** */
@@ -55,7 +55,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
      */
     @Test
     public void testAddTaskInEmptyQueue() {
-        ServicesDeploymentExchangeManagerImpl exchMgr = manager();
+        ServicesDeploymentExchangeManager exchMgr = manager();
 
         ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
 
@@ -74,7 +74,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
      */
     @Test
     public void testInsertFirstTasksInNotEmptyQueue() {
-        ServicesDeploymentExchangeManagerImpl exchMgr = manager();
+        ServicesDeploymentExchangeManager exchMgr = manager();
 
         ServicesDeploymentExchangeTask t1 = new TestTaskClass();
 
@@ -97,10 +97,10 @@ public class ServiceDeploymentExchangeImplSelfTest {
     }
 
     /**
-     * @return Instance of ServicesDeploymentExchangeManagerImpl.
+     * @return Instance of ServicesDeploymentExchangeManager.
      */
-    private ServicesDeploymentExchangeManagerImpl manager() {
-        return new ServicesDeploymentExchangeManagerImpl(mockKernalContext());
+    private ServicesDeploymentExchangeManager manager() {
+        return new ServicesDeploymentExchangeManager(mockKernalContext());
     }
 
     /**

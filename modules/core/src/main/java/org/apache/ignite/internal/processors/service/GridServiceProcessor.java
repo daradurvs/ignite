@@ -113,10 +113,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private final HashMap<IgniteUuid, ServiceInfo> srvcsDescs = new HashMap<>();
 
     /** Services deployment exchange manager. */
-    private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManagerImpl(ctx);
+    private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
 
-    /** Configurations which should be deployed on first activation. */
-    private ServiceConfiguration[] cfgsOnStart = null;
+    /** If static configurations should be deployed on activation. */
+    private volatile boolean isStaticCfgDeployed = false;
 
     /**
      * @param ctx Kernal context.
@@ -136,8 +136,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
-        cfgsOnStart = ctx.config().getServiceConfiguration();
-
         IgniteConfiguration cfg = ctx.config();
 
         DeploymentMode depMode = cfg.getDeploymentMode();
@@ -155,12 +153,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         exchMgr.startProcessing();
 
-        if (active) {
-            onActivate(ctx);
+        if (!active)
+            return;
 
-            if (log.isDebugEnabled())
-                log.debug("Started service processor.");
-        }
+        onActivate(ctx);
+
+        if (log.isDebugEnabled())
+            log.debug("Started service processor.");
     }
 
     /** {@inheritDoc} */
@@ -268,10 +267,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             log.debug("Activate service processor [nodeId=" + ctx.localNodeId() +
                 " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
 
-        if (cfgsOnStart != null) {
-            deployAll(Arrays.asList(cfgsOnStart), ctx.cluster().get().forServers().predicate());
+        if (isStaticCfgDeployed)
+            return;
 
-            cfgsOnStart = null;
+        try {
+            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
+
+            if (cfgs != null)
+                deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
+        }
+        finally {
+            isStaticCfgDeployed = true;
         }
     }
 
