@@ -20,22 +20,22 @@ package org.apache.ignite.internal.processors.service;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.communication.GridIoManager;
 import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.testframework.GridTestNode;
 import org.apache.ignite.testframework.config.GridTestProperties;
 import org.apache.ignite.testframework.junits.GridTestKernalContext;
 import org.apache.ignite.testframework.junits.logger.GridTestLog4jLogger;
 import org.jetbrains.annotations.Nullable;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -51,11 +51,10 @@ public class ServiceDeploymentExchangeImplSelfTest {
     }
 
     /**
-     * TODO
+     *
      */
     @Test
-    @Ignore
-    public void testInsertFirstTasksInEmptyQueue() {
+    public void testAddTaskInEmptyQueue() {
         ServicesDeploymentExchangeManagerImpl exchMgr = manager();
 
         ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
@@ -68,16 +67,12 @@ public class ServiceDeploymentExchangeImplSelfTest {
         tasks.forEach(exchMgr::addTask);
 
         assertEquals(tasks.size(), exchMgr.tasks().size());
-
-        for (ServicesDeploymentExchangeTask task : exchMgr.tasks())
-            assertSame(tasks.poll(), task);
     }
 
     /**
-     * TODO
+     *
      */
     @Test
-    @Ignore
     public void testInsertFirstTasksInNotEmptyQueue() {
         ServicesDeploymentExchangeManagerImpl exchMgr = manager();
 
@@ -99,15 +94,6 @@ public class ServiceDeploymentExchangeImplSelfTest {
         tasks.forEach(exchMgr::addTask);
 
         assertEquals(tasks.size() + 2, exchMgr.tasks().size());
-
-        assertSame(t2, exchMgr.tasks().pollLast());
-
-        assertSame(t1, exchMgr.tasks().pollLast());
-
-        assertEquals(tasks.size(), exchMgr.tasks().size());
-
-        for (ServicesDeploymentExchangeTask task : exchMgr.tasks())
-            assertSame(tasks.poll(), task);
     }
 
     /**
@@ -135,7 +121,18 @@ public class ServiceDeploymentExchangeImplSelfTest {
     /**
      * Service deployment exchange task no-op implementation for tests.
      */
+
     private static class TestTaskClass implements ServicesDeploymentExchangeTask {
+        /** */
+        private final DiscoveryEvent evt = new DiscoveryEvent(
+            new GridTestNode(UUID.randomUUID()), "", 10, new GridTestNode(UUID.randomUUID()));
+
+        /** */
+        private final AffinityTopologyVersion topVer = new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong());
+
+        /** */
+        private final ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
+
         /** {@inheritDoc} */
         @Override public void init(GridKernalContext kCtx) throws IgniteCheckedException {
             // No-op.
@@ -148,19 +145,17 @@ public class ServiceDeploymentExchangeImplSelfTest {
 
         /** {@inheritDoc} */
         @Override public DiscoveryEvent event() {
-            // No-op.
-            return null;
+            return evt;
         }
 
         /** {@inheritDoc} */
         @Override public ServicesDeploymentExchangeId exchangeId() {
-            return new ServicesDeploymentExchangeId();
+            return exchId;
         }
 
         /** {@inheritDoc} */
         @Override public AffinityTopologyVersion topologyVersion() {
-            // No-op.
-            return null;
+            return topVer;
         }
 
         /** {@inheritDoc} */

@@ -141,7 +141,7 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
 
     /** {@inheritDoc} */
     @Override public void addTask(ServicesDeploymentExchangeTask task) {
-        addEvent(task.event(), task.topologyVersion());
+        addEvent(task.event(), task.topologyVersion(), task.exchangeId());
     }
 
     /** {@inheritDoc} */
@@ -197,6 +197,17 @@ public class ServicesDeploymentExchangeManagerImpl implements ServicesDeployment
     private void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
         ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
 
+        addEvent(evt, topVer, exchId);
+    }
+
+    /**
+     * Addeds discovery event to exchange queue.
+     *
+     * @param evt Discovery event.
+     * @param topVer Topology version.
+     * @param exchId Exchange id.
+     */
+    private void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
         ServicesDeploymentExchangeTask task = exchangeTask(exchId);
 
         task.event(evt, topVer);
