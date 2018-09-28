@@ -151,12 +151,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon())
             return;
 
+        if (active)
+            onActivate(ctx);
+
         exchMgr.startProcessing();
-
-        if (!active)
-            return;
-
-        onActivate(ctx);
 
         if (log.isDebugEnabled())
             log.debug("Started service processor.");
@@ -232,16 +230,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void collectGridNodeData(DiscoveryDataBag dataBag) {
-        if (!isLocalNodeCoordinator())
+        if (dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal()))
             return;
 
-        if (!dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal())) {
-            InitialServicesData initData = new InitialServicesData(
-                new HashMap<>(srvcsDescs),
-                new ArrayDeque<>(exchMgr.tasks()));
+        InitialServicesData initData = new InitialServicesData(
+            new HashMap<>(srvcsDescs),
+            new ArrayDeque<>(exchMgr.tasks())
+        );
 
-            dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
-        }
+        dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
     }
 
     /** {@inheritDoc} */
@@ -252,7 +249,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             initData.srvcsDescs.forEach(srvcsDescs::put);
 
-            initData.exchQueue.forEach(exchMgr::addTask);
+            initData.exchQueue.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
         }
     }
 
@@ -514,58 +511,59 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         List<GridServiceDeploymentFuture> failedFuts = srvCfg.failedFuts;
 
-        cfgsCp.sort(Comparator.comparing(ServiceConfiguration::getName));
+        GridServiceDeploymentCompoundFuture res = new GridServiceDeploymentCompoundFuture();
 
-        GridServiceDeploymentCompoundFuture res;
+        if (!cfgsCp.isEmpty()) {
+            cfgsCp.sort(Comparator.comparing(ServiceConfiguration::getName));
 
-        while (true) {
-            res = new GridServiceDeploymentCompoundFuture();
+            while (true) {
+                try {
+                    Collection<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
-            try {
-                Collection<DynamicServiceChangeRequest> reqs = new ArrayList<>();
+                    for (ServiceConfiguration cfg : cfgsCp) {
+                        IgniteUuid srvcId = IgniteUuid.randomUuid();
 
-                for (ServiceConfiguration cfg : cfgsCp) {
-                    IgniteUuid srvcId = IgniteUuid.randomUuid();
+                        GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, srvcId);
 
-                    GridServiceDeploymentFuture fut = new GridServiceDeploymentFuture(cfg, srvcId);
+                        res.add(fut, true);
 
-                    res.add(fut, true);
+                        DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
 
-                    DynamicServiceChangeRequest req = DynamicServiceChangeRequest.deploymentRequest(srvcId, cfg);
+                        reqs.add(req);
 
-                    reqs.add(req);
+                        depFuts.put(srvcId, fut);
+                    }
 
-                    depFuts.put(srvcId, fut);
-                }
-
-                if (!reqs.isEmpty()) {
                     DynamicServicesChangeRequestBatchMessage msg = new DynamicServicesChangeRequestBatchMessage(reqs);
 
                     ctx.discovery().sendCustomEvent(msg);
 
                     if (log.isDebugEnabled())
                         log.debug("Services have been sent to deploy, req=" + msg);
+
+                    break;
                 }
+                catch (IgniteException | IgniteCheckedException e) {
+                    for (IgniteUuid id : res.servicesToRollback())
+                        depFuts.remove(id).onDone(e);
 
-                break;
-            }
-            catch (IgniteException | IgniteCheckedException e) {
-                for (IgniteUuid id : res.servicesToRollback())
-                    depFuts.remove(id).onDone(e);
+                    if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
+                        res = new GridServiceDeploymentCompoundFuture();
 
-                if (X.hasCause(e, ClusterTopologyCheckedException.class)) {
-                    if (log.isDebugEnabled())
-                        log.debug("Topology changed while deploying services (will retry): " + e.getMessage());
-                }
-                else {
-                    res.onDone(new IgniteCheckedException(
-                        new ServiceDeploymentException("Failed to deploy provided services.", e, cfgs)));
+                        if (log.isDebugEnabled())
+                            log.debug("Topology changed while deploying services (will retry): " + e.getMessage());
+                    }
+                    else {
+                        res.onDone(new IgniteCheckedException(
+                            new ServiceDeploymentException("Failed to deploy provided services.", e, cfgs)));
 
-                    return res;
+                        return res;
+                    }
                 }
             }
         }
 
+        //TODO: remove it according to channel comments.
         if (ctx.clientDisconnected()) {
             IgniteClientDisconnectedCheckedException err =
                 new IgniteClientDisconnectedCheckedException(ctx.cluster().clientReconnectFuture(),

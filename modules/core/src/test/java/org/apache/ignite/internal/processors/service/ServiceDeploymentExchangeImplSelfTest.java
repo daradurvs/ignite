@@ -64,7 +64,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
 
         assertEquals(0, exchMgr.tasks().size());
 
-        tasks.forEach(exchMgr::addTask);
+        tasks.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
 
         assertEquals(tasks.size(), exchMgr.tasks().size());
     }
@@ -91,7 +91,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         for (int i = 0; i < 5; i++)
             tasks.add(new TestTaskClass());
 
-        tasks.forEach(exchMgr::addTask);
+        tasks.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
 
         assertEquals(tasks.size() + 2, exchMgr.tasks().size());
     }

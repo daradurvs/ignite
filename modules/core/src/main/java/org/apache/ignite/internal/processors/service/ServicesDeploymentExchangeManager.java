@@ -124,32 +124,23 @@ public class ServicesDeploymentExchangeManager {
 
             U.cancel(exchWorker);
 
+            synchronized (mux) {
+                mux.notify();
+            }
+
             U.join(exchWorker, log);
 
-            synchronized (mux) {
-                mux.notifyAll();
-            }
+            exchWorker.tasksQueue.clear();
 
             pendingEvts.clear();
 
             tasks.values().forEach(t -> t.complete(null, true));
 
             tasks.clear();
-
-            exchWorker.tasksQueue.clear();
         }
         catch (Exception e) {
             log.error("Error occurred during stopping exchange worker.");
         }
-    }
-
-    /**
-     * Addes given task to tail of exchange queue.
-     *
-     * @param task Service deployment exchange task.
-     */
-    public void addTask(ServicesDeploymentExchangeTask task) {
-        addEvent(task.event(), task.topologyVersion(), task.exchangeId());
     }
 
     /**
@@ -211,7 +202,7 @@ public class ServicesDeploymentExchangeManager {
         if (cache.state().transition())
             pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
         else if (cache.state().active())
-            addEvent(evt, cache.version());
+            addEvent(evt, cache.version(), new ServicesDeploymentExchangeId(evt, cache.version()));
         else if (log.isDebugEnabled())
             log.debug("Ignore event, cluster is inactive, evt=" + evt);
     }
@@ -221,45 +212,20 @@ public class ServicesDeploymentExchangeManager {
      *
      * @param evt Discovery event.
      * @param topVer Topology version.
-     */
-    private void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
-        ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
-
-        addEvent(evt, topVer, exchId);
-    }
-
-    /**
-     * Addeds discovery event to exchange queue.
-     *
-     * @param evt Discovery event.
-     * @param topVer Topology version.
      * @param exchId Exchange id.
      */
-    private void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
-        ServicesDeploymentExchangeTask task = exchangeTask(exchId);
-
-        task.event(evt, topVer);
+    public void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
+        ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, ServicesDeploymentExchangeFutureTask::new);
 
         synchronized (mux) {
-            if (!exchWorker.tasksQueue.contains(task))
+            if (!exchWorker.tasksQueue.contains(task)) {
+                task.event(evt, topVer);
+
                 exchWorker.tasksQueue.add(task);
+            }
 
-            mux.notifyAll();
+            mux.notify();
         }
-    }
-
-    /**
-     * Returns services deployment tasks with given exchange id, if task is not exists than creates new one.
-     *
-     * @param exchId Exchange id.
-     * @return Service deployment exchange task.
-     */
-    private ServicesDeploymentExchangeTask exchangeTask(ServicesDeploymentExchangeId exchId) {
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeFutureTask(exchId);
-
-        ServicesDeploymentExchangeTask old = tasks.putIfAbsent(exchId, task);
-
-        return old != null ? old : task;
     }
 
     /**
@@ -284,18 +250,21 @@ public class ServicesDeploymentExchangeManager {
                             ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
 
                             if (msg0.clusterActive())
-                                pendingEvts.forEach((t) -> addEvent(t.get1(), t.get2()));
+                                pendingEvts.forEach((t) -> addEvent(t.get1(), t.get2(),
+                                    new ServicesDeploymentExchangeId(t.get1(), t.get2())));
                             else if (log.isDebugEnabled())
                                 pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
 
                             pendingEvts.clear();
                         }
                         else if (msg instanceof ChangeGlobalStateMessage)
-                            addEvent(evt, discoCache.version());
+                            addEvent(evt, discoCache.version(), new ServicesDeploymentExchangeId(evt, discoCache.version()));
+
                         else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
                             msg instanceof DynamicCacheChangeBatch ||
                             msg instanceof CacheAffinityChangeMessage)
                             checkStateAndAddEvent(evt, discoCache);
+
                         else if (msg instanceof ServicesFullMapMessage) {
                             ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
@@ -308,9 +277,8 @@ public class ServicesDeploymentExchangeManager {
                             ServicesDeploymentExchangeId exchId = msg0.exchangeId();
 
                             if (tasks.containsKey(exchId)) { // In case of double delivering
-                                ServicesDeploymentExchangeTask task = exchangeTask(exchId);
-
-                                assert task != null;
+                                ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId,
+                                    ServicesDeploymentExchangeFutureTask::new);
 
                                 task.onReceiveFullMapMessage(snd, msg0);
                             }
@@ -360,11 +328,8 @@ public class ServicesDeploymentExchangeManager {
                             ", msg=" + msg0 + ']');
                     }
 
-                    ServicesDeploymentExchangeTask task = exchangeTask(msg0.exchangeId());
-
-                    assert task != null;
-
-                    task.onReceiveSingleMapMessage(nodeId, msg0);
+                    tasks.computeIfAbsent(msg0.exchangeId(), ServicesDeploymentExchangeFutureTask::new)
+                        .onReceiveSingleMapMessage(nodeId, msg0);
                 }
             }
             finally {
@@ -433,6 +398,7 @@ public class ServicesDeploymentExchangeManager {
                         throw e;
                     }
 
+                    // TODO
                     long timeout = ctx.config().getNetworkTimeout() * 5;
 
                     while (true) {

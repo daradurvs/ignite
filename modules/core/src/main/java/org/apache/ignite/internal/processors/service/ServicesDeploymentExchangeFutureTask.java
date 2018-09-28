@@ -171,8 +171,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 ", evt=" + evt + ']');
         }
 
-        Exception initEx = null;
-
         try {
             ClusterNode crd = proc.coordinator();
 
@@ -227,14 +225,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         catch (Exception e) {
             log.error("Error occurred during deployment task initialization, err=" + e.getMessage(), e);
 
-            initEx = e;
+            initTaskFut.onDone(e);
 
             throw new IgniteCheckedException(e);
         }
         finally {
-            if (initEx != null)
-                initTaskFut.onDone(initEx);
-            else
+            if (!initTaskFut.isDone())
                 initTaskFut.onDone();
         }
     }
@@ -249,23 +245,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             if (initCrdFut.isDone())
                 return;
 
-            Throwable th = null;
-
             try {
                 for (ClusterNode node : ctx.discovery().nodes(topVer)) {
                     if (ctx.discovery().alive(node))
                         remaining.add(node.id());
                 }
             }
-            catch (Throwable t) {
-                th = t;
+            catch (Exception e) {
+                log.error("Error occurred while initialization of remaining collection.", e);
 
-                log.error("Error occurred while initialization of remaining collection.", t);
+                initCrdFut.onDone(e);
             }
             finally {
-                if (th != null)
-                    initCrdFut.onDone(th);
-                else
+                if (!initCrdFut.isDone())
                     initCrdFut.onDone();
             }
         }
@@ -575,7 +567,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         onAllReceived();
                 }
                 else if (log.isDebugEnabled())
-                    log.debug("Unexpected service assignments message received, msg=" + msg);
+                    log.debug("Unexpected service single map received, msg=" + msg);
             }
         });
     }
@@ -605,11 +597,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Creates full assignments message and send it across over discovery.
+     * Creates full assignments message and send it over discovery.
      */
     private void onAllReceived() {
-        if (isCompleted())
-            return;
+        assert !isCompleted();
 
         ServicesFullMapMessage msg = createFullMapMessage();
 
@@ -667,8 +658,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                         if (expCnt == null)
                             cnt = 0;
-                        else if (expCnt < cnt)
-                            cnt = expCnt;
+                        else
+                            cnt = Math.min(cnt, expCnt);
                     }
                 }
 
@@ -690,25 +681,20 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private ServicesFullMapMessage createFullMapMessage0(
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
-        depErrors.forEach((id, arr) -> {
-            Collection<byte[]> srvcErrors = new ArrayList<>(arr.size());
+        depErrors.forEach((srvcId, errBytes) -> {
+            Collection<byte[]> srvcErrors = new ArrayList<>(errBytes.size());
 
-            for (Throwable th : arr) {
-                byte[] err = null;
-
+            for (Throwable th : errBytes) {
                 try {
-                    err = U.marshal(ctx, th);
+                    srvcErrors.add(U.marshal(ctx, th));
                 }
                 catch (IgniteCheckedException e) {
                     log.error("Failed to marshal reassignments error.", e);
                 }
-
-                if (err != null)
-                    srvcErrors.add(err);
             }
 
             if (!srvcErrors.isEmpty()) {
-                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(id, r -> new HashMap<>());
+                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(srvcId, r -> new HashMap<>());
 
                 ServiceSingleDeploymentsResults singleDepRes = depResults.computeIfAbsent(
                     ctx.localNodeId(), r -> new ServiceSingleDeploymentsResults(0));
