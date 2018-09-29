@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -117,14 +118,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
 
-    /** If static configurations should be deployed on activation. */
-    private volatile boolean isStaticCfgDeployed = false;
-
     /** Lock. */
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     /** Client disconnected flag. */
     private boolean disconnected;
+
+    /** Unhandled joining nodes data. */
+    private final HashMap<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData = new LinkedHashMap<>();
 
     /**
      * @param ctx Kernal context.
@@ -151,16 +152,30 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (cfg.isPeerClassLoadingEnabled() && (depMode == PRIVATE || depMode == ISOLATED) &&
             !F.isEmpty(cfg.getServiceConfiguration()))
             throw new IgniteCheckedException("Cannot deploy services in PRIVATE or ISOLATED deployment mode: " + depMode);
+
+        ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
+
+        if (cfgs != null) {
+            // Skipped check of marshalling, because {@link GridMarshallerMappingProcessor} is not started at this point.
+            PreparedConfigurations prepCfgs = prepareServiceConfigurations(Arrays.asList(cfgs),
+                node -> !node.isClient(), false);
+
+            if (log.isInfoEnabled() && prepCfgs.failedFuts != null) {
+                for (GridServiceDeploymentFuture fut : prepCfgs.failedFuts) {
+                    log.info("Failed to validate static service configuration, cfg=" + fut.configuration() +
+                        ", err=" + fut.result());
+                }
+            }
+
+            if (!prepCfgs.cfgs.isEmpty())
+                joiningNodesData.put(ctx.localNodeId(), new ServicesJoiningNodeDiscoveryData(prepCfgs.cfgs));
+        }
     }
 
     /** {@inheritDoc} */
-    @SuppressWarnings("unchecked")
     @Override public void onKernalStart(boolean active) throws IgniteCheckedException {
         if (ctx.isDaemon())
             return;
-
-        if (active)
-            onActivate(ctx);
 
         exchMgr.startProcessing();
 
@@ -261,28 +276,27 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /** {@inheritDoc} */
+    @Override public void collectJoiningNodeData(DiscoveryDataBag dataBag) {
+        ServicesJoiningNodeDiscoveryData data = joiningNodesData.get(ctx.localNodeId());
+
+        if (data != null)
+            dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), data);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onJoiningNodeDataReceived(DiscoveryDataBag.JoiningNodeDiscoveryData data) {
+        if (data.joiningNodeData() != null)
+            joiningNodesData.put(data.joiningNodeId(), (ServicesJoiningNodeDiscoveryData)data.joiningNodeData());
+    }
+
+    /** {@inheritDoc} */
     @Nullable @Override public DiscoveryDataExchangeType discoveryDataType() {
         return SERVICE_PROC;
     }
 
     /** {@inheritDoc} */
-    @Override public void onActivate(GridKernalContext kctx) throws IgniteCheckedException {
-        if (log.isDebugEnabled())
-            log.debug("Activate service processor [nodeId=" + ctx.localNodeId() +
-                " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
-
-        if (isStaticCfgDeployed)
-            return;
-
-        try {
-            ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
-
-            if (cfgs != null)
-                deployAll(Arrays.asList(cfgs), ctx.cluster().get().forServers().predicate());
-        }
-        finally {
-            isStaticCfgDeployed = true;
-        }
+    @Override public void onActivate(GridKernalContext kctx) {
+        // No-op.
     }
 
     /** {@inheritDoc} */
@@ -297,14 +311,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /** {@inheritDoc} */
-    @Override public void onDisconnected(IgniteFuture<?> reconnectFut) throws IgniteCheckedException {
+    @Override public void onDisconnected(IgniteFuture<?> reconnectFut) {
         rwLock.writeLock().lock();
 
         try {
             disconnected = true;
 
             IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
-                ctx.cluster().clientReconnectFuture(), "Failed to deploy service, client node disconnected.");
+                ctx.cluster().clientReconnectFuture(), "Client node disconnected, the operation's result is unknown.");
 
             cancelFutures(depFuts, err);
             cancelFutures(undepFuts, err);
@@ -441,10 +455,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @param cfgs Service configurations.
      * @param dfltNodeFilter Default NodeFilter.
+     * @param checkMarshalling {@code true} if it is necessary to check marshalling of {@link
+     * ServiceConfiguration#getService()}, otherwise false.
      * @return Configurations to deploy.
      */
     private PreparedConfigurations prepareServiceConfigurations(Collection<ServiceConfiguration> cfgs,
-        IgnitePredicate<ClusterNode> dfltNodeFilter) {
+        IgnitePredicate<ClusterNode> dfltNodeFilter, boolean checkMarshalling) {
         List<ServiceConfiguration> cfgsCp = new ArrayList<>(cfgs.size());
 
         Marshaller marsh = ctx.config().getMarshaller();
@@ -482,17 +498,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
 
             if (err == null) {
-                try {
-                    byte[] srvcBytes = U.marshal(marsh, cfg.getService());
+                if (checkMarshalling) {
+                    try {
+                        byte[] srvcBytes = U.marshal(marsh, cfg.getService());
 
-                    cfgsCp.add(new LazyServiceConfiguration(cfg, srvcBytes));
-                }
-                catch (Exception e) {
-                    U.error(log, "Failed to marshal service with configured marshaller [name=" + cfg.getName() +
-                        ", srvc=" + cfg.getService() + ", marsh=" + marsh + "]", e);
+                        cfgsCp.add(new LazyServiceConfiguration(cfg, srvcBytes));
+                    }
+                    catch (Exception e) {
+                        U.error(log, "Failed to marshal service with configured marshaller [name=" + cfg.getName() +
+                            ", srvc=" + cfg.getService() + ", marsh=" + marsh + "]", e);
 
-                    err = e;
+                        err = e;
+                    }
                 }
+                else
+                    cfgsCp.add(cfg);
             }
 
             if (err != null) {
@@ -518,12 +538,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs,  null);
+            return deployAll(cfgs, null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs,  prj.predicate());
+            return deployAll(cfgs, prj.predicate());
     }
 
     /**
@@ -545,7 +565,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 return new GridFinishedFuture<>(err);
             }
 
-            PreparedConfigurations srvCfg = prepareServiceConfigurations(cfgs, dfltNodeFilter);
+            PreparedConfigurations srvCfg = prepareServiceConfigurations(cfgs, dfltNodeFilter, true);
 
             List<ServiceConfiguration> cfgsCp = srvCfg.cfgs;
 
@@ -1584,6 +1604,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     protected Map<IgniteUuid, ServiceInfo> services() {
         return srvcsDescs;
+    }
+
+    /**
+     * @return Unhandled joining nodes data.
+     */
+    protected Map<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData() {
+        return joiningNodesData;
     }
 
     /**

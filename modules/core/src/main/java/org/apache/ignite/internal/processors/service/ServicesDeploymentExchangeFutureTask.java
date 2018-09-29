@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -192,6 +193,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     break;
 
                 case EVT_NODE_JOINED:
+
+                    ServicesJoiningNodeDiscoveryData data = ctx.service().joiningNodesData().remove(evt.eventNode().id());
+
+                    if (data != null) {
+                        for (ServicesJoiningNodeDiscoveryData.ServiceConfigurationContainer srvcData : data.staticCfgs)
+                            assign(srvcData.serviceId(), srvcData.configuration(), evtTopVer);
+                    }
+
                 case EVT_NODE_LEFT:
                 case EVT_NODE_FAILED:
 
@@ -256,12 +265,21 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /**
      * @param req Change cluster state message.
      * @param topVer Topology version.
-     * @throws IgniteCheckedException In case of an error.
      */
     private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        AffinityTopologyVersion topVer) {
         if (req.activate()) {
-            ctx.service().onActivate(ctx);
+            Iterator<Map.Entry<UUID, ServicesJoiningNodeDiscoveryData>> it = ctx.service()
+                .joiningNodesData().entrySet().iterator();
+
+            while (it.hasNext()) {
+                ServicesJoiningNodeDiscoveryData data = it.next().getValue();
+
+                for (ServicesJoiningNodeDiscoveryData.ServiceConfigurationContainer srvcData : data.staticCfgs)
+                    assign(srvcData.serviceId(), srvcData.configuration(), topVer);
+
+                it.remove();
+            }
 
             initReassignment(ctx.service().services().keySet(), topVer);
         }
@@ -278,8 +296,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void onServiceChangeRequest(DynamicServicesChangeRequestBatchMessage batch,
         AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
-
         final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
         final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
@@ -292,75 +308,86 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             else if (req.deploy()) {
                 ServiceConfiguration cfg = req.configuration();
 
-                ServiceDescriptor srvcDesc = srvcsDescs.get(srvcId);
+                Map<UUID, Integer> srvcTop = assign(srvcId, cfg, topVer);
 
-                Map<UUID, Integer> srvcTop = srvcDesc != null ? srvcDesc.topologySnapshot() : null;
-
-                Throwable th = null;
-
-                if (srvcTop != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
-                    th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
-                        ", srvcTop=" + srvcTop);
-                }
-                else {
-                    ServiceInfo oldSrvcDesc = null;
-                    IgniteUuid oldSrvcId = null;
-
-                    for (Map.Entry<IgniteUuid, ServiceInfo> e : srvcsDescs.entrySet()) {
-                        ServiceInfo desc = e.getValue();
-
-                        if (desc.configuration().getName().equals(cfg.getName())) {
-                            oldSrvcDesc = desc;
-                            oldSrvcId = e.getKey();
-
-                            break;
-                        }
-                    }
-
-                    if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
-                        th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                            "different configuration) [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
-                    }
-                    else {
-                        try {
-                            if (oldSrvcId != null)
-                                srvcId = oldSrvcId;
-
-                            srvcTop = reassign(srvcId, cfg, topVer);
-                        }
-                        catch (IgniteCheckedException e) {
-                            th = e;
-                        }
-
-                        if (srvcTop != null && srvcTop.isEmpty() && !lessThenLocalJoin(topVer))
-                            th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
-                    }
-                }
-
-                if (th != null) {
-                    log.error(th.getMessage(), th);
-
-                    Collection<Throwable> errors = depErrors.computeIfAbsent(req.serviceId(), e -> new ArrayList<>());
-
-                    errors.add(th);
-
-                    continue;
-                }
-
-                if (log.isDebugEnabled()) {
-                    log.debug("Calculated service assignments" +
-                        ", srvcId=" + srvcId +
-                        ", top=" + srvcTop);
-                }
-
-                srvcsDescs.computeIfAbsent(srvcId, dep -> new ServiceInfo(evt.eventNode().id(), cfg));
-
-                srvcsToDeploy.put(srvcId, srvcTop);
+                if (!srvcTop.isEmpty())
+                    srvcsToDeploy.put(srvcId, srvcTop);
             }
         }
 
         if (!lessThenLocalJoin(topVer))
             changeServices(srvcsToDeploy, srvcsToUndeploy);
+    }
+
+    private Map<UUID, Integer> assign(IgniteUuid reqSrvcId, ServiceConfiguration cfg, AffinityTopologyVersion topVer) {
+        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
+
+        IgniteUuid srvcId = reqSrvcId;
+
+        ServiceDescriptor srvcDesc = srvcsDescs.get(srvcId);
+
+        Map<UUID, Integer> srvcTop = srvcDesc != null ? srvcDesc.topologySnapshot() : null;
+
+        Throwable th = null;
+
+        if (srvcTop != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+            th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
+                ", srvcTop=" + srvcTop);
+        }
+        else {
+            ServiceInfo oldSrvcDesc = null;
+            IgniteUuid oldSrvcId = null;
+
+            for (Map.Entry<IgniteUuid, ServiceInfo> e : srvcsDescs.entrySet()) {
+                ServiceInfo desc = e.getValue();
+
+                if (desc.configuration().getName().equals(cfg.getName())) {
+                    oldSrvcDesc = desc;
+                    oldSrvcId = e.getKey();
+
+                    break;
+                }
+            }
+
+            if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
+                th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                    "different configuration) [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+            }
+            else {
+                try {
+                    if (oldSrvcId != null)
+                        srvcId = oldSrvcId;
+
+                    srvcTop = reassign(srvcId, cfg, topVer);
+                }
+                catch (IgniteCheckedException e) {
+                    th = e;
+                }
+
+                if (srvcTop != null && srvcTop.isEmpty() && !lessThenLocalJoin(topVer))
+                    th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
+            }
+        }
+
+        if (th != null) {
+            log.error(th.getMessage(), th);
+
+            Collection<Throwable> errors = depErrors.computeIfAbsent(reqSrvcId, e -> new ArrayList<>());
+
+            errors.add(th);
+
+            return Collections.emptyMap();
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Calculated service assignments" +
+                ", srvcId=" + srvcId +
+                ", top=" + srvcTop);
+        }
+
+        srvcsDescs.computeIfAbsent(srvcId, dep -> new ServiceInfo(evt.eventNode().id(), cfg));
+
+        return srvcTop;
     }
 
     /**

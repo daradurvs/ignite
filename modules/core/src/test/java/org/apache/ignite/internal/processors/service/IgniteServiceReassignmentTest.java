@@ -92,6 +92,8 @@ public class IgniteServiceReassignmentTest extends GridCommonAbstractTest {
 
         Ignite node1 = startGrid(1);
 
+        waitForService(node1);
+
         assertEquals(42, serviceProxy(node1).foo());
 
         srvcCfg = serviceConfiguration();
