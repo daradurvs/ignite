@@ -31,7 +31,6 @@ import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
-import org.apache.ignite.IgniteIllegalStateException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
@@ -117,6 +116,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private IgniteLogger log;
 
     /** Coordinator node id. */
+    @GridToStringExclude
     private volatile UUID crdId;
 
     /** Topology version of local join. */
@@ -185,8 +185,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                         else if (msg instanceof CacheAffinityChangeMessage)
                             onCacheAffinityChangeMessage(evtTopVer);
                         else
-                            complete(new IgniteIllegalStateException("Unexpected type of discovery custom message" +
-                                ", msg=" + msg), true);
+                            assert false : "Unexpected type of discovery event, evt=" + evt;
                     }
 
                     break;
@@ -209,10 +208,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     break;
 
                 default:
-                    complete(new IgniteIllegalStateException("Unexpected type of discovery event" +
-                        ", evt=" + evt), true);
-
-                    break;
+                    assert false : "Unexpected type of discovery event, evt=" + evt;
             }
 
             if (log.isDebugEnabled()) {
@@ -282,7 +278,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         else {
             ctx.service().onDeActivate(ctx);
 
-            complete(null, false);
+            complete(null);
         }
     }
 
@@ -398,7 +394,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         });
 
         if (toReassign.isEmpty()) {
-            complete(null, false);
+            complete(null);
 
             return;
         }
@@ -425,7 +421,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         });
 
         if (srvcsToUndeploy.isEmpty()) {
-            complete(null, false);
+            complete(null);
 
             return;
         }
@@ -614,7 +610,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 th = t;
             }
             finally {
-                complete(th, false);
+                complete(th);
             }
         });
     }
@@ -854,8 +850,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void complete(@Nullable Throwable err, boolean cancel) {
-        onDone(null, err, cancel);
+    @Override public void complete(@Nullable Throwable err) {
+        onDone(null, err, false);
 
         if (!initTaskFut.isDone())
             initTaskFut.onDone();
@@ -923,6 +919,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesDeploymentExchangeFutureTask.class, this, "locNodeId", ctx.localNodeId());
+        return S.toString(ServicesDeploymentExchangeFutureTask.class, this, "locNodeId", ctx.localNodeId(), "crdId", crdId);
     }
 }

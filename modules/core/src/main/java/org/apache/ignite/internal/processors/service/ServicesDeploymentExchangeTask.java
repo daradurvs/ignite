@@ -78,9 +78,8 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
      * Completes the task.
      *
      * @param err Error to complete with.
-     * @param cancel Cancel flag.
      */
-    public void complete(@Nullable Throwable err, boolean cancel);
+    public void complete(@Nullable Throwable err);
 
     /**
      * Returns if the task completed.

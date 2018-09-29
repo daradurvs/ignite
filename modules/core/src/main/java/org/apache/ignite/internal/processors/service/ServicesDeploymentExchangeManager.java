@@ -136,7 +136,7 @@ public class ServicesDeploymentExchangeManager {
 
             pendingEvts.clear();
 
-            tasks.values().forEach(t -> t.complete(null, true));
+            tasks.values().forEach(t -> t.complete(null));
 
             tasks.clear();
         }
@@ -300,10 +300,7 @@ public class ServicesDeploymentExchangeManager {
                         break;
 
                     default:
-                        if (log.isDebugEnabled())
-                            log.debug("Unexpected event was received, evt=" + evt);
-
-                        break;
+                        assert false : "Unexpected event was received, evt=" + evt;
                 }
             }
             finally {
@@ -395,7 +392,7 @@ public class ServicesDeploymentExchangeManager {
                     catch (Exception e) {
                         log.error("Error occurred during init service exchange future.", e);
 
-                        task.complete(e, false);
+                        task.complete(e);
 
                         throw e;
                     }

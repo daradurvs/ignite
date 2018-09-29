@@ -73,7 +73,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
      *
      */
     @Test
-    public void testInsertFirstTasksInNotEmptyQueue() {
+    public void testAddTasksInNotEmptyQueue() {
         ServicesDeploymentExchangeManager exchMgr = manager();
 
         ServicesDeploymentExchangeTask t1 = new TestTaskClass();
@@ -165,7 +165,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         }
 
         /** {@inheritDoc} */
-        @Override public void complete(@Nullable Throwable err, boolean cancel) {
+        @Override public void complete(@Nullable Throwable err) {
             // No-op.
         }
 
