@@ -28,7 +28,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -118,14 +117,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
 
+    /** Cluster services joining nodes data. */
+    private final ClusterServicesData clusterSrvcsData = new ClusterServicesData(ctx.localNodeId());
+
     /** Lock. */
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     /** Client disconnected flag. */
     private boolean disconnected;
-
-    /** Unhandled joining nodes data. */
-    private final HashMap<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData = new LinkedHashMap<>();
 
     /**
      * @param ctx Kernal context.
@@ -168,7 +167,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
 
             if (!prepCfgs.cfgs.isEmpty())
-                joiningNodesData.put(ctx.localNodeId(), new ServicesJoiningNodeDiscoveryData(prepCfgs.cfgs));
+                clusterSrvcsData.onStart(new ServicesJoiningNodeDiscoveryData(prepCfgs.cfgs));
         }
     }
 
@@ -258,6 +257,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         InitialServicesData initData = new InitialServicesData(
             new HashMap<>(srvcsDescs),
+            clusterSrvcsData.data(),
             new ArrayDeque<>(exchMgr.tasks())
         );
 
@@ -271,13 +271,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             initData.srvcsDescs.forEach(srvcsDescs::put);
 
+            initData.joiningNodesData.forEach(clusterSrvcsData::onJoiningNodeDataReceived);
+
             initData.exchQueue.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
         }
     }
 
     /** {@inheritDoc} */
     @Override public void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        ServicesJoiningNodeDiscoveryData data = joiningNodesData.get(ctx.localNodeId());
+        ServicesJoiningNodeDiscoveryData data = clusterSrvcsData.get(ctx.localNodeId());
 
         if (data != null)
             dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), data);
@@ -285,8 +287,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void onJoiningNodeDataReceived(DiscoveryDataBag.JoiningNodeDiscoveryData data) {
-        if (data.joiningNodeData() != null)
-            joiningNodesData.put(data.joiningNodeId(), (ServicesJoiningNodeDiscoveryData)data.joiningNodeData());
+        if (data.joiningNodeData() != null) {
+            clusterSrvcsData.onJoiningNodeDataReceived(data.joiningNodeId(),
+                (ServicesJoiningNodeDiscoveryData)data.joiningNodeData());
+        }
     }
 
     /** {@inheritDoc} */
@@ -538,12 +542,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs, null);
+            return deployAll(cfgs,  null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs, prj.predicate());
+            return deployAll(cfgs,  prj.predicate());
     }
 
     /**
@@ -1569,20 +1573,26 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         private static final long serialVersionUID = 0L;
 
         /** Services descriptors. */
-        private HashMap<IgniteUuid, ServiceInfo> srvcsDescs;
+        private final HashMap<IgniteUuid, ServiceInfo> srvcsDescs;
+
+        /** Unhandled cluster joining nodes data. */
+        private final HashMap<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData;
 
         /** Services deployment exchange queue to initialize exchange manager. */
-        private ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
+        private final ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
 
         /**
          * @param srvcsDescs Services descriptors.
+         * @param joiningNodesData Unhandled cluster joining nodes data.
          * @param exchQueue Services deployment exchange queue to initialize exchange manager.
          */
         public InitialServicesData(
             HashMap<IgniteUuid, ServiceInfo> srvcsDescs,
+            HashMap<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData,
             ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
         ) {
             this.srvcsDescs = srvcsDescs;
+            this.joiningNodesData = joiningNodesData;
             this.exchQueue = exchQueue;
         }
 
@@ -1609,8 +1619,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Unhandled joining nodes data.
      */
-    protected Map<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData() {
-        return joiningNodesData;
+    protected ClusterServicesData joiningNodesData() {
+        return clusterSrvcsData;
     }
 
     /**

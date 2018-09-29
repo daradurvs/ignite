@@ -26,7 +26,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -269,17 +268,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
         AffinityTopologyVersion topVer) {
         if (req.activate()) {
-            Iterator<Map.Entry<UUID, ServicesJoiningNodeDiscoveryData>> it = ctx.service()
-                .joiningNodesData().entrySet().iterator();
+            ClusterServicesData joiningData = ctx.service().joiningNodesData();
 
-            while (it.hasNext()) {
-                ServicesJoiningNodeDiscoveryData data = it.next().getValue();
-
+            joiningData.data().forEach((nodeId, data) -> {
                 for (ServicesJoiningNodeDiscoveryData.ServiceConfigurationContainer srvcData : data.staticCfgs)
                     assign(srvcData.serviceId(), srvcData.configuration(), topVer);
 
-                it.remove();
-            }
+                joiningData.remove(nodeId);
+            });
 
             initReassignment(ctx.service().services().keySet(), topVer);
         }
@@ -838,6 +834,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     }
                 }
             }
+
+            ctx.service().joiningNodesData().remove(nodeId);
         });
     }
 
