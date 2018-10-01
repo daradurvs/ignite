@@ -19,10 +19,8 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.jetbrains.annotations.Nullable;
@@ -40,7 +38,7 @@ class ClusterServicesInfo {
     private ServicesJoinNodeDiscoveryData locJoiningData;
 
     /** Services info received on node joining. */
-    private final List<ServiceInfo> srvcsToStart = new CopyOnWriteArrayList<>();
+    private final List<ServiceInfo> srvcsToStart = new ArrayList<>();
 
     /**
      * @param ctx Kernal context.
@@ -60,19 +58,23 @@ class ClusterServicesInfo {
      * @param data Joining node data.
      */
     protected void onJoiningNodeDataReceived(ServicesJoinNodeDiscoveryData data) {
-        for (ServiceInfo srvcToStart : data.services()) {
-            boolean exists = false;
+        synchronized (srvcsToStart) {
+            srvcsToStart.clear();
 
-            for (ServiceInfo srvcInfo : srvcsToStart) {
-                if (srvcInfo.configuration().equalsIgnoreNodeFilter(srvcToStart.configuration())) {
-                    exists = true;
+            for (ServiceInfo srvcToStart : data.services()) {
+                boolean exists = false;
 
-                    break;
+                for (ServiceInfo srvcInfo : srvcsToStart) {
+                    if (srvcInfo.configuration().equalsIgnoreNodeFilter(srvcToStart.configuration())) {
+                        exists = true;
+
+                        break;
+                    }
                 }
-            }
 
-            if (!exists)
-                srvcsToStart.add(srvcToStart);
+                if (!exists)
+                    srvcsToStart.add(srvcToStart);
+            }
         }
     }
 
@@ -80,8 +82,11 @@ class ClusterServicesInfo {
      * @param dataBag Discovery data bag to fill local join data.
      */
     protected void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        if (locJoiningData != null)
+        if (locJoiningData != null) {
             dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locJoiningData);
+
+            srvcsToStart.addAll(locJoiningData.services());
+        }
     }
 
     /**
@@ -91,11 +96,15 @@ class ClusterServicesInfo {
         if (dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal()))
             return;
 
-        ServicesCommonDiscoveryData initData = new ServicesCommonDiscoveryData(
-            new ArrayList<>(ctx.service().services().values()),
-            new ArrayList<>(srvcsToStart),
-            new ArrayDeque<>(ctx.service().exchange().tasks())
-        );
+        ServicesCommonDiscoveryData initData;
+
+        synchronized (srvcsToStart) {
+            initData = new ServicesCommonDiscoveryData(
+                new ArrayList<>(ctx.service().services().values()),
+                new ArrayList<>(srvcsToStart),
+                new ArrayDeque<>(ctx.service().exchange().tasks())
+            );
+        }
 
         dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
     }
@@ -109,7 +118,9 @@ class ClusterServicesInfo {
 
         ServicesCommonDiscoveryData initData = (ServicesCommonDiscoveryData)data.commonData();
 
-        this.srvcsToStart.addAll(initData.servicesToStart());
+        synchronized (srvcsToStart) {
+            this.srvcsToStart.addAll(initData.servicesToStart());
+        }
 
         initData.servicesDescriptors().forEach(d -> ctx.service().services().put(d.serviceId(), d));
 
@@ -125,24 +136,21 @@ class ClusterServicesInfo {
      * received.
      */
     @Nullable protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {
-        ArrayList<ServiceInfo> srvcs = null;
+        ArrayList<ServiceInfo> srvcs = new ArrayList<>();
 
-        Iterator<ServiceInfo> it = srvcsToStart.iterator();
+        synchronized (srvcsToStart) {
+            srvcsToStart.removeIf(info -> {
+                if (info.originNodeId().equals(nodeId)) {
+                    srvcs.add(info);
 
-        while (it.hasNext()) {
-            ServiceInfo info = it.next();
+                    return true;
+                }
 
-            if (info.originNodeId().equals(nodeId)) {
-                if (srvcs == null)
-                    srvcs = new ArrayList<>();
+                return false;
+            });
 
-                srvcs.add(info);
-
-                it.remove();
-            }
+            return srvcs;
         }
-
-        return srvcs;
     }
 
     /**
@@ -151,10 +159,12 @@ class ClusterServicesInfo {
      * @return List of services to deploy received on nodes joining.
      */
     protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin() {
-        ArrayList<ServiceInfo> srvcs = new ArrayList<>(srvcsToStart);
+        synchronized (srvcsToStart) {
+            ArrayList<ServiceInfo> srvcs = new ArrayList<>(srvcsToStart);
 
-        srvcsToStart.clear();
+            srvcsToStart.clear();
 
-        return srvcs;
+            return srvcs;
+        }
     }
 }
