@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.service;
 import java.util.HashMap;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceContext;
@@ -35,11 +36,14 @@ public class ServiceInfoSelfTest {
     /** Origin node id. */
     private UUID nodeId = UUID.randomUUID();
 
+    /** Service id. */
+    private IgniteUuid srvcId = IgniteUuid.randomUuid();
+
     /** Service configuration. */
     private ServiceConfiguration cfg = configuration();
 
     /** Subject under test. */
-    private ServiceInfo sut = new ServiceInfo(nodeId, cfg);
+    private ServiceInfo sut = new ServiceInfo(nodeId, srvcId, cfg);
 
     /**
      * Tests {@link ServiceInfo#configuration()}.
@@ -65,6 +69,14 @@ public class ServiceInfoSelfTest {
     @Test
     public void testOriginNodeIdEquality() {
         assertEquals(nodeId, sut.originNodeId());
+    }
+
+    /**
+     * Tests {@link ServiceInfo#serviceId()}.
+     */
+    @Test
+    public void testServiceNodeEquality() {
+        assertEquals(srvcId, sut.serviceId());
     }
 
     /**

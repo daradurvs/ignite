@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -192,11 +193,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                 case EVT_NODE_JOINED:
 
-                    ServicesJoiningNodeDiscoveryData data = ctx.service().joiningNodesData().remove(evt.eventNode().id());
+                    List<ServiceInfo> srvcs = ctx.service().getAndRemoveServicesReceivedFromJoin(evt.eventNode().id());
 
-                    if (data != null) {
-                        for (ServicesJoiningNodeDiscoveryData.ServiceConfigurationContainer srvcData : data.staticCfgs)
-                            assign(srvcData.serviceId(), srvcData.configuration(), evtTopVer);
+                    if (srvcs != null) {
+                        for (ServiceInfo srvc : srvcs)
+                            assign(srvc.serviceId(), srvc.configuration(), evtTopVer);
                     }
 
                 case EVT_NODE_LEFT:
@@ -264,14 +265,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
         AffinityTopologyVersion topVer) {
         if (req.activate()) {
-            ClusterServicesData joiningData = ctx.service().joiningNodesData();
-
-            joiningData.data().forEach((nodeId, data) -> {
-                for (ServicesJoiningNodeDiscoveryData.ServiceConfigurationContainer srvcData : data.staticCfgs)
-                    assign(srvcData.serviceId(), srvcData.configuration(), topVer);
-
-                joiningData.remove(nodeId);
-            });
+            for (ServiceInfo srvc : ctx.service().getAndRemoveAllServicesReceivedFromJoin())
+                assign(srvc.serviceId(), srvc.configuration(), topVer);
 
             initReassignment(ctx.service().services().keySet(), topVer);
         }
@@ -311,6 +306,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             changeServices(srvcsToDeploy, srvcsToUndeploy);
     }
 
+    /**
+     * @param reqSrvcId Service id.
+     * @param cfg Service configuration.
+     * @param topVer Tipology version.
+     * @return Service topology.
+     */
     private Map<UUID, Integer> assign(IgniteUuid reqSrvcId, ServiceConfiguration cfg, AffinityTopologyVersion topVer) {
         final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
 
@@ -377,7 +378,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 ", top=" + srvcTop);
         }
 
-        srvcsDescs.computeIfAbsent(srvcId, dep -> new ServiceInfo(evt.eventNode().id(), cfg));
+        ServiceInfo desc = new ServiceInfo(evt.eventNode().id(), srvcId, cfg);
+
+        srvcsDescs.putIfAbsent(srvcId, desc);
 
         return srvcTop;
     }
@@ -830,8 +833,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     }
                 }
             }
-
-            ctx.service().joiningNodesData().remove(nodeId);
         });
     }
 

@@ -17,9 +17,7 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.io.Serializable;
 import java.lang.Thread.UncaughtExceptionHandler;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -61,7 +59,6 @@ import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.A;
-import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -117,8 +114,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
 
-    /** Cluster services joining nodes data. */
-    private final ClusterServicesData clusterSrvcsData = new ClusterServicesData(ctx.localNodeId());
+    /** Cluster services joining nodes information. */
+    private final ClusterServicesInfo clusterSrvcsInfo = new ClusterServicesInfo(ctx);
 
     /** Lock. */
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
@@ -154,6 +151,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
+        ArrayList<ServiceInfo> staticSrvcsInfo = new ArrayList<>();
+
         if (cfgs != null) {
             // Skipped check of marshalling, because {@link GridMarshallerMappingProcessor} is not started at this point.
             PreparedConfigurations prepCfgs = prepareServiceConfigurations(Arrays.asList(cfgs),
@@ -166,9 +165,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 }
             }
 
-            if (!prepCfgs.cfgs.isEmpty())
-                clusterSrvcsData.onStart(new ServicesJoiningNodeDiscoveryData(prepCfgs.cfgs));
+            for (ServiceConfiguration srvcCfg : prepCfgs.cfgs)
+                staticSrvcsInfo.add(new ServiceInfo(ctx.localNodeId(), IgniteUuid.randomUuid(), srvcCfg));
         }
+
+        clusterSrvcsInfo.onStart(new ServicesJoinNodeDiscoveryData(staticSrvcsInfo));
     }
 
     /** {@inheritDoc} */
@@ -252,45 +253,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void collectGridNodeData(DiscoveryDataBag dataBag) {
-        if (dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal()))
-            return;
-
-        InitialServicesData initData = new InitialServicesData(
-            new HashMap<>(srvcsDescs),
-            clusterSrvcsData.data(),
-            new ArrayDeque<>(exchMgr.tasks())
-        );
-
-        dataBag.addGridCommonData(SERVICE_PROC.ordinal(), initData);
+        clusterSrvcsInfo.collectGridNodeData(dataBag);
     }
 
     /** {@inheritDoc} */
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
-        if (data.commonData() != null) {
-            InitialServicesData initData = (InitialServicesData)data.commonData();
-
-            initData.srvcsDescs.forEach(srvcsDescs::put);
-
-            initData.joiningNodesData.forEach(clusterSrvcsData::onJoiningNodeDataReceived);
-
-            initData.exchQueue.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
-        }
+        clusterSrvcsInfo.onGridDataReceived(data);
     }
 
     /** {@inheritDoc} */
     @Override public void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        ServicesJoiningNodeDiscoveryData data = clusterSrvcsData.get(ctx.localNodeId());
-
-        if (data != null)
-            dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), data);
+        clusterSrvcsInfo.collectJoiningNodeData(dataBag);
     }
 
     /** {@inheritDoc} */
     @Override public void onJoiningNodeDataReceived(DiscoveryDataBag.JoiningNodeDiscoveryData data) {
-        if (data.joiningNodeData() != null) {
-            clusterSrvcsData.onJoiningNodeDataReceived(data.joiningNodeId(),
-                (ServicesJoiningNodeDiscoveryData)data.joiningNodeData());
-        }
+        if (data.joiningNodeData() != null)
+            clusterSrvcsInfo.onJoiningNodeDataReceived((ServicesJoinNodeDiscoveryData)data.joiningNodeData());
     }
 
     /** {@inheritDoc} */
@@ -1566,43 +1545,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Initial data container to send on joined node.
-     */
-    private static class InitialServicesData implements Serializable {
-        /** */
-        private static final long serialVersionUID = 0L;
-
-        /** Services descriptors. */
-        private final HashMap<IgniteUuid, ServiceInfo> srvcsDescs;
-
-        /** Unhandled cluster joining nodes data. */
-        private final HashMap<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData;
-
-        /** Services deployment exchange queue to initialize exchange manager. */
-        private final ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
-
-        /**
-         * @param srvcsDescs Services descriptors.
-         * @param joiningNodesData Unhandled cluster joining nodes data.
-         * @param exchQueue Services deployment exchange queue to initialize exchange manager.
-         */
-        public InitialServicesData(
-            HashMap<IgniteUuid, ServiceInfo> srvcsDescs,
-            HashMap<UUID, ServicesJoiningNodeDiscoveryData> joiningNodesData,
-            ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
-        ) {
-            this.srvcsDescs = srvcsDescs;
-            this.joiningNodesData = joiningNodesData;
-            this.exchQueue = exchQueue;
-        }
-
-        /** {@inheritDoc} */
-        @Override public String toString() {
-            return S.toString(InitialServicesData.class, this);
-        }
-    }
-
-    /**
      * @return Local deployed services.
      */
     protected Map<IgniteUuid, Collection<ServiceContextImpl>> localServices() {
@@ -1617,16 +1559,29 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Unhandled joining nodes data.
-     */
-    protected ClusterServicesData joiningNodesData() {
-        return clusterSrvcsData;
-    }
-
-    /**
      * @return Services deployment exchange manager.
      */
     public ServicesDeploymentExchangeManager exchange() {
         return exchMgr;
+    }
+
+    /**
+     * Gets and remove services received to deploy from node with given id on joining.
+     *
+     * @param nodeId Joined node id.
+     * @return List of services to deploy received on node joining with given id.  Possible {@code null} if nothing
+     * received.
+     */
+    @Nullable public List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {
+        return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin(nodeId);
+    }
+
+    /**
+     * Gets and remove all services received to deploy from nodes on joining.
+     *
+     * @return List of services to deploy received on nodes joining.
+     */
+    public List<ServiceInfo> getAndRemoveAllServicesReceivedFromJoin() {
+        return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin();
     }
 }
