@@ -1559,20 +1559,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Services deployment exchange manager.
-     */
-    public ServicesDeploymentExchangeManager exchange() {
-        return exchMgr;
-    }
-
-    /**
      * Gets and remove services received to deploy from node with given id on joining.
      *
      * @param nodeId Joined node id.
      * @return List of services to deploy received on node joining with given id.  Possible {@code null} if nothing
      * received.
      */
-    @Nullable public List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {
+    @Nullable protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {
         return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin(nodeId);
     }
 
@@ -1581,7 +1574,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      *
      * @return List of services to deploy received on nodes joining.
      */
-    public List<ServiceInfo> getAndRemoveAllServicesReceivedFromJoin() {
+    protected List<ServiceInfo> getAndRemoveAllServicesReceivedFromJoin() {
         return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin();
+    }
+
+    /**
+     * @return Services deployment exchange manager.
+     */
+    public ServicesDeploymentExchangeManager exchange() {
+        return exchMgr;
     }
 }
