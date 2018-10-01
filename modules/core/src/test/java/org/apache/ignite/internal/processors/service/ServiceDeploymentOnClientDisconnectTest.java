@@ -70,7 +70,7 @@ public class ServiceDeploymentOnClientDisconnectTest extends GridCommonAbstractT
     /**
      * @throws Exception In case of an error.
      */
-    public void testInitiatorDeploymentFutureCompletionOnClientDisconnectTest() throws Exception {
+    public void testInitiatorDeploymentFutureCompletionOnClientDisconnect() throws Exception {
         IgniteFuture fut = client().services().deployNodeSingletonAsync("testService",
             new LongInitializedTestService(5_000L));
 
@@ -82,7 +82,7 @@ public class ServiceDeploymentOnClientDisconnectTest extends GridCommonAbstractT
     /**
      * @throws Exception In case of an error.
      */
-    public void testThrowingExceptionOnDeployUsingPuplicApiWhileClientDisconnectedTest() throws Exception {
+    public void testThrowingExceptionOnDeployUsingPuplicApiWhileClientDisconnected() throws Exception {
         runTest(() -> {
             GridTestUtils.assertThrowsWithCause(
                 () -> client().services().deployNodeSingletonAsync("testService", MyServiceFactory.create()),
@@ -93,7 +93,7 @@ public class ServiceDeploymentOnClientDisconnectTest extends GridCommonAbstractT
     /**
      * @throws Exception In case of an error.
      */
-    public void testThrowingExceptionOnUndeployUsingPuplicApiWhileClientDisconnectedTest() throws Exception {
+    public void testThrowingExceptionOnUndeployUsingPuplicApiWhileClientDisconnected() throws Exception {
         runTest(() -> {
             GridTestUtils.assertThrowsWithCause(() -> client().services().cancelAll(),
                 IgniteClientDisconnectedException.class);
@@ -103,7 +103,7 @@ public class ServiceDeploymentOnClientDisconnectTest extends GridCommonAbstractT
     /**
      * @throws Exception In case of an error.
      */
-    public void testThrowingExceptionOnDeployUsingInternalApiWhileClientDisconnectedTest() throws Exception {
+    public void testThrowingExceptionOnDeployUsingInternalApiWhileClientDisconnected() throws Exception {
         runTest(() -> {
             GridTestUtils.assertThrowsWithCause(() -> client().context().service().deployNodeSingleton(
                 new ClusterGroupAdapter(), "testService", MyServiceFactory.create()).get(),
