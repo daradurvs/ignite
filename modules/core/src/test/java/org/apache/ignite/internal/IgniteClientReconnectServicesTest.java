@@ -124,6 +124,49 @@ public class IgniteClientReconnectServicesTest extends IgniteClientReconnectAbst
     /**
      * @throws Exception If failed.
      */
+    @SuppressWarnings("ThrowableResultOfMethodCallIgnored")
+    public void testReconnectInDeploying() throws Exception {
+        Ignite client = grid(serverCount());
+
+        assertTrue(client.cluster().localNode().isClient());
+
+        final IgniteServices services = client.services();
+
+        Ignite srv = ignite(0);
+
+        final IgniteInternalFuture<Object> fut = GridTestUtils.runAsync(new Callable<Object>() {
+            @Override public Object call() throws Exception {
+                try {
+                    services.deployClusterSingleton("testReconnectInDeploying", new TestServiceImpl());
+                }
+                catch (IgniteClientDisconnectedException e) {
+                    checkAndWait(e);
+
+                    return true;
+                }
+
+                return false;
+            }
+        });
+
+        reconnectClientNode(client, srv, () -> {
+            // Check that client waiting operation.
+            GridTestUtils.assertThrows(log, () -> fut.get(200), IgniteFutureTimeoutCheckedException.class, null);
+
+            try {
+                assertNotDone(fut);
+            }
+            catch (Exception e) {
+                fail("Unexpected exception has been thrown, err=" + e.getMessage());
+            }
+        });
+
+        assertTrue((Boolean)fut.get(2, TimeUnit.SECONDS));
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
     public void testReconnectInProgress() throws Exception {
         Ignite client = grid(serverCount());
 
