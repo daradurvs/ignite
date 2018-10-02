@@ -139,7 +139,7 @@ public class ServiceSingleDeploymentsResults implements Message {
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 161;
+        return 163;
     }
 
     /** {@inheritDoc} */
