@@ -598,23 +598,25 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
-            if (isCompleted())
-                return;
+        ctx.closure().runLocalSafe(() -> {
+            initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+                if (isCompleted())
+                    return;
 
-            Throwable th = null;
+                Throwable th = null;
 
-            try {
-                ctx.service().processFullMap(msg);
-            }
-            catch (Throwable t) {
-                log.error("Failed to process services deployment full map, msg=" + msg, t);
+                try {
+                    ctx.service().processFullMap(msg);
+                }
+                catch (Throwable t) {
+                    log.error("Failed to process services deployment full map, msg=" + msg, t);
 
-                th = t;
-            }
-            finally {
-                complete(th);
-            }
+                    th = t;
+                }
+                finally {
+                    complete(th);
+                }
+            });
         });
     }
 
