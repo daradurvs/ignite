@@ -106,6 +106,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
         oomeHnd);
 
+    /** Mutex. */
+    private final Object srvcsTopsUpdateMux = new Object();
+
     /** Contains all services information across the cluster. Should be serializable to transfer data on joining node. */
     private final HashMap<IgniteUuid, ServiceInfo> srvcsDescs = new HashMap<>();
 
@@ -776,9 +779,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         if (id == null) {
             if (log.isDebugEnabled()) {
-                log.debug("Requested service assignments have not been found : [" + name +
-                    ", locId=" + ctx.localNodeId() +
-                    ", client=" + ctx.clientNode() + ']');
+                log.debug("Requested service topology have not been found: [srvcName=" + name +
+                    ", locId=" + ctx.localNodeId() + ", client=" + ctx.clientNode() + ']');
             }
 
             return null;
@@ -789,9 +791,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Map<UUID, Integer> dep = desc != null ? desc.topologySnapshot() : null;
 
         if ((dep == null || dep.isEmpty()) && timeout > 0) {
-            synchronized (srvcsDescs) {
+            synchronized (srvcsTopsUpdateMux) {
                 try {
-                    srvcsDescs.wait(timeout);
+                    srvcsTopsUpdateMux.wait(timeout);
                 }
                 catch (InterruptedException e) {
                     throw new IgniteInterruptedCheckedException(e);
@@ -1387,53 +1389,65 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     Collection ctxs = locSvcs.get(srvcId);
 
                     if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
-
                         ServiceInfo srvcDesc = srvcsDescs.get(srvcId);
 
-                        if (srvcDesc != null) {
+                        assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
 
-                            ServiceConfiguration cfg = srvcDesc.configuration();
+                        ServiceConfiguration cfg = srvcDesc.configuration();
 
-                            redeploy(srvcId, cfg, topSnap);
-                        }
-                        else {
-                            log.error("GridServiceDeployment has not been found undeploy exceed instances " +
-                                "while processing full services full map message" +
-                                ", locId=" + ctx.localNodeId() +
-                                ", srvcId=" + srvcId);
-                        }
+                        redeploy(srvcId, cfg, topSnap);
                     }
                 }
             }
 
             Set<IgniteUuid> srvcsIds = fullTops.keySet();
 
-            synchronized (srvcsDescs) {
+            synchronized (srvcsTopsUpdateMux) {
                 fullTops.forEach((srvcId, top) -> {
                     ServiceInfo desc = srvcsDescs.get(srvcId);
+
+                    assert desc != null : "Service descriptor has not been found to update deployment topology.";
 
                     desc.topologySnapshot(top);
                 });
 
-                srvcsDescs.notifyAll();
+                srvcsTopsUpdateMux.notifyAll();
             }
 
             srvcsDescs.entrySet().removeIf(e -> !srvcsIds.contains(e.getKey()));
 
-            depFuts.entrySet().removeIf(e -> {
-                IgniteUuid srvcId = e.getKey();
-                GridServiceDeploymentFuture fut = e.getValue();
+            depFuts.entrySet().removeIf(entry -> {
+                IgniteUuid srvcId = entry.getKey();
+                GridServiceDeploymentFuture fut = entry.getValue();
 
                 Collection<byte[]> errors = fullErrors.get(srvcId);
 
+                ServiceConfiguration cfg = fut.configuration();
+
                 if (errors != null) {
-                    processDeploymentErrors(fut, errors);
+                    ServiceDeploymentException ex = null;
+
+                    for (byte[] error : errors) {
+                        try {
+                            Throwable t = U.unmarshal(ctx, error, null);
+
+                            if (ex == null)
+                                ex = new ServiceDeploymentException(t, Collections.singleton(cfg));
+                            else
+                                ex.addSuppressed(t);
+                        }
+                        catch (IgniteCheckedException e) {
+                            log.error("Failed to unmarshal deployment exception.", e);
+                        }
+                    }
+
+                    log.error("Failed to deploy service, name=" + cfg.getName(), ex);
+
+                    fut.onDone(ex);
 
                     return true;
                 }
                 else {
-                    ServiceConfiguration cfg = fut.configuration();
-
                     for (ServiceInfo dep : srvcsDescs.values()) {
                         if (dep.configuration().equalsIgnoreNodeFilter(cfg)) {
                             fut.onDone();
@@ -1446,9 +1460,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 return false;
             });
 
-            undepFuts.entrySet().removeIf(e -> {
-                IgniteUuid srvcId = e.getKey();
-                GridFutureAdapter<?> fut = e.getValue();
+            undepFuts.entrySet().removeIf(entry -> {
+                IgniteUuid srvcId = entry.getKey();
+                GridFutureAdapter<?> fut = entry.getValue();
 
                 if (!srvcsIds.contains(srvcId)) {
                     fut.onDone();
@@ -1460,7 +1474,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             });
 
             if (log.isDebugEnabled() && (!depFuts.isEmpty() || !undepFuts.isEmpty())) {
-                log.debug("Detected incomplete futures, after full map processing, deps=" + fullTops +
+                log.debug("Detected incomplete futures, after full map processing" +
+                    ", services topologies=" + fullTops +
                     (!depFuts.isEmpty() ? ", depFuts=" + depFuts : "") +
                     (!undepFuts.isEmpty() ? ", undepFuts=" + undepFuts.keySet() : "")
                 );
@@ -1472,52 +1487,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param fut Service deployment future.
-     * @param errors Serialized errors.
-     */
-    private void processDeploymentErrors(GridServiceDeploymentFuture fut, Collection<byte[]> errors) {
-        ServiceConfiguration srvcCfg = fut.configuration();
-
-        ServiceDeploymentException ex = null;
-
-        for (byte[] error : errors) {
-            try {
-                Throwable t = U.unmarshal(ctx, error, null);
-
-                if (ex == null)
-                    ex = new ServiceDeploymentException(t, Collections.singleton(srvcCfg));
-                else
-                    ex.addSuppressed(t);
-            }
-            catch (IgniteCheckedException e) {
-                log.error("Failed to unmarshal deployment exception.", e);
-            }
-        }
-
-        log.error("Failed to deploy service, name=" + srvcCfg.getName(), ex);
-
-        fut.onDone(ex);
-    }
-
-    /**
      * @param name Service name;
      * @return @return Service's id if exists, otherwise {@code null};
      */
-    @Nullable protected IgniteUuid lookupId(String name) {
-        return lookupId(p -> p.configuration().getName().equals(name));
-    }
-
-    /**
-     * @param p Predicate to search.
-     * @return Service's id if exists, otherwise {@code null};
-     */
-    @Nullable protected IgniteUuid lookupId(IgnitePredicate<ServiceInfo> p) {
-        for (Map.Entry<IgniteUuid, ServiceInfo> e : srvcsDescs.entrySet()) {
-            IgniteUuid srvcId = e.getKey();
-            ServiceInfo desc = e.getValue();
-
-            if (p.apply(desc))
-                return srvcId;
+    @Nullable private IgniteUuid lookupId(String name) {
+        for (ServiceInfo desc : srvcsDescs.values()) {
+            if (desc.name().equals(name))
+                return desc.serviceId();
         }
 
         return null;
