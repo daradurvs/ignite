@@ -21,16 +21,21 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 
 /**
  * Manages cluster services information on discovery exchange at node joining process.
  */
 class ClusterServicesInfo {
+    /** Mutex. */
+    private final Object changeInfoMux = new Object();
+
     /** Kernal context. */
     private final GridKernalContext ctx;
 
@@ -38,7 +43,7 @@ class ClusterServicesInfo {
     private ServicesJoinNodeDiscoveryData locJoiningData;
 
     /** Services info received on node joining. */
-    private final List<ServiceInfo> srvcsToStart = new ArrayList<>();
+    private List<ServiceInfo> srvcsToStart;
 
     /**
      * @param ctx Kernal context.
@@ -58,9 +63,9 @@ class ClusterServicesInfo {
      * @param data Joining node data.
      */
     protected void onJoiningNodeDataReceived(ServicesJoinNodeDiscoveryData data) {
-        synchronized (srvcsToStart) {
-            srvcsToStart.clear();
+        assert srvcsToStart != null;
 
+        synchronized (changeInfoMux) {
             for (ServiceInfo srvcToStart : data.services()) {
                 boolean exists = false;
 
@@ -82,11 +87,9 @@ class ClusterServicesInfo {
      * @param dataBag Discovery data bag to fill local join data.
      */
     protected void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        if (locJoiningData != null) {
-            dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locJoiningData);
+        assert locJoiningData != null;
 
-            srvcsToStart.addAll(locJoiningData.services());
-        }
+        dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locJoiningData);
     }
 
     /**
@@ -98,7 +101,7 @@ class ClusterServicesInfo {
 
         ServicesCommonDiscoveryData initData;
 
-        synchronized (srvcsToStart) {
+        synchronized (changeInfoMux) {
             initData = new ServicesCommonDiscoveryData(
                 new ArrayList<>(ctx.service().services().values()),
                 new ArrayList<>(srvcsToStart),
@@ -113,14 +116,12 @@ class ClusterServicesInfo {
      * @param data Cluster discovery data bag.
      */
     protected void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
-        if (data.commonData() == null)
+        if (ctx.isDaemon() || data.commonData() == null)
             return;
 
         ServicesCommonDiscoveryData initData = (ServicesCommonDiscoveryData)data.commonData();
 
-        synchronized (srvcsToStart) {
-            this.srvcsToStart.addAll(initData.servicesToStart());
-        }
+        srvcsToStart = new ArrayList<>(initData.servicesToStart());
 
         initData.servicesDescriptors().forEach(d -> ctx.service().services().put(d.serviceId(), d));
 
@@ -138,7 +139,7 @@ class ClusterServicesInfo {
     @Nullable protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {
         ArrayList<ServiceInfo> srvcs = new ArrayList<>();
 
-        synchronized (srvcsToStart) {
+        synchronized (changeInfoMux) {
             srvcsToStart.removeIf(info -> {
                 if (info.originNodeId().equals(nodeId)) {
                     srvcs.add(info);
@@ -159,12 +160,30 @@ class ClusterServicesInfo {
      * @return List of services to deploy received on nodes joining.
      */
     protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin() {
-        synchronized (srvcsToStart) {
+        synchronized (changeInfoMux) {
             ArrayList<ServiceInfo> srvcs = new ArrayList<>(srvcsToStart);
 
             srvcsToStart.clear();
 
             return srvcs;
+        }
+    }
+
+    /**
+     * Discovery event callback, executed from discovery thread.
+     *
+     * @param type Discovery event's type.
+     * @param node Discovery event node.
+     */
+    protected void onDiscoveryEvent(int type, ClusterNode node) {
+        if (type == EVT_NODE_JOINED && !ctx.isDaemon()) {
+            if (node.id().equals(ctx.discovery().localNode().id())) {
+                if (srvcsToStart == null) { // On first node start
+                    assert locJoiningData != null;
+
+                    srvcsToStart = new ArrayList<>(locJoiningData.staticSrvcsInfo);
+                }
+            }
         }
     }
 }

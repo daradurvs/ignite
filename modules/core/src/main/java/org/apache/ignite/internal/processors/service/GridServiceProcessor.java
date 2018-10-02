@@ -71,8 +71,6 @@ import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
 import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
-import org.apache.ignite.spi.discovery.DiscoverySpi;
-import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.thread.IgniteThreadFactory;
 import org.apache.ignite.thread.OomExceptionHandler;
 import org.jetbrains.annotations.Nullable;
@@ -275,6 +273,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** {@inheritDoc} */
     @Nullable @Override public DiscoveryDataExchangeType discoveryDataType() {
         return SERVICE_PROC;
+    }
+
+    /**
+     * Discovery event callback, executed from discovery thread.
+     *
+     * @param type Discovery event type.
+     * @param node Discovery event node.
+     */
+    public void onDiscoveryEvent(int type, ClusterNode node) {
+        clusterSrvcsInfo.onDiscoveryEvent(type, node);
     }
 
     /** {@inheritDoc} */
@@ -1489,21 +1497,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         log.error("Failed to deploy service, name=" + srvcCfg.getName(), ex);
 
         fut.onDone(ex);
-    }
-
-    /**
-     * @return {@code true} if local node is clusters coordinator, otherwise {@code false}.
-     */
-    protected boolean isLocalNodeCoordinator() {
-        DiscoverySpi spi = ctx.discovery().getInjectedDiscoverySpi();
-
-        if (spi instanceof TcpDiscoverySpi)
-            return ((TcpDiscoverySpi)spi).isLocalNodeCoordinator();
-        else {
-            ClusterNode node = coordinator();
-
-            return node != null && node.isLocal();
-        }
     }
 
     /**

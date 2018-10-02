@@ -713,6 +713,8 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
                     nextTopVer = new AffinityTopologyVersion(topVer, minorTopVer);
 
                     ctx.cache().onDiscoveryEvent(type, customMsg, node, nextTopVer, ctx.state().clusterState());
+
+                    ctx.service().onDiscoveryEvent(type, node);
                 }
 
                 if (type == EVT_DISCOVERY_CUSTOM_EVT) {
