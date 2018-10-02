@@ -161,8 +161,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             if (log.isInfoEnabled() && prepCfgs.failedFuts != null) {
                 for (GridServiceDeploymentFuture fut : prepCfgs.failedFuts) {
-                    log.info("Failed to validate static service configuration, cfg=" + fut.configuration() +
-                        ", err=" + fut.result());
+                    log.info("Failed to validate static service configuration (won't be deployed), " +
+                        "cfg=" + fut.configuration() + ", err=" + fut.result());
                 }
             }
 
@@ -193,7 +193,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Exception ex = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
 
-        stopProcessor(ex);
+        onKernalStop(ex);
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
@@ -202,7 +202,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @param ex Error to cancel waiting futures.
      */
-    private void stopProcessor(Exception ex) {
+    private void onKernalStop(Exception ex) {
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
         synchronized (locSvcs) {
@@ -243,8 +243,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             catch (InterruptedException ignore) {
                 Thread.currentThread().interrupt();
 
-                U.error(log, "Got interrupted while waiting for service to shutdown (will continue stopping " +
-                    "or deactivating node): " + ctx.name());
+                U.error(log, "Got interrupted while waiting for service to shutdown (will continue stopping node): " +
+                    ctx.name());
             }
         }
 
@@ -301,7 +301,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Exception ex = new IgniteCheckedException("Operation has been cancelled (node is deactivating).");
 
-        stopProcessor(ex);
+        onKernalStop(ex);
     }
 
     /** {@inheritDoc} */
@@ -653,12 +653,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
         Set<IgniteUuid> srvcsIds = new HashSet<>();
 
-        srvcsDescs.forEach((id, desc) -> {
-            if (svcNames.contains(desc.name()))
-                srvcsIds.add(id);
+        for (String name : svcNames) {
+            IgniteUuid srvcId = lookupId(name);
+
+            if (srvcId != null)
+                srvcsIds.add(srvcId);
             else if (log.isDebugEnabled())
-                log.debug("Service id has not been found, name=" + desc.name());
-        });
+                log.debug("Service id has not been found, name=" + name);
+        }
 
         return cancelAll(srvcsIds);
     }
@@ -833,10 +835,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Collection<ServiceContextImpl> ctxs;
 
-        IgniteUuid id = lookupId(name);
+        IgniteUuid srvcId = lookupId(name);
+
+        if (srvcId == null)
+            return null;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(id);
+            ctxs = locSvcs.get(srvcId);
         }
 
         if (ctxs == null)
@@ -864,10 +869,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public ServiceContextImpl serviceContext(String name) {
         Collection<ServiceContextImpl> ctxs;
 
-        IgniteUuid id = lookupId(name);
+        IgniteUuid srvcId = lookupId(name);
+
+        if (srvcId == null)
+            return null;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(id);
+            ctxs = locSvcs.get(srvcId);
         }
 
         if (ctxs == null)
@@ -944,10 +952,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         Collection<ServiceContextImpl> ctxs;
 
-        IgniteUuid id = lookupId(name);
+        IgniteUuid srvcId = lookupId(name);
+
+        if (srvcId == null)
+            return null;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(id);
+            ctxs = locSvcs.get(srvcId);
         }
 
         if (ctxs == null)
@@ -1117,11 +1128,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Redeploys local services based on assignments.
      *
-     * @param id Service id.
+     * @param srvcId Service id.
      * @param cfg Service configuration.
      * @param top Service assignments.
      */
-    protected void redeploy(IgniteUuid id, ServiceConfiguration cfg, Map<UUID, Integer> top) {
+    protected void redeploy(IgniteUuid srvcId, ServiceConfiguration cfg, Map<UUID, Integer> top) {
         String name = cfg.getName();
         String cacheName = cfg.getCacheName();
         Object affKey = cfg.getAffinityKey();
@@ -1134,10 +1145,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         Collection<ServiceContextImpl> ctxs;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.get(id);
+            ctxs = locSvcs.get(srvcId);
 
             if (ctxs == null)
-                locSvcs.put(id, ctxs = new ArrayList<>());
+                locSvcs.put(srvcId, ctxs = new ArrayList<>());
         }
 
         Collection<ServiceContextImpl> toInit = new ArrayList<>();
@@ -1354,26 +1365,26 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
 
-            for (ServiceFullDeploymentsResults res : results) {
-                IgniteUuid srvcId = res.serviceId();
-                Map<UUID, ServiceSingleDeploymentsResults> dep = res.results();
+            for (ServiceFullDeploymentsResults depRes : results) {
+                IgniteUuid srvcId = depRes.serviceId();
+                Map<UUID, ServiceSingleDeploymentsResults> deps = depRes.results();
 
-                HashMap<UUID, Integer> topSnap = new HashMap<>();
+                HashMap<UUID, Integer> top = new HashMap<>();
 
                 Collection<byte[]> errors = new ArrayList<>();
 
-                dep.forEach((nodeId, depRes) -> {
-                    int cnt = depRes.count();
+                deps.forEach((nodeId, res) -> {
+                    int cnt = res.count();
 
                     if (cnt > 0)
-                        topSnap.put(nodeId, cnt);
+                        top.put(nodeId, cnt);
 
-                    if (!depRes.errors().isEmpty())
-                        errors.addAll(depRes.errors());
+                    if (!res.errors().isEmpty())
+                        errors.addAll(res.errors());
                 });
 
-                if (!topSnap.isEmpty())
-                    fullTops.put(srvcId, topSnap);
+                if (!top.isEmpty())
+                    fullTops.put(srvcId, top);
 
                 if (!errors.isEmpty()) {
                     Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
@@ -1381,7 +1392,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     srvcErrors.addAll(errors);
                 }
 
-                Integer expCnt = topSnap.get(ctx.localNodeId());
+                Integer expCnt = top.get(ctx.localNodeId());
 
                 if (expCnt == null || expCnt == 0)
                     undeploy(srvcId);
@@ -1395,7 +1406,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                         ServiceConfiguration cfg = srvcDesc.configuration();
 
-                        redeploy(srvcId, cfg, topSnap);
+                        redeploy(srvcId, cfg, top);
                     }
                 }
             }
@@ -1517,7 +1528,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * Gets and remove services received to deploy from node with given id on joining.
      *
      * @param nodeId Joined node id.
-     * @return List of services to deploy received on node joining with given id.  Possible {@code null} if nothing
+     * @return List of services to deploy received on node joining with given id. Possible {@code null} if nothing
      * received.
      */
     @Nullable protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {

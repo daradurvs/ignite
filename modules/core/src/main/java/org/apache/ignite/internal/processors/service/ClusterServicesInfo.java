@@ -160,6 +160,8 @@ class ClusterServicesInfo {
      * @return List of services to deploy received on nodes joining.
      */
     protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin() {
+        assert srvcsToStart != null;
+
         synchronized (changeInfoMux) {
             ArrayList<ServiceInfo> srvcs = new ArrayList<>(srvcsToStart);
 
@@ -176,7 +178,10 @@ class ClusterServicesInfo {
      * @param node Discovery event node.
      */
     protected void onDiscoveryEvent(int type, ClusterNode node) {
-        if (type == EVT_NODE_JOINED && !ctx.isDaemon()) {
+        if (ctx.isDaemon())
+            return;
+
+        if (type == EVT_NODE_JOINED) {
             if (node.id().equals(ctx.discovery().localNode().id())) {
                 if (srvcsToStart == null) { // On first node start
                     assert locJoiningData != null;

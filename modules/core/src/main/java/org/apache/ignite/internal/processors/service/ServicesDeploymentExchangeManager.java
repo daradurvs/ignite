@@ -121,7 +121,7 @@ public class ServicesDeploymentExchangeManager {
      */
     public void stopProcessing() {
         try {
-            busyLock.block();
+            busyLock.block(); // Will not release it.
 
             ctx.event().removeDiscoveryEventListener(discoLsnr);
 
@@ -363,14 +363,14 @@ public class ServicesDeploymentExchangeManager {
                     onIdle();
 
                     synchronized (newEvtMux) {
-                        // Task shouldn't be removed from queue unless will be completed to avoid the possibility of losing
-                        // event on newly joined node where the queue will be transferred.
+                        // Task shouldn't be removed from queue unless will be completed to avoid the possibility of
+                        // losing event on newly joined node where the queue will be transferred.
                         task = tasksQueue.peek();
 
                         if (task == null) {
-                            try {
-                                blockingSectionBegin();
+                            blockingSectionBegin();
 
+                            try {
                                 newEvtMux.wait();
                             }
                             finally {
@@ -475,7 +475,6 @@ public class ServicesDeploymentExchangeManager {
                 tasksQueue.poll();
             }
         }
-
     }
 
     /**

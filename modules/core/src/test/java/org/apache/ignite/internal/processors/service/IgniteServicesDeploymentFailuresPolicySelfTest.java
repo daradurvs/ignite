@@ -17,7 +17,6 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.Ignite;
@@ -28,7 +27,6 @@ import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceContext;
 import org.apache.ignite.services.ServiceDeploymentException;
 import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
-import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
 import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.CANCEL;
@@ -67,9 +65,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
             // No-op.
         }
 
-        Collection<ServiceDescriptor> descs = ignite.services().serviceDescriptors();
-
-        assertEquals(1, descs.size());
+        assertEquals(1, ignite.services().serviceDescriptors().size());
 
         Map<UUID, Integer> top = ignite.context().service().serviceTopology("testIgnorePolicy", 0);
 
@@ -93,9 +89,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
             // No-op.
         }
 
-        Collection<ServiceDescriptor> descs = ignite.services().serviceDescriptors();
-
-        assertEquals(0, descs.size());
+        assertEquals(0, ignite.services().serviceDescriptors().size());
 
         assertNull(ignite.context().service().serviceTopology("testCancelPolicy", 0));
     }
@@ -105,7 +99,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
      * @param plc Service deployment failures policy.
      * @return Service configuration.
      */
-    protected ServiceConfiguration serviceConfiguration(String name, ServiceDeploymentFailuresPolicy plc) {
+    private ServiceConfiguration serviceConfiguration(String name, ServiceDeploymentFailuresPolicy plc) {
         ServiceConfiguration cfg = new ServiceConfiguration();
 
         cfg.setName(name);
@@ -120,6 +114,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
      * Test service implementation.
      */
     private static class PolicyServiceTest implements Service {
+        /** */
         @IgniteInstanceResource
         private Ignite ignite;
 
