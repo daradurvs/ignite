@@ -60,6 +60,9 @@ import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVE
  * Services deployment exchange manager.
  */
 public class ServicesDeploymentExchangeManager {
+    /** Default dump operation limit. */
+    private static final long DFLT_DUMP_TIMEOUT_LIMIT = 30 * 60_000;
+
     /** Busy lock. */
     private final GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
@@ -72,7 +75,7 @@ public class ServicesDeploymentExchangeManager {
     /** Services communication messages listener. */
     private final GridMessageListener commLsnr = new ServiceCommunicationListener();
 
-    /** Services deploymentst tasks. */
+    /** Services deployments tasks. */
     private final Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
 
     /** Discovery events received while cluster state transition was in progress. */
@@ -141,7 +144,7 @@ public class ServicesDeploymentExchangeManager {
             tasks.clear();
         }
         catch (Exception e) {
-            log.error("Error occurred during stopping exchange worker.");
+            log.error("Error occurred during stopping exchange worker.", e);
         }
     }
 
@@ -239,11 +242,11 @@ public class ServicesDeploymentExchangeManager {
             if (!enterBusy())
                 return;
 
+            UUID snd = evt.eventNode().id();
+
+            assert snd != null;
+
             try {
-                UUID snd = evt.eventNode().id();
-
-                assert snd != null;
-
                 switch (evt.type()) {
                     case EVT_DISCOVERY_CUSTOM_EVT:
                         DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
@@ -272,18 +275,15 @@ public class ServicesDeploymentExchangeManager {
 
                             if (log.isDebugEnabled()) {
                                 log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                    ", sender=" + snd +
-                                    ", msg=" + msg0 + ']');
+                                    ", snd=" + snd + ", msg=" + msg0 + ']');
                             }
 
                             ServicesDeploymentExchangeId exchId = msg0.exchangeId();
 
-                            if (tasks.containsKey(exchId)) { // In case of double delivering
-                                ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId,
-                                    ServicesDeploymentExchangeFutureTask::new);
+                            ServicesDeploymentExchangeTask task = tasks.get(exchId);
 
+                            if (task != null) // May be null in case of double delivering
                                 task.onReceiveFullMapMessage(snd, msg0);
-                            }
                         }
 
                         break;
@@ -386,12 +386,13 @@ public class ServicesDeploymentExchangeManager {
                         }
                     }
 
+                    if (isCancelled())
+                        Thread.currentThread().interrupt();
+
                     try {
                         task.init(ctx);
                     }
                     catch (Exception e) {
-                        log.error("Error occurred during init service exchange future.", e);
-
                         task.complete(e);
 
                         throw e;
@@ -399,29 +400,29 @@ public class ServicesDeploymentExchangeManager {
 
                     final long dumpTimeout = 2 * ctx.config().getNetworkTimeout();
 
-                    long nextDumpTime = 0;
+                    long nextDumpTime = dumpTimeout;
 
                     while (true) {
                         blockingSectionBegin();
 
                         try {
-                            task.waitForComplete(dumpTimeout);
+                            task.waitForComplete(nextDumpTime);
 
                             taskPostProcessing(task);
 
                             break;
                         }
                         catch (IgniteFutureTimeoutCheckedException ignored) {
-                            if (isCancelled)
+                            if (isCancelled())
                                 return;
 
                             if (nextDumpTime <= U.currentTimeMillis()) {
                                 log.warning("Failed to wait service deployment exchange or timeout had been reached" +
                                     ", timeout=" + dumpTimeout + ", task=" + task);
 
-                                long limit = getLong(IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT, 30 * 60_000);
+                                long limit = getLong(IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT, DFLT_DUMP_TIMEOUT_LIMIT);
 
-                                limit = limit <= 0 ? 30 * 60_000 : limit;
+                                limit = limit <= 0 ? DFLT_DUMP_TIMEOUT_LIMIT : limit;
 
                                 long nextTimeout = U.currentTimeMillis() + dumpTimeout * 2;
 
@@ -443,14 +444,14 @@ public class ServicesDeploymentExchangeManager {
             catch (InterruptedException | IgniteInterruptedCheckedException e) {
                 Thread.currentThread().interrupt();
 
-                if (!isCancelled)
+                if (!isCancelled())
                     err = e;
             }
             catch (Throwable t) {
                 err = t;
             }
             finally {
-                if (err == null && !isCancelled)
+                if (err == null && !isCancelled())
                     err = new IllegalStateException("Worker " + name() + " is terminated unexpectedly.");
 
                 if (err instanceof OutOfMemoryError)
