@@ -163,7 +163,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
 
         try {
-            ClusterNode crd = this.ctx.service().coordinator();
+            ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
 
             if (crd != null) {
                 crdId = crd.id();
@@ -811,7 +811,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             final boolean crdChanged = nodeId.equals(crdId);
 
             if (crdChanged) {
-                ClusterNode crd = ctx.service().coordinator();
+                ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
 
                 if (crd != null) {
                     crdId = crd.id();

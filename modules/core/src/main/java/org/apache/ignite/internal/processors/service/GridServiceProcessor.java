@@ -1524,20 +1524,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Coordinator node or {@code null} if there are no coordinator.
-     */
-    @Nullable protected ClusterNode coordinator() {
-        try {
-            return U.oldest(ctx.discovery().aliveServerNodes(), null);
-        }
-        catch (Exception e) {
-            log.error(e.getMessage(), e);
-
-            return null;
-        }
-    }
-
-    /**
      * @return Local deployed services.
      */
     protected Map<IgniteUuid, Collection<ServiceContextImpl>> localServices() {
