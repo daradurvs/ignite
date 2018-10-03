@@ -25,6 +25,9 @@ import org.apache.ignite.internal.util.typedef.internal.S;
  * Services join node discovery data container.
  */
 public class ServicesJoinNodeDiscoveryData implements Serializable {
+    /** */
+    private static final long serialVersionUID = 0L;
+
     /** Static services configurations info. */
     public final ArrayList<ServiceInfo> staticSrvcsInfo;
 
