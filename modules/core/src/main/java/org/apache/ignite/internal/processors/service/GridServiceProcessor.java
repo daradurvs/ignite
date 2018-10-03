@@ -269,8 +269,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void onJoiningNodeDataReceived(DiscoveryDataBag.JoiningNodeDiscoveryData data) {
-        if (data.joiningNodeData() != null)
-            clusterSrvcsInfo.onJoiningNodeDataReceived((ServicesJoinNodeDiscoveryData)data.joiningNodeData());
+        clusterSrvcsInfo.onJoiningNodeDataReceived(data);
     }
 
     /** {@inheritDoc} */

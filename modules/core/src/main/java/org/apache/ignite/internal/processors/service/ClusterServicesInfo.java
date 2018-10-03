@@ -62,11 +62,16 @@ class ClusterServicesInfo {
     /**
      * @param data Joining node data.
      */
-    protected void onJoiningNodeDataReceived(ServicesJoinNodeDiscoveryData data) {
+    protected void onJoiningNodeDataReceived(DiscoveryDataBag.JoiningNodeDiscoveryData data) {
+        if (data.joiningNodeData() == null)
+            return;
+
         assert srvcsToStart != null;
 
+        ServicesJoinNodeDiscoveryData joinData = (ServicesJoinNodeDiscoveryData)data.joiningNodeData();
+
         synchronized (changeInfoMux) {
-            for (ServiceInfo srvcToStart : data.services()) {
+            for (ServiceInfo srvcToStart : joinData.services()) {
                 boolean exists = false;
 
                 for (ServiceInfo srvcInfo : srvcsToStart) {
