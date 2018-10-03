@@ -204,7 +204,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 case EVT_NODE_FAILED:
 
                     if (!lessThenLocalJoin(evtTopVer))
-                        initReassignment(this.ctx.service().services().keySet(), evtTopVer);
+                        initReassignment(ctx.service().allServices(), evtTopVer);
 
                     break;
 
@@ -268,7 +268,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             for (ServiceInfo srvc : ctx.service().getAndRemoveAllServicesReceivedFromJoin())
                 assign(srvc.serviceId(), srvc.configuration(), topVer);
 
-            initReassignment(ctx.service().services().keySet(), topVer);
+            initReassignment(ctx.service().allServices(), topVer);
         }
         else {
             ctx.service().onDeActivate(ctx);
@@ -313,11 +313,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @return Service topology.
      */
     private Map<UUID, Integer> assign(IgniteUuid reqSrvcId, ServiceConfiguration cfg, AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
-
         IgniteUuid srvcId = reqSrvcId;
 
-        ServiceDescriptor srvcDesc = srvcsDescs.get(srvcId);
+        ServiceDescriptor srvcDesc = ctx.service().serviceInfo(srvcId);
 
         Map<UUID, Integer> srvcTop = srvcDesc != null ? srvcDesc.topologySnapshot() : null;
 
@@ -328,19 +326,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 ", srvcTop=" + srvcTop);
         }
         else {
-            ServiceInfo oldSrvcDesc = null;
-            IgniteUuid oldSrvcId = null;
-
-            for (Map.Entry<IgniteUuid, ServiceInfo> e : srvcsDescs.entrySet()) {
-                ServiceInfo desc = e.getValue();
-
-                if (desc.configuration().getName().equals(cfg.getName())) {
-                    oldSrvcDesc = desc;
-                    oldSrvcId = e.getKey();
-
-                    break;
-                }
-            }
+            ServiceInfo oldSrvcDesc = ctx.service().serviceInfo(cfg.getName());
+            IgniteUuid oldSrvcId = oldSrvcDesc != null ? oldSrvcDesc.serviceId() : null;
 
             if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
                 th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
@@ -380,7 +367,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         ServiceInfo desc = new ServiceInfo(evt.eventNode().id(), srvcId, cfg);
 
-        srvcsDescs.putIfAbsent(srvcId, desc);
+        ctx.service().putIfAbsentServiceInfo(srvcId, desc);
 
         return srvcTop;
     }
@@ -389,12 +376,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private void onCacheAffinityChangeMessage(AffinityTopologyVersion topVer) {
-        Set<IgniteUuid> toReassign = new HashSet<>();
-
-        ctx.service().services().forEach((srvcId, dep) -> {
-            if (dep.configuration().getCacheName() != null)
-                toReassign.add(srvcId);
-        });
+        Set<IgniteUuid> toReassign = ctx.service().affinityServices();
 
         if (toReassign.isEmpty()) {
             complete(null);
@@ -409,19 +391,16 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param req Cache state change request.
      */
     private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) {
-        Set<String> cachesToStop = new HashSet<>();
-
-        for (DynamicCacheChangeRequest chReq : req.requests()) {
-            if (chReq.stop())
-                cachesToStop.add(chReq.cacheName());
-        }
-
         Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
-        ctx.service().services().forEach((id, dep) -> {
-            if (cachesToStop.contains(dep.configuration().getCacheName()))
-                srvcsToUndeploy.add(id);
-        });
+        for (DynamicCacheChangeRequest chReq : req.requests()) {
+            if (chReq.stop()) {
+                IgniteUuid srvcId = ctx.service().affinityService(chReq.cacheName());
+
+                if (srvcId != null)
+                    srvcsToUndeploy.add(srvcId);
+            }
+        }
 
         if (srvcsToUndeploy.isEmpty()) {
             complete(null);
@@ -437,16 +416,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * @param topVer Topology version.
      */
     private void initReassignment(Set<IgniteUuid> toReassign, AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
-
         final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
 
         final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
         for (IgniteUuid srvcId : toReassign) {
-            ServiceInfo desc = srvcsDescs.get(srvcId);
+            ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
 
-            ServiceConfiguration cfg = desc.configuration();
+            assert cfg != null;
 
             Map<UUID, Integer> top = null;
 
@@ -497,10 +474,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void changeServices(Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy, Set<IgniteUuid> srvcsToUndeploy) {
         final GridServiceProcessor proc = ctx.service();
 
-        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
-
-        final Map<IgniteUuid, Collection<ServiceContextImpl>> locSrvcs = ctx.service().localServices();
-
         final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
         try {
@@ -512,19 +485,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             srvcsToDeploy.forEach((srvcId, top) -> {
                 Integer expCnt = top.get(ctx.localNodeId());
 
-                boolean needDeploy = false;
-
-                if (expCnt != null && expCnt > 0) {
-                    Collection<ServiceContextImpl> ctxs = locSrvcs.get(srvcId);
-
-                    needDeploy = (ctxs == null) || (ctxs.size() != expCnt);
-                }
+                boolean needDeploy = (expCnt != null && expCnt > 0) && proc.localInstancesCount(srvcId) != expCnt;
 
                 if (needDeploy) {
                     try {
-                        ServiceInfo desc = srvcsDescs.get(srvcId);
+                        ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
 
-                        proc.redeploy(srvcId, desc.configuration(), top);
+                        assert cfg != null;
+
+                        proc.redeploy(srvcId, cfg, top);
                     }
                     catch (Error | RuntimeException t) {
                         Collection<Throwable> err = errors.computeIfAbsent(srvcId, e -> new ArrayList<>());
@@ -742,15 +711,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private Collection<ServiceFullDeploymentsResults> buildFullDeploymentsResults(
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
-        final Map<IgniteUuid, ServiceInfo> srvcsDescs = ctx.service().services();
 
         final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
 
         results.forEach((srvcId, dep) -> {
-            if (dep.values().stream().anyMatch(r -> !r.errors().isEmpty() && srvcsDescs.containsKey(srvcId))) {
-                ServiceInfo srvcDesc = srvcsDescs.get(srvcId);
+            ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
 
-                ServiceDeploymentFailuresPolicy plc = srvcDesc.configuration().getPolicy();
+            if (dep.values().stream().anyMatch(r -> !r.errors().isEmpty() && cfg != null)) {
+                ServiceDeploymentFailuresPolicy plc = cfg.getPolicy();
 
                 if (plc == ServiceDeploymentFailuresPolicy.CANCEL)
                     dep.values().forEach(r -> r.count(0));
@@ -773,8 +741,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         Map<IgniteUuid, Collection<Throwable>> errors) {
         Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
 
-        ctx.service().localServices().forEach((id, ctxs) -> {
-            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(ctxs.size());
+        ctx.service().localInstancesCount().forEach((id, cnt) -> {
+            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(cnt);
 
             Collection<Throwable> err = errors.get(id);
 

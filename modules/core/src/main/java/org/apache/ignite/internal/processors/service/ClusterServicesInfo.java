@@ -109,7 +109,7 @@ class ClusterServicesInfo {
 
         synchronized (changeInfoMux) {
             initData = new ServicesCommonDiscoveryData(
-                new ArrayList<>(ctx.service().services().values()),
+                ctx.service().servicesInfo(),
                 new ArrayList<>(srvcsToStart),
                 new ArrayDeque<>(ctx.service().exchange().tasks())
             );
@@ -129,7 +129,7 @@ class ClusterServicesInfo {
 
         srvcsToStart = initData.servicesToStart();
 
-        initData.servicesDescriptors().forEach(d -> ctx.service().services().put(d.serviceId(), d));
+        ctx.service().servicesInfo(initData.servicesDescriptors());
 
         initData.exchangeQueue().forEach(t -> ctx.service().exchange().addEvent(t.event(), t.topologyVersion(),
             t.exchangeId()));

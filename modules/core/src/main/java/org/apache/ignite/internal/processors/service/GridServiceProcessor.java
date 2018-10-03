@@ -73,6 +73,7 @@ import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.apache.ignite.thread.IgniteThreadFactory;
 import org.apache.ignite.thread.OomExceptionHandler;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_SERVICES_COMPATIBILITY_MODE;
@@ -1510,17 +1511,110 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Local deployed services.
+     * @param srvcId Service id.
+     * @return Count of locally deployed service with given id.
      */
-    protected Map<IgniteUuid, Collection<ServiceContextImpl>> localServices() {
-        return locSvcs;
+    protected int localInstancesCount(IgniteUuid srvcId) {
+        Collection<ServiceContextImpl> ctxs = locSvcs.get(srvcId);
+
+        return ctxs != null ? ctxs.size() : 0;
     }
 
     /**
-     * @return All services descriptors.
+     * @return Map with counts of all locally deployed services.
      */
-    protected Map<IgniteUuid, ServiceInfo> services() {
-        return srvcsDescs;
+    @NotNull protected Map<IgniteUuid, Integer> localInstancesCount() {
+        Map<IgniteUuid, Integer> locTop = new HashMap<>();
+
+        locSvcs.forEach((srvcId, ctxs) -> {
+            locTop.put(srvcId, ctxs.size());
+        });
+
+        return locTop;
+    }
+
+    /**
+     * @return Ids of affinity services deployed across the cluster.
+     */
+    @NotNull protected Set<IgniteUuid> affinityServices() {
+        Set<IgniteUuid> srvcs = new HashSet<>();
+
+        srvcsDescs.values().forEach(desc -> {
+            if (desc.configuration().getCacheName() != null)
+                srvcs.add(desc.serviceId());
+        });
+
+        return srvcs;
+    }
+
+    /**
+     * @param cacheName Cache name.
+     * @return Id of affinity service with given cache name. Possibly {@code null} if not found.
+     */
+    @Nullable protected IgniteUuid affinityService(String cacheName) {
+        for (ServiceInfo desc : srvcsDescs.values()) {
+            if (desc.cacheName().equals(cacheName))
+                return desc.serviceId();
+        }
+
+        return null;
+    }
+
+    /**
+     * @param srvcId Service id.
+     * @return Service configuration of service deployed with given id. Possibly {@code null} if not found.
+     */
+    @Nullable protected ServiceConfiguration serviceConfiguration(IgniteUuid srvcId) {
+        ServiceInfo desc = srvcsDescs.get(srvcId);
+
+        return desc != null ? desc.configuration() : null;
+    }
+
+    /**
+     * @return Ids of all services deployed across the cluster.
+     */
+    protected Set<IgniteUuid> allServices() {
+        return new HashSet<>(srvcsDescs.keySet());
+    }
+
+    /**
+     * @param srvcId Service id.
+     * @return {@link ServiceInfo} instance of deployed service with given id. Possibly {@code null} if not found.
+     */
+    @Nullable protected ServiceInfo serviceInfo(IgniteUuid srvcId) {
+        return srvcsDescs.get(srvcId);
+    }
+
+    /**
+     * @param name Service name.
+     * @return {@link ServiceInfo} instance of deployed service with given id. Possibly {@code null} if not found.
+     */
+    @Nullable protected ServiceInfo serviceInfo(String name) {
+        IgniteUuid srvcId = lookupId(name);
+
+        return srvcId != null ? serviceInfo(srvcId) : null;
+    }
+
+    /**
+     * @param srvcId Service id.
+     * @param desc {@link ServiceInfo} instance.
+     */
+    protected void putIfAbsentServiceInfo(IgniteUuid srvcId, ServiceInfo desc) {
+        srvcsDescs.putIfAbsent(srvcId, desc);
+    }
+
+    /**
+     * @param descs Collection of services information to add.
+     */
+    protected void servicesInfo(@NotNull Collection<ServiceInfo> descs) {
+        descs.forEach(d -> srvcsDescs.put(d.serviceId(), d));
+    }
+
+    /**
+     * @return New {@link ArrayList} with services info if deployed service across the cluster.
+     */
+    protected ArrayList<ServiceInfo> servicesInfo() {
+        return new ArrayList<>(srvcsDescs.values());
     }
 
     /**
