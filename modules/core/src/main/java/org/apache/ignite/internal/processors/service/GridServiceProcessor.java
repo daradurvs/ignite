@@ -45,11 +45,13 @@ import org.apache.ignite.cluster.ClusterGroup;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.DeploymentMode;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteClientDisconnectedCheckedException;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
+import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
@@ -276,16 +278,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** {@inheritDoc} */
     @Nullable @Override public DiscoveryDataExchangeType discoveryDataType() {
         return SERVICE_PROC;
-    }
-
-    /**
-     * Discovery event callback, executed from discovery thread.
-     *
-     * @param type Discovery event type.
-     * @param node Discovery event node.
-     */
-    public void onDiscoveryEvent(int type, ClusterNode node) {
-        clusterSrvcsInfo.onDiscoveryEvent(type, node);
     }
 
     /** {@inheritDoc} */
@@ -1634,6 +1626,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     protected List<ServiceInfo> getAndRemoveAllServicesReceivedFromJoin() {
         return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin();
+    }
+
+    /**
+     * Special handler for local discovery events for which the regular events are not generated, e.g. local join and
+     * client reconnect events.
+     *
+     * @param evt Discovery event.
+     * @param discoCache Discovery cache.
+     */
+    public void onLocalEvent(DiscoveryEvent evt, DiscoCache discoCache) {
+        if (evt.eventNode().order() == 1)
+            clusterSrvcsInfo.onFirstNodeStart();
+
+        exchMgr.onLocalEvent(evt, discoCache);
     }
 
     /**

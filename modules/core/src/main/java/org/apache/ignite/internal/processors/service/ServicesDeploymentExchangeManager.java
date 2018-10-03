@@ -171,7 +171,7 @@ public class ServicesDeploymentExchangeManager {
      * @param evt Discovery event.
      * @param discoCache Discovery cache.
      */
-    public void onLocalEvent(DiscoveryEvent evt, DiscoCache discoCache) {
+    protected void onLocalEvent(DiscoveryEvent evt, DiscoCache discoCache) {
         discoLsnr.onEvent(evt, discoCache);
     }
 

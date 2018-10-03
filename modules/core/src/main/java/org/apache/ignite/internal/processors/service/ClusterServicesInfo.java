@@ -21,13 +21,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 
 /**
@@ -178,23 +176,12 @@ class ClusterServicesInfo {
     }
 
     /**
-     * Discovery event callback, executed from discovery thread.
-     *
-     * @param type Discovery event's type.
-     * @param node Discovery event node.
+     * Handles the first node start, that means {@link #onGridDataReceived(DiscoveryDataBag.GridDiscoveryData)} has not
+     * been called.
      */
-    protected void onDiscoveryEvent(int type, ClusterNode node) {
-        if (ctx.isDaemon())
-            return;
+    protected void onFirstNodeStart() {
+        assert locJoiningData != null;
 
-        if (type == EVT_NODE_JOINED) {
-            if (node.id().equals(ctx.discovery().localNode().id())) {
-                if (srvcsToStart == null) { // On first node start
-                    assert locJoiningData != null;
-
-                    srvcsToStart = new ArrayList<>(locJoiningData.staticSrvcsInfo);
-                }
-            }
-        }
+        srvcsToStart = new ArrayList<>(locJoiningData.staticSrvcsInfo);
     }
 }

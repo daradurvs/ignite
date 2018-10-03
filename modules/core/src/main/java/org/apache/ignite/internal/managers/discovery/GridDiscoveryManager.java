@@ -714,8 +714,6 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
                     nextTopVer = new AffinityTopologyVersion(topVer, minorTopVer);
 
                     ctx.cache().onDiscoveryEvent(type, customMsg, node, nextTopVer, ctx.state().clusterState());
-
-                    ctx.service().onDiscoveryEvent(type, node);
                 }
 
                 if (type == EVT_DISCOVERY_CUSTOM_EVT) {
@@ -796,7 +794,7 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
                     if (!isLocDaemon && !ctx.clientDisconnected()) {
                         ctx.cache().context().exchange().onLocalJoin(discoEvt, discoCache);
 
-                        ctx.service().exchange().onLocalEvent(discoEvt, discoCache);
+                        ctx.service().onLocalEvent(discoEvt, discoCache);
 
                         ctx.authentication().onLocalJoin();
                     }
@@ -854,7 +852,7 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
 
                     ctx.cache().context().exchange().onLocalJoin(localJoinEvent(), discoCache);
 
-                    ctx.service().exchange().onLocalEvent(localJoinEvent(), discoCache);
+                    ctx.service().onLocalEvent(localJoinEvent(), discoCache);
 
                     ctx.cluster().clientReconnectFuture().listen(new CI1<IgniteFuture<?>>() {
                         @Override public void apply(IgniteFuture<?> fut) {
