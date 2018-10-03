@@ -204,7 +204,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 case EVT_NODE_FAILED:
 
                     if (!lessThenLocalJoin(evtTopVer))
-                        initReassignment(ctx.service().allServices(), evtTopVer);
+                        initReassignment(ctx.service().allServicesIds(), evtTopVer);
 
                     break;
 
@@ -268,7 +268,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             for (ServiceInfo srvc : ctx.service().getAndRemoveAllServicesReceivedFromJoin())
                 assign(srvc.serviceId(), srvc.configuration(), topVer);
 
-            initReassignment(ctx.service().allServices(), topVer);
+            initReassignment(ctx.service().allServicesIds(), topVer);
         }
         else {
             ctx.service().onDeActivate(ctx);

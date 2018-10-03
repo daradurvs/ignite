@@ -532,12 +532,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs,  null);
+            return deployAll(cfgs, null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs,  prj.predicate());
+            return deployAll(cfgs, prj.predicate());
     }
 
     /**
@@ -1573,7 +1573,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Ids of all services deployed across the cluster.
      */
-    protected Set<IgniteUuid> allServices() {
+    protected Set<IgniteUuid> allServicesIds() {
         return new HashSet<>(srvcsDescs.keySet());
     }
 
