@@ -180,7 +180,7 @@ public class ServicesDeploymentExchangeManager {
      * <p/>
      * Should be called from service deployment exchange worker thread.
      */
-    public void exchangerBlockingSectionBegin() {
+    protected void exchangerBlockingSectionBegin() {
         assert exchWorker != null && Thread.currentThread() == exchWorker.runner();
 
         exchWorker.blockingSectionBegin();
@@ -191,7 +191,7 @@ public class ServicesDeploymentExchangeManager {
      * <p/>
      * Should be called from service deployment exchange worker thread.
      */
-    public void exchangerBlockingSectionEnd() {
+    protected void exchangerBlockingSectionEnd() {
         assert exchWorker != null && Thread.currentThread() == exchWorker.runner();
 
         exchWorker.blockingSectionEnd();
@@ -219,7 +219,7 @@ public class ServicesDeploymentExchangeManager {
      * @param topVer Topology version.
      * @param exchId Exchange id.
      */
-    public void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
+    protected void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, ServicesDeploymentExchangeFutureTask::new);
 
         synchronized (newEvtMux) {
