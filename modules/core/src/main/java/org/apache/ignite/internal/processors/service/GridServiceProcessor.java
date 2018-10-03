@@ -118,8 +118,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Cluster services joining nodes information. */
     private final ClusterServicesInfo clusterSrvcsInfo = new ClusterServicesInfo(ctx);
 
-    /** Lock. */
-    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+    /** Connection status lock. */
+    private final ReadWriteLock connStatusLock = new ReentrantReadWriteLock();
 
     /** Client disconnected flag. */
     private boolean disconnected;
@@ -306,7 +306,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void onDisconnected(IgniteFuture<?> reconnectFut) {
-        rwLock.writeLock().lock();
+        connStatusLock.writeLock().lock();
 
         try {
             disconnected = true;
@@ -318,13 +318,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             cancelFutures(undepFuts, err);
         }
         finally {
-            rwLock.writeLock().unlock();
+            connStatusLock.writeLock().unlock();
         }
     }
 
     /** {@inheritDoc} */
     @Override public IgniteInternalFuture<?> onReconnected(boolean active) {
-        rwLock.writeLock().lock();
+        connStatusLock.writeLock().lock();
 
         try {
             disconnected = false;
@@ -332,7 +332,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return null;
         }
         finally {
-            rwLock.writeLock().unlock();
+            connStatusLock.writeLock().unlock();
         }
     }
 
@@ -549,7 +549,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         @Nullable IgnitePredicate<ClusterNode> dfltNodeFilter) {
         assert cfgs != null;
 
-        rwLock.readLock().lock();
+        connStatusLock.readLock().lock();
 
         try {
             if (disconnected) {
@@ -627,7 +627,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return res;
         }
         finally {
-            rwLock.readLock().unlock();
+            connStatusLock.readLock().unlock();
         }
     }
 
@@ -671,7 +671,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     @SuppressWarnings("unchecked")
     private IgniteInternalFuture<?> cancelAll(Set<IgniteUuid> srvcsIds) {
-        rwLock.readLock().lock();
+        connStatusLock.readLock().lock();
 
         try {
             if (disconnected) {
@@ -764,7 +764,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return res;
         }
         finally {
-            rwLock.readLock().unlock();
+            connStatusLock.readLock().unlock();
         }
     }
 
