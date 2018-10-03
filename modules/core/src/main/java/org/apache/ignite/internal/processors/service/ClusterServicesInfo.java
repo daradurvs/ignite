@@ -39,7 +39,7 @@ class ClusterServicesInfo {
     private final GridKernalContext ctx;
 
     /** Local node's joining data. */
-    private ServicesJoinNodeDiscoveryData locJoiningData;
+    private ServicesJoinNodeDiscoveryData locData;
 
     /** Services info received on node joining. */
     private List<ServiceInfo> srvcsToStart;
@@ -55,7 +55,7 @@ class ClusterServicesInfo {
      * @param locJoiningData Local node's joining data.
      */
     protected void onStart(@NotNull ServicesJoinNodeDiscoveryData locJoiningData) {
-        this.locJoiningData = locJoiningData;
+        this.locData = locJoiningData;
     }
 
     /**
@@ -91,9 +91,9 @@ class ClusterServicesInfo {
      * @param dataBag Discovery data bag to fill local join data.
      */
     protected void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        assert locJoiningData != null;
+        assert locData != null;
 
-        dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locJoiningData);
+        dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locData);
     }
 
     /**
@@ -180,8 +180,8 @@ class ClusterServicesInfo {
      * been called.
      */
     protected void onFirstNodeStart() {
-        assert locJoiningData != null;
+        assert locData != null;
 
-        srvcsToStart = new ArrayList<>(locJoiningData.staticSrvcsInfo);
+        srvcsToStart = new ArrayList<>(locData.staticSrvcsInfo);
     }
 }
