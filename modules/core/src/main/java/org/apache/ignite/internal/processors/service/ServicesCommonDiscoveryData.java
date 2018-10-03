@@ -21,6 +21,7 @@ import java.io.Serializable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Initial data container to send on joined node.
@@ -44,9 +45,9 @@ class ServicesCommonDiscoveryData implements Serializable {
      * @param exchQueue Services deployment exchange queue to initialize exchange manager.
      */
     public ServicesCommonDiscoveryData(
-        ArrayList<ServiceInfo> srvcsDescs,
-        ArrayList<ServiceInfo> srvcsToDeploy,
-        ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
+        @NotNull ArrayList<ServiceInfo> srvcsDescs,
+        @NotNull ArrayList<ServiceInfo> srvcsToDeploy,
+        @NotNull ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
     ) {
         this.srvcsDescs = srvcsDescs;
         this.srvcsToDeploy = srvcsToDeploy;

@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.service;
 import java.io.Serializable;
 import java.util.ArrayList;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Services join node discovery data container.
@@ -34,7 +35,7 @@ public class ServicesJoinNodeDiscoveryData implements Serializable {
     /**
      * @param staticSrvcsInfo Static services configurations.
      */
-    public ServicesJoinNodeDiscoveryData(ArrayList<ServiceInfo> staticSrvcsInfo) {
+    public ServicesJoinNodeDiscoveryData(@NotNull ArrayList<ServiceInfo> staticSrvcsInfo) {
         this.staticSrvcsInfo = staticSrvcsInfo;
     }
 

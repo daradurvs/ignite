@@ -27,6 +27,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDescriptor;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -54,7 +55,7 @@ public class ServiceInfo implements ServiceDescriptor {
      * @param srvcId Service id.
      * @param cfg Service configuration.
      */
-    public ServiceInfo(UUID nodeId, IgniteUuid srvcId, ServiceConfiguration cfg) {
+    public ServiceInfo(@NotNull UUID nodeId, @NotNull IgniteUuid srvcId, @NotNull ServiceConfiguration cfg) {
         this.nodeId = nodeId;
         this.srvcId = srvcId;
         this.cfg = cfg;
@@ -65,7 +66,7 @@ public class ServiceInfo implements ServiceDescriptor {
      *
      * @param top Topology snapshot.
      */
-    public void topologySnapshot(Map<UUID, Integer> top) {
+    public void topologySnapshot(@NotNull Map<UUID, Integer> top) {
         this.top = top;
     }
 

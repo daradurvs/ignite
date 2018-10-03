@@ -24,6 +24,7 @@ import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
@@ -55,7 +56,7 @@ class ClusterServicesInfo {
     /**
      * @param locJoiningData Local node's joining data.
      */
-    protected void onStart(ServicesJoinNodeDiscoveryData locJoiningData) {
+    protected void onStart(@NotNull ServicesJoinNodeDiscoveryData locJoiningData) {
         this.locJoiningData = locJoiningData;
     }
 
@@ -126,7 +127,7 @@ class ClusterServicesInfo {
 
         ServicesCommonDiscoveryData initData = (ServicesCommonDiscoveryData)data.commonData();
 
-        srvcsToStart = new ArrayList<>(initData.servicesToStart());
+        srvcsToStart = initData.servicesToStart();
 
         initData.servicesDescriptors().forEach(d -> ctx.service().services().put(d.serviceId(), d));
 
