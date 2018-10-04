@@ -39,7 +39,7 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
     private static final String SERVICE_NAME = "testService";
 
     /** */
-    private static final long SERVICE_TOP_WAIT_TIMEOUT = 500L;
+    private static final long SERVICE_TOP_WAIT_TIMEOUT = 2_000L;
 
     /** {@inheritDoc} */
     @Override protected int nodeCount() {
@@ -163,15 +163,15 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         waitForReadyTopology(grid, topVer);
 
-        Map<UUID, Integer> srvcDeps = grid.context().service().serviceTopology(SERVICE_NAME, SERVICE_TOP_WAIT_TIMEOUT);
+        Map<UUID, Integer> srvcTop = grid.context().service().serviceTopology(SERVICE_NAME, SERVICE_TOP_WAIT_TIMEOUT);
 
         Collection<UUID> nodes = F.viewReadOnly(grid.context().discovery().aliveServerNodes(), F.node2id());
 
-        assertNotNull("Grid assignments object is null", srvcDeps);
+        assertNotNull("Grid assignments object is null", srvcTop);
 
         int sum = 0;
 
-        for (Map.Entry<UUID, Integer> entry : srvcDeps.entrySet()) {
+        for (Map.Entry<UUID, Integer> entry : srvcTop.entrySet()) {
             UUID nodeId = entry.getKey();
 
             if (!lastTry && !nodes.contains(nodeId))
@@ -190,9 +190,9 @@ public class GridServiceReassignmentSelfTest extends GridServiceProcessorAbstrac
 
         if (total > 0)
             assertTrue("Total number of services limit exceeded [sum=" + sum +
-                ", assigns=" + srvcDeps + ']', sum <= total);
+                ", assigns=" + srvcTop + ']', sum <= total);
         else
-            assertEquals("Reassign per node failed.", nodes.size(), srvcDeps.size());
+            assertEquals("Reassign per node failed.", nodes.size(), srvcTop.size());
 
         if (!lastTry && proxy(grid).get() != 10)
             return false;

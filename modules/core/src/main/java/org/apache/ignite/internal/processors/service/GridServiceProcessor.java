@@ -845,7 +845,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     throw new IgniteInterruptedCheckedException(e);
                 }
 
-                dep = desc.topologySnapshot();
+                desc = registeredSrvcs.get(id);
+
+                return desc != null ? desc.topologySnapshot() : null;
             }
         }
 
