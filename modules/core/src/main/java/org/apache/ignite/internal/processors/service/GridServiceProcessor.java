@@ -279,6 +279,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         ServicesCommonDiscoveryData clusterData = (ServicesCommonDiscoveryData)data.commonData();
 
+        if (disconnected)
+            registeredSrvcs.clear();
+
         for (ServiceInfo desc : clusterData.registeredServices())
             registeredSrvcs.put(desc.serviceId(), desc);
 
@@ -1678,7 +1681,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         assert ctx.localNodeId().equals(evt.eventNode().id());
         assert evt.type() == EVT_NODE_JOINED;
 
-        // First node start, {@link #onGridDataReceived(DiscoveryDataBag.GridDiscoveryData)} has not been called
         if (!evt.eventNode().isClient()) {
             boolean first;
 
@@ -1689,6 +1691,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             else
                 first = F.eq(ctx.localNodeId(), U.oldest(ctx.discovery().aliveServerNodes(), null));
 
+            // First node start, {@link #onGridDataReceived(DiscoveryDataBag.GridDiscoveryData)} has not been called
             if (first)
                 locData.services().forEach(desc -> registeredSrvcs.put(desc.serviceId(), desc));
         }
