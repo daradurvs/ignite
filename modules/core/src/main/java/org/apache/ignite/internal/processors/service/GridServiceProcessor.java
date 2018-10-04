@@ -576,12 +576,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs, null);
+            return deployAll(cfgs,  null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs, prj.predicate());
+            return deployAll(cfgs,  prj.predicate());
     }
 
     /**
@@ -858,14 +858,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
-        synchronized (srvcsTopsUpdateMux) {
-            registeredSrvcs.forEach((srvcId, desc) -> {
-                Map<UUID, Integer> top = desc.topologySnapshot();
+        registeredSrvcs.forEach((srvcId, desc) -> {
+            Map<UUID, Integer> top = desc.topologySnapshot();
 
-                if (top != null && !top.isEmpty())
-                    descs.add(desc);
-            });
-        }
+            if (top != null && !top.isEmpty())
+                descs.add(desc);
+        });
 
         return descs;
     }
