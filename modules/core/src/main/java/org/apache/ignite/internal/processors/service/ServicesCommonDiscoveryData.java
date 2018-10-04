@@ -30,27 +30,21 @@ class ServicesCommonDiscoveryData implements Serializable {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Already deployed services descriptors. */
-    private final ArrayList<ServiceInfo> srvcsDescs;
-
-    /** Unhandled cluster joining nodes services to deploy. */
-    private final ArrayList<ServiceInfo> srvcsToDeploy;
+    /** Clusters registered services descriptors. */
+    private final ArrayList<ServiceInfo> registeredSrvcs;
 
     /** Services deployment exchange queue to initialize exchange manager. */
     private final ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
 
     /**
-     * @param srvcsDescs Services descriptors.
-     * @param srvcsToDeploy Unhandled services to deploy.
+     * @param registeredSrvcs Services descriptors.
      * @param exchQueue Services deployment exchange queue to initialize exchange manager.
      */
     public ServicesCommonDiscoveryData(
-        @NotNull ArrayList<ServiceInfo> srvcsDescs,
-        @NotNull ArrayList<ServiceInfo> srvcsToDeploy,
+        @NotNull ArrayList<ServiceInfo> registeredSrvcs,
         @NotNull ArrayDeque<ServicesDeploymentExchangeTask> exchQueue
     ) {
-        this.srvcsDescs = srvcsDescs;
-        this.srvcsToDeploy = srvcsToDeploy;
+        this.registeredSrvcs = registeredSrvcs;
         this.exchQueue = exchQueue;
     }
 
@@ -59,17 +53,8 @@ class ServicesCommonDiscoveryData implements Serializable {
      *
      * @return Deployed services descriptors.
      */
-    public ArrayList<ServiceInfo> servicesDescriptors() {
-        return srvcsDescs;
-    }
-
-    /**
-     * Returns services to deploy.
-     *
-     * @return Services descriptors to deploy.
-     */
-    public ArrayList<ServiceInfo> servicesToStart() {
-        return srvcsToDeploy;
+    public ArrayList<ServiceInfo> registeredServices() {
+        return registeredSrvcs;
     }
 
     /**

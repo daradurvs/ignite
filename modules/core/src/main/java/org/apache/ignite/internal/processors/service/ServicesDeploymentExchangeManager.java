@@ -97,7 +97,7 @@ public class ServicesDeploymentExchangeManager {
     /**
      * @param ctx Grid kernal context.
      */
-    public ServicesDeploymentExchangeManager(GridKernalContext ctx) {
+    protected ServicesDeploymentExchangeManager(GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
 
@@ -112,14 +112,14 @@ public class ServicesDeploymentExchangeManager {
     /**
      * Starts processing of services deployments exchange tasks.
      */
-    public void startProcessing() {
+    protected void startProcessing() {
         new IgniteThread(ctx.igniteInstanceName(), "services-deployment-exchange-worker", exchWorker).start();
     }
 
     /**
      * Stops processing of services deployments exchange tasks.
      */
-    public void stopProcessing() {
+    protected void stopProcessing() {
         try {
             busyLock.block(); // Will not release it.
 
@@ -149,19 +149,19 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Returns queue of deployments tasks.
-     *
-     * @return Queue of deployment tasks.
-     */
-    public ArrayDeque<ServicesDeploymentExchangeTask> tasks() {
-        return exchWorker.tasksQueue;
-    }
-
-    /**
      * @return Ready topology version.
      */
     public AffinityTopologyVersion readyTopologyVersion() {
         return readyTopVer.get();
+    }
+
+    /**
+     * Returns queue of deployments tasks.
+     *
+     * @return Queue of deployment tasks.
+     */
+    protected ArrayDeque<ServicesDeploymentExchangeTask> tasks() {
+        return exchWorker.tasksQueue;
     }
 
     /**
@@ -198,21 +198,6 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Addeds discovery event to exchange queue with check if cluster is active or not.
-     *
-     * @param evt Discovery event.
-     * @param cache Discovery cache.
-     */
-    private void checkStateAndAddEvent(DiscoveryEvent evt, DiscoCache cache) {
-        if (cache.state().transition())
-            pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
-        else if (cache.state().active())
-            addEvent(evt, cache.version(), new ServicesDeploymentExchangeId(evt, cache.version()));
-        else if (log.isDebugEnabled())
-            log.debug("Ignore event, cluster is inactive, evt=" + evt);
-    }
-
-    /**
      * Addeds discovery event to exchange queue.
      *
      * @param evt Discovery event.
@@ -231,6 +216,21 @@ public class ServicesDeploymentExchangeManager {
 
             newEvtMux.notify();
         }
+    }
+
+    /**
+     * Addeds discovery event to exchange queue with check if cluster is active or not.
+     *
+     * @param evt Discovery event.
+     * @param cache Discovery cache.
+     */
+    private void checkStateAndAddEvent(DiscoveryEvent evt, DiscoCache cache) {
+        if (cache.state().transition())
+            pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
+        else if (cache.state().active())
+            addEvent(evt, cache.version(), new ServicesDeploymentExchangeId(evt, cache.version()));
+        else if (log.isDebugEnabled())
+            log.debug("Ignore event, cluster is inactive, evt=" + evt);
     }
 
     /**

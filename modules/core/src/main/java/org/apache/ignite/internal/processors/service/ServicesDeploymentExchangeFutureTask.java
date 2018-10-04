@@ -26,7 +26,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -172,44 +171,34 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     initCoordinator(evtTopVer);
             }
 
-            switch (evt.type()) {
-                case EVT_DISCOVERY_CUSTOM_EVT:
-                    DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+            if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
+                DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                    if (msg instanceof ChangeGlobalStateMessage)
-                        onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg, evtTopVer);
-                    else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
-                        onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
-                    else if (!lessThenLocalJoin(evtTopVer)) {
-                        if (msg instanceof DynamicCacheChangeBatch)
-                            onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
-                        else if (msg instanceof CacheAffinityChangeMessage)
-                            onCacheAffinityChangeMessage(evtTopVer);
-                        else
-                            assert false : "Unexpected type of discovery event, evt=" + evt;
-                    }
+                if (msg instanceof ChangeGlobalStateMessage)
+                    onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg, evtTopVer);
+                else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
+                    onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
+                else if (!lessThenLocalJoin(evtTopVer)) {
+                    if (msg instanceof DynamicCacheChangeBatch)
+                        onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
+                    else if (msg instanceof CacheAffinityChangeMessage)
+                        onCacheAffinityChangeMessage(evtTopVer);
+                    else
+                        assert false : "Unexpected type of discovery event, evt=" + evt;
+                }
+            }
+            else {
+                assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT ||
+                    evt.type() == EVT_NODE_FAILED : "Unexpected type of discovery event, evt=" + evt;
 
-                    break;
+                Set<IgniteUuid> toReassign = new HashSet<>();
 
-                case EVT_NODE_JOINED:
+                if (evt.type() == EVT_NODE_JOINED)
+                    toReassign.addAll(ctx.service().servicesReceivedFromJoin(evt.eventNode().id()));
 
-                    List<ServiceInfo> srvcs = ctx.service().getAndRemoveServicesReceivedFromJoin(evt.eventNode().id());
+                toReassign.addAll(ctx.service().allDeployedServicesIds());
 
-                    if (srvcs != null) {
-                        for (ServiceInfo srvc : srvcs)
-                            assign(srvc.serviceId(), srvc.configuration(), evtTopVer);
-                    }
-
-                case EVT_NODE_LEFT:
-                case EVT_NODE_FAILED:
-
-                    if (!lessThenLocalJoin(evtTopVer))
-                        initReassignment(ctx.service().allServicesIds(), evtTopVer);
-
-                    break;
-
-                default:
-                    assert false : "Unexpected type of discovery event, evt=" + evt;
+                initReassignment(toReassign, evtTopVer);
             }
 
             if (log.isDebugEnabled()) {
@@ -264,12 +253,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
         AffinityTopologyVersion topVer) {
-        if (req.activate()) {
-            for (ServiceInfo srvc : ctx.service().getAndRemoveAllServicesReceivedFromJoin())
-                assign(srvc.serviceId(), srvc.configuration(), topVer);
-
-            initReassignment(ctx.service().allServicesIds(), topVer);
-        }
+        if (req.activate())
+            initReassignment(ctx.service().allDeployedServicesIds(), topVer);
         else {
             ctx.service().onDeActivate(ctx);
 
@@ -327,7 +312,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
         else {
             ServiceInfo oldSrvcDesc = ctx.service().serviceInfo(cfg.getName());
-            IgniteUuid oldSrvcId = oldSrvcDesc != null ? oldSrvcDesc.serviceId() : null;
 
             if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
                 th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
@@ -335,8 +319,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
             else {
                 try {
-                    if (oldSrvcId != null)
-                        srvcId = oldSrvcId;
+                    if (oldSrvcDesc != null)
+                        srvcId = oldSrvcDesc.serviceId();
 
                     srvcTop = reassign(srvcId, cfg, topVer);
                 }
@@ -480,7 +464,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             proc.exchange().exchangerBlockingSectionBegin();
 
             for (IgniteUuid srvcId : srvcsToUndeploy)
-                proc.undeploy(srvcId);
+                proc.undeploy(srvcId, true);
 
             srvcsToDeploy.forEach((srvcId, top) -> {
                 Integer expCnt = top.get(ctx.localNodeId());
@@ -567,11 +551,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
         assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
 
-        ctx.closure().runLocalSafe(() -> {
-            initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
-                if (isCompleted())
-                    return;
+        initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
+            if (isCompleted())
+                return;
 
+            ctx.closure().runLocalSafe(() -> {
                 Throwable th = null;
 
                 try {

@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -73,6 +74,8 @@ import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
 import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
+import org.apache.ignite.spi.discovery.DiscoverySpi;
+import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.thread.IgniteThreadFactory;
 import org.apache.ignite.thread.OomExceptionHandler;
 import org.jetbrains.annotations.NotNull;
@@ -82,6 +85,7 @@ import static org.apache.ignite.IgniteSystemProperties.IGNITE_SERVICES_COMPATIBI
 import static org.apache.ignite.IgniteSystemProperties.getString;
 import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
 import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
+import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
 
@@ -112,20 +116,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Mutex. */
     private final Object srvcsTopsUpdateMux = new Object();
 
-    /** Contains all services information across the cluster. Should be serializable to transfer data on joining node. */
-    private final HashMap<IgniteUuid, ServiceInfo> srvcsDescs = new HashMap<>();
+    /** Contains all services information across the cluster. */
+    private final ConcurrentMap<IgniteUuid, ServiceInfo> registeredSrvcs = new ConcurrentHashMap<>();
 
     /** Services deployment exchange manager. */
     private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
-
-    /** Cluster services joining nodes information. */
-    private final ClusterServicesInfo clusterSrvcsInfo = new ClusterServicesInfo(ctx);
 
     /** Connection status lock. */
     private final ReadWriteLock connStatusLock = new ReentrantReadWriteLock();
 
     /** Client disconnected flag. */
     private boolean disconnected;
+
+    /** Local node's joining data. */
+    private ServicesJoinNodeDiscoveryData locData;
 
     /**
      * @param ctx Kernal context.
@@ -173,7 +177,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 staticSrvcsInfo.add(new ServiceInfo(ctx.localNodeId(), IgniteUuid.randomUuid(), srvcCfg));
         }
 
-        clusterSrvcsInfo.onStart(new ServicesJoinNodeDiscoveryData(staticSrvcsInfo));
+        locData = new ServicesJoinNodeDiscoveryData(staticSrvcsInfo);
     }
 
     /** {@inheritDoc} */
@@ -257,22 +261,61 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void collectGridNodeData(DiscoveryDataBag dataBag) {
-        clusterSrvcsInfo.collectGridNodeData(dataBag);
+        if (dataBag.commonDataCollectedFor(SERVICE_PROC.ordinal()))
+            return;
+
+        ServicesCommonDiscoveryData clusterData = new ServicesCommonDiscoveryData(
+            new ArrayList<>(registeredSrvcs.values()),
+            new ArrayDeque<>(ctx.service().exchange().tasks())
+        );
+
+        dataBag.addGridCommonData(SERVICE_PROC.ordinal(), clusterData);
     }
 
     /** {@inheritDoc} */
     @Override public void onGridDataReceived(DiscoveryDataBag.GridDiscoveryData data) {
-        clusterSrvcsInfo.onGridDataReceived(data);
+        if (ctx.isDaemon() || data.commonData() == null)
+            return;
+
+        ServicesCommonDiscoveryData clusterData = (ServicesCommonDiscoveryData)data.commonData();
+
+        for (ServiceInfo desc : clusterData.registeredServices())
+            registeredSrvcs.put(desc.serviceId(), desc);
+
+        clusterData.exchangeQueue().forEach(t -> ctx.service().exchange().addEvent(t.event(), t.topologyVersion(),
+            t.exchangeId()));
     }
 
     /** {@inheritDoc} */
     @Override public void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        clusterSrvcsInfo.collectJoiningNodeData(dataBag);
+        assert locData != null;
+
+        dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locData);
     }
 
     /** {@inheritDoc} */
     @Override public void onJoiningNodeDataReceived(DiscoveryDataBag.JoiningNodeDiscoveryData data) {
-        clusterSrvcsInfo.onJoiningNodeDataReceived(data);
+        if (data.joiningNodeData() == null)
+            return;
+
+        ServicesJoinNodeDiscoveryData joinData = (ServicesJoinNodeDiscoveryData)data.joiningNodeData();
+
+        for (ServiceInfo toStart : joinData.services()) {
+            assert toStart.topologySnapshot().isEmpty();
+
+            boolean exists = false;
+
+            for (ServiceInfo desc : registeredSrvcs.values()) {
+                if (desc.configuration().equalsIgnoreNodeFilter(toStart.configuration())) {
+                    exists = true;
+
+                    break;
+                }
+            }
+
+            if (!exists)
+                registeredSrvcs.put(toStart.serviceId(), toStart);
+        }
     }
 
     /** {@inheritDoc} */
@@ -635,7 +678,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Future.
      */
     public IgniteInternalFuture<?> cancelAll() {
-        return cancelAll(srvcsDescs.keySet());
+        return cancelAll(registeredSrvcs.keySet());
     }
 
     /**
@@ -683,7 +726,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                     try {
                         for (IgniteUuid srvcId : srvcsIds) {
-                            ServiceDescriptor desc = srvcsDescs.get(srvcId);
+                            ServiceDescriptor desc = registeredSrvcs.get(srvcId);
 
                             try {
                                 ctx.security().authorize(desc.name(), SecurityPermission.SERVICE_CANCEL, null);
@@ -706,7 +749,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                             res.add(fut);
 
-                            if (!srvcsDescs.containsKey(srvcId)) {
+                            if (!registeredSrvcs.containsKey(srvcId)) {
                                 fut.onDone();
 
                                 continue;
@@ -780,7 +823,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return null;
         }
 
-        ServiceDescriptor desc = srvcsDescs.get(id);
+        ServiceDescriptor desc = registeredSrvcs.get(id);
 
         Map<UUID, Integer> dep = desc != null ? desc.topologySnapshot() : null;
 
@@ -806,12 +849,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
-        srvcsDescs.forEach((srvcId, desc) -> {
-            Map<UUID, Integer> top = desc.topologySnapshot();
+        synchronized (srvcsTopsUpdateMux) {
+            registeredSrvcs.forEach((srvcId, desc) -> {
+                Map<UUID, Integer> top = desc.topologySnapshot();
 
-            if (top != null && !top.isEmpty())
-                descs.add(desc);
-        });
+                if (top != null && !top.isEmpty())
+                    descs.add(desc);
+            });
+        }
 
         return descs;
     }
@@ -1014,7 +1059,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 IgniteUuid id = lookupId(name);
 
-                Map<UUID, Integer> oldTop = id != null ? srvcsDescs.get(id).topologySnapshot() : null;
+                Map<UUID, Integer> oldTop = id != null ? registeredSrvcs.get(id).topologySnapshot() : null;
 
                 Map<UUID, Integer> cnts = new HashMap<>();
 
@@ -1328,13 +1373,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @param id Service id.
+     * @param srvcId Service id.
+     * @param rmvRegistered If it's necessary remove registered service's descriptor.
      */
-    protected void undeploy(IgniteUuid id) {
+    protected void undeploy(IgniteUuid srvcId, boolean rmvRegistered) {
+        if (rmvRegistered)
+            registeredSrvcs.remove(srvcId);
+
         Collection<ServiceContextImpl> ctxs;
 
         synchronized (locSvcs) {
-            ctxs = locSvcs.remove(id);
+            ctxs = locSvcs.remove(srvcId);
         }
 
         if (ctxs != null) {
@@ -1387,12 +1436,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 Integer expCnt = top.get(ctx.localNodeId());
 
                 if (expCnt == null || expCnt == 0)
-                    undeploy(srvcId);
+                    undeploy(srvcId, false);
                 else {
                     Collection ctxs = locSvcs.get(srvcId);
 
                     if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
-                        ServiceInfo srvcDesc = srvcsDescs.get(srvcId);
+                        ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
 
                         assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
 
@@ -1407,7 +1456,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             synchronized (srvcsTopsUpdateMux) {
                 fullTops.forEach((srvcId, top) -> {
-                    ServiceInfo desc = srvcsDescs.get(srvcId);
+                    ServiceInfo desc = registeredSrvcs.get(srvcId);
 
                     assert desc != null : "Service descriptor has not been found to update deployment topology.";
 
@@ -1416,8 +1465,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 srvcsTopsUpdateMux.notifyAll();
             }
-
-            srvcsDescs.entrySet().removeIf(e -> !srvcsIds.contains(e.getKey()));
 
             depFuts.entrySet().removeIf(entry -> {
                 IgniteUuid srvcId = entry.getKey();
@@ -1451,7 +1498,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return true;
                 }
                 else {
-                    for (ServiceInfo dep : srvcsDescs.values()) {
+                    for (ServiceInfo dep : registeredSrvcs.values()) {
                         if (dep.configuration().equalsIgnoreNodeFilter(cfg)) {
                             fut.onDone();
 
@@ -1494,7 +1541,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return @return Service's id if exists, otherwise {@code null};
      */
     @Nullable private IgniteUuid lookupId(String name) {
-        for (ServiceInfo desc : srvcsDescs.values()) {
+        for (ServiceInfo desc : registeredSrvcs.values()) {
             if (desc.name().equals(name))
                 return desc.serviceId();
         }
@@ -1531,7 +1578,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     @NotNull protected Set<IgniteUuid> affinityServices() {
         Set<IgniteUuid> srvcs = new HashSet<>();
 
-        srvcsDescs.values().forEach(desc -> {
+        registeredSrvcs.values().forEach(desc -> {
             if (desc.configuration().getCacheName() != null)
                 srvcs.add(desc.serviceId());
         });
@@ -1544,7 +1591,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Id of affinity service with given cache name. Possibly {@code null} if not found.
      */
     @Nullable protected IgniteUuid affinityService(String cacheName) {
-        for (ServiceInfo desc : srvcsDescs.values()) {
+        for (ServiceInfo desc : registeredSrvcs.values()) {
             if (desc.cacheName().equals(cacheName))
                 return desc.serviceId();
         }
@@ -1557,16 +1604,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Service configuration of service deployed with given id. Possibly {@code null} if not found.
      */
     @Nullable protected ServiceConfiguration serviceConfiguration(IgniteUuid srvcId) {
-        ServiceInfo desc = srvcsDescs.get(srvcId);
+        ServiceInfo desc = registeredSrvcs.get(srvcId);
 
         return desc != null ? desc.configuration() : null;
     }
 
     /**
-     * @return Ids of all services deployed across the cluster.
+     * @return Ids of all deployed services.
      */
-    protected Set<IgniteUuid> allServicesIds() {
-        return new HashSet<>(srvcsDescs.keySet());
+    protected Set<IgniteUuid> allDeployedServicesIds() {
+        Set<IgniteUuid> ids = new HashSet<>();
+
+        registeredSrvcs.forEach((srvcId, desc) -> {
+            if (!desc.topologySnapshot().isEmpty())
+                ids.add(srvcId);
+        });
+
+        return ids;
     }
 
     /**
@@ -1574,7 +1628,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return {@link ServiceInfo} instance of deployed service with given id. Possibly {@code null} if not found.
      */
     @Nullable protected ServiceInfo serviceInfo(IgniteUuid srvcId) {
-        return srvcsDescs.get(srvcId);
+        return registeredSrvcs.get(srvcId);
     }
 
     /**
@@ -1592,52 +1646,52 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param desc {@link ServiceInfo} instance.
      */
     protected void putIfAbsentServiceInfo(IgniteUuid srvcId, ServiceInfo desc) {
-        srvcsDescs.putIfAbsent(srvcId, desc);
+        registeredSrvcs.putIfAbsent(srvcId, desc);
     }
 
     /**
-     * @param descs Collection of services information to add.
-     */
-    protected void servicesInfo(@NotNull Collection<ServiceInfo> descs) {
-        descs.forEach(d -> srvcsDescs.put(d.serviceId(), d));
-    }
-
-    /**
-     * @return New {@link ArrayList} with services info if deployed service across the cluster.
-     */
-    protected ArrayList<ServiceInfo> servicesInfo() {
-        return new ArrayList<>(srvcsDescs.values());
-    }
-
-    /**
-     * Gets and remove services received to deploy from node with given id on joining.
+     * Gets services received to deploy from node with given id on joining.
      *
      * @param nodeId Joined node id.
      * @return List of services to deploy received on node joining with given id.
      */
-    protected List<ServiceInfo> getAndRemoveServicesReceivedFromJoin(UUID nodeId) {
-        return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin(nodeId);
+    @NotNull protected Set<IgniteUuid> servicesReceivedFromJoin(UUID nodeId) {
+        Set<IgniteUuid> ids = new HashSet<>();
+
+        for (ServiceInfo desc : registeredSrvcs.values()) {
+            if (desc.originNodeId().equals(nodeId))
+                ids.add(desc.serviceId());
+        }
+
+        return ids;
     }
 
     /**
-     * Gets and remove all services received to deploy from nodes on joining.
-     *
-     * @return List of services to deploy received on nodes joining.
-     */
-    protected List<ServiceInfo> getAndRemoveAllServicesReceivedFromJoin() {
-        return clusterSrvcsInfo.getAndRemoveServicesReceivedFromJoin();
-    }
-
-    /**
-     * Special handler for local discovery events for which the regular events are not generated, e.g. local join and
-     * client reconnect events.
+     * Special handler for local join events for which the regular events are not generated.
+     * <p/>
+     * Local join event is expected on joining to topology or client reconnect.
      *
      * @param evt Discovery event.
      * @param discoCache Discovery cache.
      */
-    public void onLocalEvent(DiscoveryEvent evt, DiscoCache discoCache) {
-        if (evt.eventNode().order() == 1)
-            clusterSrvcsInfo.onFirstNodeStart();
+    public void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache) {
+        assert ctx.localNodeId().equals(evt.eventNode().id());
+        assert evt.type() == EVT_NODE_JOINED;
+
+        // First node start, {@link #onGridDataReceived(DiscoveryDataBag.GridDiscoveryData)} has not been called
+        if (!evt.eventNode().isClient()) {
+            boolean first;
+
+            DiscoverySpi spi = ctx.discovery().getInjectedDiscoverySpi();
+
+            if ((spi instanceof TcpDiscoverySpi))
+                first = ((TcpDiscoverySpi)spi).isLocalNodeCoordinator();
+            else
+                first = F.eq(ctx.localNodeId(), U.oldest(ctx.discovery().aliveServerNodes(), null));
+
+            if (first)
+                locData.services().forEach(desc -> registeredSrvcs.put(desc.serviceId(), desc));
+        }
 
         exchMgr.onLocalEvent(evt, discoCache);
     }
