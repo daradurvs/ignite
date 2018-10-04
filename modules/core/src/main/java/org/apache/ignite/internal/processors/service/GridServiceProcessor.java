@@ -119,11 +119,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Contains all services information across the cluster. */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> registeredSrvcs = new ConcurrentHashMap<>();
 
-    /** Services deployment exchange manager. */
-    private final ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
-
     /** Connection status lock. */
     private final ReadWriteLock connStatusLock = new ReentrantReadWriteLock();
+
+    /** Services deployment exchange manager. */
+    private ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
 
     /** Client disconnected flag. */
     private boolean disconnected;
@@ -349,6 +349,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         try {
             disconnected = true;
 
+            exchMgr.stopProcessing();
+
+            exchMgr = new ServicesDeploymentExchangeManager(ctx);
+
             IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
                 ctx.cluster().clientReconnectFuture(), "Client node disconnected, the operation's result is unknown.");
 
@@ -365,6 +369,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         connStatusLock.writeLock().lock();
 
         try {
+            exchMgr.startProcessing();
+
             disconnected = false;
 
             return null;
@@ -1402,6 +1408,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param msg Services full map message.
      */
     protected void processFullMap(ServicesFullMapMessage msg) {
+        if (disconnected)
+            return;
+
         try {
             Collection<ServiceFullDeploymentsResults> results = msg.results();
 
@@ -1461,7 +1470,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 fullTops.forEach((srvcId, top) -> {
                     ServiceInfo desc = registeredSrvcs.get(srvcId);
 
-                    assert desc != null : "Service descriptor has not been found to update deployment topology.";
+                    assert desc != null && !disconnected : "Service descriptor has not been found to update deployment topology.";
 
                     desc.topologySnapshot(top);
                 });

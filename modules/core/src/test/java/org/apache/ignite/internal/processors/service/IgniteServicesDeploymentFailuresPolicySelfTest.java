@@ -91,7 +91,7 @@ public class IgniteServicesDeploymentFailuresPolicySelfTest extends GridCommonAb
 
         assertEquals(0, ignite.services().serviceDescriptors().size());
 
-        assertNull(ignite.context().service().serviceTopology("testCancelPolicy", 0));
+        assertNull(ignite.services().service("testCancelPolicy"));
     }
 
     /**
