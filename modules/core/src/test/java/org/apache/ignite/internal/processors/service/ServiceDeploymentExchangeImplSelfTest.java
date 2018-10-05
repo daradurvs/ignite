@@ -139,7 +139,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         }
 
         /** {@inheritDoc} */
-        @Override public int eventTypeId() {
+        @Override public int eventType() {
             return evt.type();
         }
 

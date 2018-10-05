@@ -43,7 +43,7 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
      *
      * @return Event's type id.
      */
-    public int eventTypeId();
+    public int eventType();
 
     /**
      * Returns cause discovery event node id.

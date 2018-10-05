@@ -99,19 +99,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @GridToStringInclude
     private ServicesDeploymentExchangeId exchId;
 
-    /** Event type. */
-    private int evtType;
-
-    /** Event node id. */
-    private UUID evtNodeId;
-
     /** Custom message. */
     @GridToStringInclude
     @Nullable private DiscoveryCustomMessage customMsg;
-
-    /** Cause event topology version. */
-    @GridToStringInclude
-    private AffinityTopologyVersion evtTopVer;
 
     /** Kernal context. */
     private GridKernalContext ctx;
@@ -137,27 +127,20 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     protected ServicesDeploymentExchangeFutureTask(ServicesDeploymentExchangeId exchId) {
         this.exchId = exchId;
-        this.evtTopVer = exchId.topologyVersion();
-        this.evtType = exchId.eventType();
-        this.evtNodeId = exchId.nodeId();
     }
 
     /** {@inheritDoc} */
     @Override public void customMessage(DiscoveryCustomMessage customMsg) {
         this.customMsg = customMsg;
 
-        assert ((evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) && this.customMsg == null) ||
-            (evtType == EVT_DISCOVERY_CUSTOM_EVT && this.customMsg != null) : "evtType=" + evtType + "customMsg=" + this.customMsg;
+        assert ((exchId.eventType() == EVT_NODE_JOINED || exchId.eventType() == EVT_NODE_LEFT || exchId.eventType() == EVT_NODE_FAILED) && this.customMsg == null) ||
+            (exchId.eventType() == EVT_DISCOVERY_CUSTOM_EVT && this.customMsg != null) : "evtType=" + exchId.eventType() + "customMsg=" + this.customMsg;
     }
 
     /** {@inheritDoc} */
     @Override public void init(GridKernalContext ctx) throws IgniteCheckedException {
         if (isCompleted() || initTaskFut.isDone())
             return;
-
-        assert evtType != 0;
-        assert evtNodeId != null;
-        assert evtTopVer != null;
 
         this.ctx = ctx;
         this.log = ctx.log(getClass());
@@ -166,8 +149,12 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (log.isDebugEnabled()) {
             log.debug("Started services exchange task init: [exchId=" + exchangeId() +
                 ", locId=" + this.ctx.localNodeId() +
-                ", evtType=" + U.gridEventName(evtType) + ", evtNodeId=" + evtNodeId + ", customMsg=" + customMsg + ']');
+                ", evtType=" + U.gridEventName(exchId.eventType()) + ", evtNodeId=" + exchId.nodeId() + ", customMsg=" + customMsg + ']');
         }
+
+        final AffinityTopologyVersion evtTopVer = exchId.topologyVersion();
+        final UUID evtNodeId = exchId.nodeId();
+        final int evtType = exchId.eventType();
 
         try {
             ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
@@ -355,7 +342,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 ", top=" + srvcTop);
         }
 
-        ServiceInfo desc = new ServiceInfo(evtNodeId, srvcId, cfg);
+        ServiceInfo desc = new ServiceInfo(exchId.nodeId(), srvcId, cfg);
 
         ctx.service().putIfAbsentServiceInfo(srvcId, desc);
 
@@ -777,7 +764,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     crdId = crd.id();
 
                     if (crd.isLocal())
-                        initCoordinator(evtTopVer);
+                        initCoordinator(exchId.topologyVersion());
                 }
 
                 createAndSendSingleMapMessage(exchId, depErrors);
@@ -811,13 +798,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public int eventTypeId() {
-        return evtType;
+    @Override public int eventType() {
+        return exchId.eventType();
     }
 
     /** {@inheritDoc} */
     @Override public UUID nodeId() {
-        return evtNodeId;
+        return exchId.nodeId();
     }
 
     /** {@inheritDoc} */
@@ -843,9 +830,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         depErrors.clear();
         remaining.clear();
         exchId = null;
-        evtNodeId = null;
         customMsg = null;
-        evtTopVer = null;
         ctx = null;
         log = null;
         crdId = null;
@@ -864,7 +849,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public AffinityTopologyVersion topologyVersion() {
-        return evtTopVer;
+        return exchId.topologyVersion();
     }
 
     /** {@inheritDoc} */
@@ -882,10 +867,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         exchId = (ServicesDeploymentExchangeId)in.readObject();
         customMsg = (DiscoveryCustomMessage)in.readObject();
-
-        evtTopVer = exchId.topologyVersion();
-        evtType = exchId.eventType();
-        evtNodeId = exchId.nodeId();
     }
 
     /** {@inheritDoc} */
