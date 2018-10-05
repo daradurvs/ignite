@@ -25,6 +25,7 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.communication.GridIoManager;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.testframework.GridTestNode;
@@ -64,7 +65,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
 
         assertEquals(0, exchMgr.tasks().size());
 
-        tasks.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
+        tasks.forEach(t -> exchMgr.addTask(t.exchangeId(), t.customMessage()));
 
         assertEquals(tasks.size(), exchMgr.tasks().size());
     }
@@ -91,7 +92,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         for (int i = 0; i < 5; i++)
             tasks.add(new TestTaskClass());
 
-        tasks.forEach(t -> exchMgr.addEvent(t.event(), t.topologyVersion(), t.exchangeId()));
+        tasks.forEach(t -> exchMgr.addTask(t.exchangeId(), t.customMessage()));
 
         assertEquals(tasks.size() + 2, exchMgr.tasks().size());
     }
@@ -121,7 +122,6 @@ public class ServiceDeploymentExchangeImplSelfTest {
     /**
      * Service deployment exchange task no-op implementation for tests.
      */
-
     private static class TestTaskClass implements ServicesDeploymentExchangeTask {
         /** */
         private final DiscoveryEvent evt = new DiscoveryEvent(
@@ -139,13 +139,23 @@ public class ServiceDeploymentExchangeImplSelfTest {
         }
 
         /** {@inheritDoc} */
-        @Override public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer) {
+        @Override public int eventTypeId() {
+            return evt.type();
+        }
+
+        /** {@inheritDoc} */
+        @Override public UUID nodeId() {
+            return evt.node().id();
+        }
+
+        /** {@inheritDoc} */
+        @Override public void customMessage(DiscoveryCustomMessage customMsg) {
             // No-op.
         }
 
         /** {@inheritDoc} */
-        @Override public DiscoveryEvent event() {
-            return evt;
+        @Override public DiscoveryCustomMessage customMessage() {
+            return null;
         }
 
         /** {@inheritDoc} */

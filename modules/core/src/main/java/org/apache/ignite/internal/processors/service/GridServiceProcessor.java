@@ -285,8 +285,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         for (ServiceInfo desc : clusterData.registeredServices())
             registeredSrvcs.put(desc.serviceId(), desc);
 
-        clusterData.exchangeQueue().forEach(t -> ctx.service().exchange().addEvent(t.event(), t.topologyVersion(),
-            t.exchangeId()));
+        clusterData.exchangeQueue().forEach(t -> ctx.service().exchange().addTask(t.exchangeId(), t.customMessage()));
     }
 
     /** {@inheritDoc} */

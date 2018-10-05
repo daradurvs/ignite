@@ -45,6 +45,8 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.thread.IgniteThread;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT;
 import static org.apache.ignite.IgniteSystemProperties.getLong;
@@ -200,16 +202,37 @@ public class ServicesDeploymentExchangeManager {
     /**
      * Addeds discovery event to exchange queue.
      *
-     * @param evt Discovery event.
-     * @param topVer Topology version.
      * @param exchId Exchange id.
+     * @param evt Discovery event.
      */
-    protected void addEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesDeploymentExchangeId exchId) {
+    protected void addEvent(ServicesDeploymentExchangeId exchId, DiscoveryEvent evt) {
+        DiscoveryCustomMessage customMsg = null;
+
+        if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
+            DiscoveryCustomEvent customEvt = (DiscoveryCustomEvent)evt;
+
+            customMsg = customEvt.customMessage();
+
+            if (customEvt.customMessage() instanceof DynamicServicesChangeRequestBatchMessage)
+                customEvt.customMessage(null);
+        }
+
+        addTask(exchId, customMsg);
+    }
+
+    /**
+     * Addeds exchange task with given exchange id.
+     *
+     * @param exchId Exchange id.
+     * @param customMsg Discovery custom message.
+     */
+    protected void addTask(@NotNull ServicesDeploymentExchangeId exchId, @Nullable DiscoveryCustomMessage customMsg) {
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, ServicesDeploymentExchangeFutureTask::new);
 
         synchronized (newEvtMux) {
             if (!exchWorker.tasksQueue.contains(task)) {
-                task.event(evt, topVer);
+                if (customMsg != null)
+                    task.customMessage(customMsg);
 
                 exchWorker.tasksQueue.add(task);
             }
@@ -228,7 +251,7 @@ public class ServicesDeploymentExchangeManager {
         if (cache.state().transition())
             pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
         else if (cache.state().active())
-            addEvent(evt, cache.version(), new ServicesDeploymentExchangeId(evt, cache.version()));
+            addEvent(new ServicesDeploymentExchangeId(evt, cache.version()), evt);
         else if (log.isDebugEnabled())
             log.debug("Ignore event, cluster is inactive, evt=" + evt);
     }
@@ -255,15 +278,14 @@ public class ServicesDeploymentExchangeManager {
                             ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
 
                             if (msg0.clusterActive())
-                                pendingEvts.forEach((t) -> addEvent(t.get1(), t.get2(),
-                                    new ServicesDeploymentExchangeId(t.get1(), t.get2())));
+                                pendingEvts.forEach((t) -> addEvent(new ServicesDeploymentExchangeId(t.get1(), t.get2()), t.get1()));
                             else if (log.isDebugEnabled())
                                 pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
 
                             pendingEvts.clear();
                         }
                         else if (msg instanceof ChangeGlobalStateMessage)
-                            addEvent(evt, discoCache.version(), new ServicesDeploymentExchangeId(evt, discoCache.version()));
+                            addEvent(new ServicesDeploymentExchangeId(evt, discoCache.version()), evt);
 
                         else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
                             msg instanceof DynamicCacheChangeBatch ||

@@ -21,8 +21,8 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,19 +39,32 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
     public void init(GridKernalContext kCtx) throws IgniteCheckedException;
 
     /**
-     * Adds cause discovery event.
+     * Returns cause discovery event type id.
      *
-     * @param evt Cause discovery event.
-     * @param evtTopVer Event's topology version.
+     * @return Event's type id.
      */
-    public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer);
+    public int eventTypeId();
 
     /**
-     * Returns cause discovery event.
+     * Returns cause discovery event node id.
      *
-     * @return Cause discovery event.
+     * @return Node id.
      */
-    public DiscoveryEvent event();
+    public UUID nodeId();
+
+    /**
+     * Sets discovery custom message.
+     *
+     * @param customMsg Discovery custom message.
+     */
+    public void customMessage(DiscoveryCustomMessage customMsg);
+
+    /**
+     * Returns discovery custom event's message.
+     *
+     * @return Discovery custom event's message.
+     */
+    public DiscoveryCustomMessage customMessage();
 
     /**
      * Returns services deployment exchange id of the task.

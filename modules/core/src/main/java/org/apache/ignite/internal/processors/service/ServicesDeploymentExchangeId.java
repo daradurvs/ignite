@@ -29,6 +29,8 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Services deployment exchange id.
@@ -59,15 +61,27 @@ public class ServicesDeploymentExchangeId implements Message {
      * @param evt Cause discovery event.
      * @param topVer Topology version.
      */
-    public ServicesDeploymentExchangeId(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
-        this.nodeId = evt.eventNode().id();
-        this.evtType = evt.type();
-        this.topVer = topVer;
+    protected ServicesDeploymentExchangeId(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+        this(
+            evt.eventNode().id(),
+            evt.type(),
+            topVer,
+            ((evt instanceof DiscoveryCustomEvent) ? ((DiscoveryCustomEvent)evt).customMessage().id() : null)
+        );
+    }
 
-        if (evt instanceof DiscoveryCustomEvent)
-            this.reqId = ((DiscoveryCustomEvent)evt).customMessage().id();
-        else
-            this.reqId = null;
+    /**
+     * @param nodeId Event node id.
+     * @param evtType Event type.
+     * @param topVer Topology version.
+     * @param reqId Custom message id, possibly {@code null}.
+     */
+    protected ServicesDeploymentExchangeId(@NotNull UUID nodeId, int evtType, @NotNull AffinityTopologyVersion topVer,
+        @Nullable IgniteUuid reqId) {
+        this.nodeId = nodeId;
+        this.evtType = evtType;
+        this.topVer = topVer;
+        this.reqId = reqId;
     }
 
     /**

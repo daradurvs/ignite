@@ -33,11 +33,9 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
-import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
@@ -101,9 +99,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @GridToStringInclude
     private ServicesDeploymentExchangeId exchId;
 
-    /** Discovery event. */
+    /** Event type. */
+    private int evtType;
+
+    /** Event node id. */
+    private UUID evtNodeId;
+
+    /** Custom message. */
     @GridToStringInclude
-    private DiscoveryEvent evt;
+    @Nullable private DiscoveryCustomMessage customMsg;
 
     /** Cause event topology version. */
     @GridToStringInclude
@@ -131,16 +135,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /**
      * @param exchId Service deployment exchange id.
      */
-    public ServicesDeploymentExchangeFutureTask(ServicesDeploymentExchangeId exchId) {
+    protected ServicesDeploymentExchangeFutureTask(ServicesDeploymentExchangeId exchId) {
         this.exchId = exchId;
+        this.evtTopVer = exchId.topologyVersion();
+        this.evtType = exchId.eventType();
+        this.evtNodeId = exchId.nodeId();
     }
 
     /** {@inheritDoc} */
-    @Override public void event(DiscoveryEvent evt, AffinityTopologyVersion evtTopVer) {
-        assert evt != null && evtTopVer != null;
+    @Override public void customMessage(DiscoveryCustomMessage customMsg) {
+        this.customMsg = customMsg;
 
-        this.evt = evt;
-        this.evtTopVer = evtTopVer;
+        assert ((evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) && customMsg == null) ||
+            (evtType == EVT_DISCOVERY_CUSTOM_EVT && customMsg != null);
     }
 
     /** {@inheritDoc} */
@@ -148,7 +155,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         if (isCompleted() || initTaskFut.isDone())
             return;
 
-        assert evt != null;
+        assert evtType != 0;
+        assert evtNodeId != null;
         assert evtTopVer != null;
 
         this.ctx = ctx;
@@ -156,9 +164,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         this.locJoinTopVer = ctx.discovery().localJoin().joinTopologyVersion();
 
         if (log.isDebugEnabled()) {
-            log.debug("Started services exchange future init: [exchId=" + exchangeId() +
+            log.debug("Started services exchange task init: [exchId=" + exchangeId() +
                 ", locId=" + this.ctx.localNodeId() +
-                ", evt=" + evt + ']');
+                ", evtType=" + U.gridEventName(evtType) + ", evtNodeId=" + evtNodeId + ", customMsg=" + customMsg + ']');
         }
 
         try {
@@ -171,30 +179,28 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     initCoordinator(evtTopVer);
             }
 
-            if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
-                DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
-
-                if (msg instanceof ChangeGlobalStateMessage)
-                    onChangeGlobalStateMessage((ChangeGlobalStateMessage)msg, evtTopVer);
-                else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
-                    onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)msg, evtTopVer);
+            if (evtType == EVT_DISCOVERY_CUSTOM_EVT) {
+                if (customMsg instanceof ChangeGlobalStateMessage)
+                    onChangeGlobalStateMessage((ChangeGlobalStateMessage)customMsg, evtTopVer);
+                else if (customMsg instanceof DynamicServicesChangeRequestBatchMessage)
+                    onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)customMsg, evtTopVer);
                 else if (!lessThenLocalJoin(evtTopVer)) {
-                    if (msg instanceof DynamicCacheChangeBatch)
-                        onCacheStateChangeRequest((DynamicCacheChangeBatch)msg);
-                    else if (msg instanceof CacheAffinityChangeMessage)
+                    if (customMsg instanceof DynamicCacheChangeBatch)
+                        onCacheStateChangeRequest((DynamicCacheChangeBatch)customMsg);
+                    else if (customMsg instanceof CacheAffinityChangeMessage)
                         onCacheAffinityChangeMessage(evtTopVer);
                     else
-                        assert false : "Unexpected type of discovery event, evt=" + evt;
+                        assert false : "Unexpected type of custom message, customMsg=" + customMsg;
                 }
             }
             else {
-                assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT ||
-                    evt.type() == EVT_NODE_FAILED : "Unexpected type of discovery event, evt=" + evt;
+                assert evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT ||
+                    evtType == EVT_NODE_FAILED : "Unexpected type of discovery event, evtType=" + evtType;
 
                 Set<IgniteUuid> toReassign = new HashSet<>();
 
-                if (evt.type() == EVT_NODE_JOINED)
-                    toReassign.addAll(ctx.service().servicesReceivedFromJoin(evt.eventNode().id()));
+                if (evtType == EVT_NODE_JOINED)
+                    toReassign.addAll(ctx.service().servicesReceivedFromJoin(evtNodeId));
 
                 toReassign.addAll(ctx.service().allDeployedServicesIds());
 
@@ -349,7 +355,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 ", top=" + srvcTop);
         }
 
-        ServiceInfo desc = new ServiceInfo(evt.eventNode().id(), srvcId, cfg);
+        ServiceInfo desc = new ServiceInfo(evtNodeId, srvcId, cfg);
 
         ctx.service().putIfAbsentServiceInfo(srvcId, desc);
 
@@ -805,6 +811,21 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
+    @Override public int eventTypeId() {
+        return evtType;
+    }
+
+    /** {@inheritDoc} */
+    @Override public UUID nodeId() {
+        return evtNodeId;
+    }
+
+    /** {@inheritDoc} */
+    @Override public DiscoveryCustomMessage customMessage() {
+        return customMsg;
+    }
+
+    /** {@inheritDoc} */
     @Override public void complete(@Nullable Throwable err) {
         onDone(null, err, false);
 
@@ -826,11 +847,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public DiscoveryEvent event() {
-        return evt;
-    }
-
-    /** {@inheritDoc} */
     @Override public AffinityTopologyVersion topologyVersion() {
         return evtTopVer;
     }
@@ -843,15 +859,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
         out.writeObject(exchId);
-        out.writeObject(evt);
-        out.writeObject(evtTopVer);
+        out.writeObject(customMsg);
     }
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         exchId = (ServicesDeploymentExchangeId)in.readObject();
-        evt = (DiscoveryEvent)in.readObject();
-        evtTopVer = (AffinityTopologyVersion)in.readObject();
+        customMsg = (DiscoveryCustomMessage)in.readObject();
+
+        evtTopVer = exchId.topologyVersion();
+        evtType = exchId.eventType();
+        evtNodeId = exchId.nodeId();
     }
 
     /** {@inheritDoc} */
