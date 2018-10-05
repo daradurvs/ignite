@@ -1470,7 +1470,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 fullTops.forEach((srvcId, top) -> {
                     ServiceInfo desc = registeredSrvcs.get(srvcId);
 
-                    assert desc != null && !disconnected : "Service descriptor has not been found to update deployment topology.";
+                    assert desc != null : "Service descriptor has not been found to update deployment topology.";
 
                     desc.topologySnapshot(top);
                 });

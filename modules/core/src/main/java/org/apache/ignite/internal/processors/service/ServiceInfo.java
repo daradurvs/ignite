@@ -48,7 +48,7 @@ public class ServiceInfo implements ServiceDescriptor {
 
     /** Topology snapshot. */
     @GridToStringInclude
-    private Map<UUID, Integer> top = Collections.emptyMap();
+    private volatile Map<UUID, Integer> top = Collections.emptyMap();
 
     /**
      * @param nodeId Initiating node id.
