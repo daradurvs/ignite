@@ -88,6 +88,7 @@ import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
+import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 
 /**
  * Grid service processor.
@@ -1446,16 +1447,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 Integer expCnt = top.get(ctx.localNodeId());
 
-                if (expCnt == null || expCnt == 0)
-                    undeploy(srvcId, false);
+                ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
+
+                if (expCnt == null || expCnt == 0) {
+                    boolean rmvRegistered = srvcDesc != null && srvcDesc.configuration().getPolicy() != IGNORE;
+
+                    undeploy(srvcId, rmvRegistered);
+                }
                 else {
+                    assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
+
                     Collection ctxs = locSvcs.get(srvcId);
 
                     if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
-                        ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
-
-                        assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
-
                         ServiceConfiguration cfg = srvcDesc.configuration();
 
                         redeploy(srvcId, cfg, top);

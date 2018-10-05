@@ -191,6 +191,11 @@ public class ServiceDeploymentExchangeImplSelfTest {
         }
 
         /** {@inheritDoc} */
+        @Override public void clear() {
+            // No-op.
+        }
+
+        /** {@inheritDoc} */
         @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
             // No-op.
         }

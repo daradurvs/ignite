@@ -146,8 +146,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @Override public void customMessage(DiscoveryCustomMessage customMsg) {
         this.customMsg = customMsg;
 
-        assert ((evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) && customMsg == null) ||
-            (evtType == EVT_DISCOVERY_CUSTOM_EVT && customMsg != null);
+        assert ((evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) && this.customMsg == null) ||
+            (evtType == EVT_DISCOVERY_CUSTOM_EVT && this.customMsg != null) : "evtType=" + evtType + "customMsg=" + this.customMsg;
     }
 
     /** {@inheritDoc} */
@@ -834,6 +834,22 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         if (!initCrdFut.isDone())
             initCrdFut.onDone();
+    }
+
+    /** {@inheritDoc} */
+    @Override public void clear() {
+        singleMapMsgs.clear();
+        expDeps.clear();
+        depErrors.clear();
+        remaining.clear();
+        exchId = null;
+        evtNodeId = null;
+        customMsg = null;
+        evtTopVer = null;
+        ctx = null;
+        log = null;
+        crdId = null;
+        locJoinTopVer = null;
     }
 
     /** {@inheritDoc} */

@@ -110,6 +110,11 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
     public void waitForComplete(long timeout) throws IgniteCheckedException;
 
     /**
+     * Releases resources to reduce memory consumption.
+     */
+    public void clear();
+
+    /**
      * Handles received single node services map message.
      *
      * @param snd Sender node id.

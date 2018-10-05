@@ -496,6 +496,8 @@ public class ServicesDeploymentExchangeManager {
             synchronized (newEvtMux) {
                 tasksQueue.poll();
             }
+
+            task.clear();
         }
     }
 
