@@ -132,7 +132,7 @@ public class ServicesSingleMapMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 162;
+        return 165;
     }
 
     /** {@inheritDoc} */

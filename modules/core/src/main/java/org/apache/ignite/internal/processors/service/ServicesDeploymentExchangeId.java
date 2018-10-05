@@ -198,7 +198,7 @@ public class ServicesDeploymentExchangeId implements Message {
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 161;
+        return 164;
     }
 
     /** {@inheritDoc} */
