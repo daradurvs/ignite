@@ -1450,7 +1450,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
 
                 if (expCnt == null || expCnt == 0) {
-                    boolean rmvRegistered = srvcDesc != null && srvcDesc.configuration().getPolicy() != IGNORE;
+                    boolean rmvRegistered = srvcDesc != null && srvcDesc.configuration().getPolicy() != IGNORE && top.isEmpty();
 
                     undeploy(srvcId, rmvRegistered);
                 }
