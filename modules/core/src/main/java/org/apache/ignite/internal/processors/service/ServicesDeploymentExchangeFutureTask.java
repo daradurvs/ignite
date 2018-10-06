@@ -91,7 +91,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     @GridToStringExclude
     private final Map<IgniteUuid, Collection<Throwable>> depErrors = new HashMap<>();
 
-    /** Remaining nodes to received single node assignments message. */
+    /** Remaining nodes to received services single map message. */
     @GridToStringInclude
     private final Set<UUID> remaining = new HashSet<>();
 
@@ -200,7 +200,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             }
         }
         catch (Exception e) {
-            log.error("Error occurred during deployment task initialization, err=" + e.getMessage(), e);
+            log.error("Error occurred while initializing exchange task, err=" + e.getMessage(), e);
 
             initTaskFut.onDone(e);
 
@@ -229,7 +229,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 }
             }
             catch (Exception e) {
-                log.error("Error occurred while initialization of remaining collection.", e);
+                log.error("Error occurred while initializing remaining collection.", e);
 
                 initCrdFut.onDone(e);
             }
@@ -300,15 +300,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         Throwable th = null;
 
         if (srvcTop != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
-            th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists" +
-                ", srvcTop=" + srvcTop);
+            th = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
+                "srvcId" + reqSrvcId + ", srvcTop=" + srvcTop + ']');
         }
         else {
             ServiceInfo oldSrvcDesc = ctx.service().serviceInfo(cfg.getName());
 
             if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
                 th = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                    "different configuration) [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                    "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
             }
             else {
                 try {
@@ -334,12 +334,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             errors.add(th);
 
             return Collections.emptyMap();
-        }
-
-        if (log.isDebugEnabled()) {
-            log.debug("Calculated service assignments" +
-                ", srvcId=" + srvcId +
-                ", top=" + srvcTop);
         }
 
         ServiceInfo desc = new ServiceInfo(exchId.nodeId(), srvcId, cfg);
@@ -413,22 +407,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 th = e;
             }
 
-            if (th == null && !top.isEmpty()) {
-                if (log.isDebugEnabled())
-                    log.debug("Calculated service assignments: " + top);
-
+            if (th == null && !top.isEmpty())
                 srvcsToDeploy.put(srvcId, top);
-            }
             else {
-                if (th != null) {
+                if (th == null) {
                     th = new IgniteException("Failed to determine suitable nodes to deploy service" +
-                        ", srvcId=" + srvcId +
-                        ", cfg=" + cfg, th);
+                        ", srvcId=" + srvcId + ", cfg=" + cfg);
                 }
 
-                Collection<Throwable> errors = depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
-
-                errors.add(th);
+                depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(th);
 
                 srvcsToUndeploy.add(srvcId);
             }
@@ -457,7 +444,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             proc.exchange().exchangerBlockingSectionBegin();
 
             for (IgniteUuid srvcId : srvcsToUndeploy)
-                proc.undeploy(srvcId, true);
+                proc.undeploy(srvcId);
 
             srvcsToDeploy.forEach((srvcId, top) -> {
                 Integer expCnt = top.get(ctx.localNodeId());
@@ -509,7 +496,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
             ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
 
             if (log.isDebugEnabled())
-                log.debug("Send services single assignments message, msg=" + msg);
+                log.debug("Send services single map message, msg=" + msg);
         }
         catch (IgniteCheckedException e) {
             if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
@@ -567,7 +554,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /**
-     * Creates full assignments message and send it over discovery.
+     * Creates services full map message and send it over discovery.
      */
     private void onAllReceived() {
         assert !isCompleted();
@@ -598,10 +585,13 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     public Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         try {
-            if (lessThenLocalJoin(topVer))
-                return Collections.emptyMap();
+            Map<UUID, Integer> srvcTop = lessThenLocalJoin(topVer) ? Collections.emptyMap()
+                : ctx.service().reassign(srvcId, cfg, topVer);
 
-            return ctx.service().reassign(srvcId, cfg, topVer);
+            if (log.isDebugEnabled())
+                log.debug("Calculated service assignment : [srvcId=" + srvcId + ", srvcTop=" + srvcTop + ']');
+
+            return srvcTop;
         }
         catch (Throwable e) {
             IgniteCheckedException ex = new IgniteCheckedException("Failed to calculate assignment for service, cfg=" + cfg, e);
@@ -664,7 +654,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     srvcErrors.add(U.marshal(ctx, th));
                 }
                 catch (IgniteCheckedException e) {
-                    log.error("Failed to marshal reassignments error.", e);
+                    log.error("Failed to marshal deployments error.", e);
                 }
             }
 

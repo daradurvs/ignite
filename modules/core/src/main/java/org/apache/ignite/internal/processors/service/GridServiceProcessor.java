@@ -88,7 +88,6 @@ import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
-import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.IGNORE;
 
 /**
  * Grid service processor.
@@ -1383,11 +1382,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /**
      * @param srvcId Service id.
-     * @param rmvRegistered If it's necessary remove registered service's descriptor.
      */
-    protected void undeploy(IgniteUuid srvcId, boolean rmvRegistered) {
-        if (rmvRegistered)
-            registeredSrvcs.remove(srvcId);
+    protected void undeploy(IgniteUuid srvcId) {
+        registeredSrvcs.remove(srvcId);
 
         Collection<ServiceContextImpl> ctxs;
 
@@ -1412,19 +1409,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return;
 
         try {
-            Collection<ServiceFullDeploymentsResults> results = msg.results();
+            final Collection<ServiceFullDeploymentsResults> results = msg.results();
 
-            Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = new HashMap<>();
-
-            Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
+            final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = new HashMap<>();
+            final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
 
             for (ServiceFullDeploymentsResults depRes : results) {
-                IgniteUuid srvcId = depRes.serviceId();
-                Map<UUID, ServiceSingleDeploymentsResults> deps = depRes.results();
+                final IgniteUuid srvcId = depRes.serviceId();
+                final Map<UUID, ServiceSingleDeploymentsResults> deps = depRes.results();
 
-                HashMap<UUID, Integer> top = new HashMap<>();
-
-                Collection<byte[]> errors = new ArrayList<>();
+                final HashMap<UUID, Integer> top = new HashMap<>();
+                final Collection<byte[]> errors = new ArrayList<>();
 
                 deps.forEach((nodeId, res) -> {
                     int cnt = res.count();
@@ -1436,38 +1431,33 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                         errors.addAll(res.errors());
                 });
 
-                if (!top.isEmpty())
-                    fullTops.put(srvcId, top);
+                if (!errors.isEmpty())
+                    fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).addAll(errors);
 
-                if (!errors.isEmpty()) {
-                    Collection<byte[]> srvcErrors = fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>());
+                if (top.isEmpty()) {
+                    undeploy(srvcId);
 
-                    srvcErrors.addAll(errors);
+                    continue;
                 }
-
-                Integer expCnt = top.get(ctx.localNodeId());
 
                 ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
 
-                if (expCnt == null || expCnt == 0) {
-                    boolean rmvRegistered = srvcDesc != null && srvcDesc.configuration().getPolicy() != IGNORE && top.isEmpty();
+                assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
 
-                    undeploy(srvcId, rmvRegistered);
-                }
-                else {
-                    assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
+                fullTops.put(srvcId, top);
 
-                    Collection ctxs = locSvcs.get(srvcId);
+                Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
 
-                    if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
-                        ServiceConfiguration cfg = srvcDesc.configuration();
+                Collection ctxs = locSvcs.get(srvcId);
 
-                        redeploy(srvcId, cfg, top);
-                    }
+                if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
+                    ServiceConfiguration cfg = srvcDesc.configuration();
+
+                    redeploy(srvcId, cfg, top);
                 }
             }
 
-            Set<IgniteUuid> srvcsIds = fullTops.keySet();
+            final Set<IgniteUuid> srvcsIds = fullTops.keySet();
 
             synchronized (srvcsTopsUpdateMux) {
                 fullTops.forEach((srvcId, top) -> {
@@ -1547,7 +1537,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         }
         catch (Exception e) {
-            log.error("Error occurred during processing of full assignments message, msg=" + msg, e);
+            log.error("Error occurred while processing services' full map message." +
+                " [locNode=" + ctx.localNodeId() + ", msg=" + msg, e);
         }
     }
 
