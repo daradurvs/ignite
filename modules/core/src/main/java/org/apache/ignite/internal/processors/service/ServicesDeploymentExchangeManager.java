@@ -491,13 +491,11 @@ public class ServicesDeploymentExchangeManager {
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
 
-            tasks.remove(task.exchangeId());
-
             synchronized (newEvtMux) {
                 tasksQueue.poll();
             }
 
-            task.clear();
+            tasks.remove(task.exchangeId()).clear();
         }
     }
 

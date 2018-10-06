@@ -53,6 +53,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
 import org.apache.ignite.services.ServiceDescriptor;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
@@ -130,15 +131,15 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void customMessage(DiscoveryCustomMessage customMsg) {
-        this.customMsg = customMsg;
+    @Override public void customMessage(@NotNull DiscoveryCustomMessage customMsg) {
+        assert exchId.requestId().equals(customMsg.id()) : "Wrong message's request id : " +
+            "[expected=" + exchId.requestId() + ", actual=" + customMsg.id() + ']';
 
-        assert ((exchId.eventType() == EVT_NODE_JOINED || exchId.eventType() == EVT_NODE_LEFT || exchId.eventType() == EVT_NODE_FAILED) && this.customMsg == null) ||
-            (exchId.eventType() == EVT_DISCOVERY_CUSTOM_EVT && this.customMsg != null) : "evtType=" + exchId.eventType() + "customMsg=" + this.customMsg;
+        this.customMsg = customMsg;
     }
 
     /** {@inheritDoc} */
-    @Override public void init(GridKernalContext ctx) throws IgniteCheckedException {
+    @Override public void init(@NotNull GridKernalContext ctx) throws IgniteCheckedException {
         if (isCompleted() || initTaskFut.isDone())
             return;
 
@@ -146,15 +147,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         this.log = ctx.log(getClass());
         this.locJoinTopVer = ctx.discovery().localJoin().joinTopologyVersion();
 
-        if (log.isDebugEnabled()) {
-            log.debug("Started services exchange task init: [exchId=" + exchangeId() +
-                ", locId=" + this.ctx.localNodeId() +
-                ", evtType=" + U.gridEventName(exchId.eventType()) + ", evtNodeId=" + exchId.nodeId() + ", customMsg=" + customMsg + ']');
-        }
-
         final AffinityTopologyVersion evtTopVer = exchId.topologyVersion();
         final UUID evtNodeId = exchId.nodeId();
         final int evtType = exchId.eventType();
+
+        assert ((evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) && customMsg == null) ||
+            (evtType == EVT_DISCOVERY_CUSTOM_EVT && customMsg != null) : "evtType=" + evtType + "customMsg=" + customMsg;
+
+        if (log.isDebugEnabled()) {
+            log.debug("Started services exchange task init: [exchId=" + exchangeId() + ", locId=" + this.ctx.localNodeId() +
+                ", evtType=" + U.gridEventName(evtType) + ", evtNodeId=" + evtNodeId + ", customMsg=" + customMsg + ']');
+        }
 
         try {
             ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
@@ -181,9 +184,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 }
             }
             else {
-                assert evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT ||
-                    evtType == EVT_NODE_FAILED : "Unexpected type of discovery event, evtType=" + evtType;
-
                 Set<IgniteUuid> toReassign = new HashSet<>();
 
                 if (evtType == EVT_NODE_JOINED)
@@ -480,17 +480,9 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
+        assert crdId != null : "Failed to resolve coordinator to perform services single map message, locId=" + ctx.localNodeId();
+
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
-
-        if (crdId == null) {
-            if (log.isDebugEnabled()) {
-                log.debug("Failed to resolve coordinator to perform services single map message" +
-                    ", locId=" + ctx.localNodeId() +
-                    ", msg=" + msg);
-            }
-
-            return;
-        }
 
         try {
             ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
