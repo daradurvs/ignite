@@ -495,7 +495,7 @@ public class ServicesDeploymentExchangeManager {
                 tasksQueue.poll();
             }
 
-            tasks.remove(task.exchangeId()).clear();
+            tasks.remove(task.exchangeId());
         }
     }
 

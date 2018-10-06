@@ -803,20 +803,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
         if (!initCrdFut.isDone())
             initCrdFut.onDone();
-    }
 
-    /** {@inheritDoc} */
-    @Override public void clear() {
         singleMapMsgs.clear();
         expDeps.clear();
         depErrors.clear();
         remaining.clear();
-        exchId = null;
-        customMsg = null;
-        ctx = null;
-        log = null;
-        crdId = null;
-        locJoinTopVer = null;
     }
 
     /** {@inheritDoc} */
