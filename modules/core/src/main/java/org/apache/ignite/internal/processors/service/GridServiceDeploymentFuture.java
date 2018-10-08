@@ -44,7 +44,7 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
     /**
      * @return Service configuration.
      */
-    public ServiceConfiguration configuration() {
+    ServiceConfiguration configuration() {
         return cfg;
     }
 

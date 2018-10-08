@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.IgniteException;
@@ -138,7 +139,7 @@ public class ServiceInfo implements ServiceDescriptor {
 
     /** {@inheritDoc} */
     @Override public Map<UUID, Integer> topologySnapshot() {
-        return top;
+        return Collections.unmodifiableMap(top);
     }
 
     /** {@inheritDoc} */
