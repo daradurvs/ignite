@@ -321,7 +321,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     th = e;
                 }
 
-                if (srvcTop != null && srvcTop.isEmpty() && !lessThenLocalJoin(topVer))
+                if (th == null && srvcTop != null && srvcTop.isEmpty() && !lessThenLocalJoin(topVer))
                     th = new IgniteCheckedException("Failed to determine suitable nodes to deploy service, cfg=" + cfg);
             }
         }
@@ -333,7 +333,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
             errors.add(th);
 
-            return Collections.emptyMap();
+            srvcTop = Collections.emptyMap();
         }
 
         ServiceInfo desc = new ServiceInfo(exchId.nodeId(), srvcId, cfg);
@@ -388,7 +388,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void initReassignment(Set<IgniteUuid> toReassign, AffinityTopologyVersion topVer) {
         final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
-
         final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
 
         for (IgniteUuid srvcId : toReassign) {
@@ -480,7 +479,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
-        assert crdId != null : "Failed to resolve coordinator to perform services single map message, locId=" + ctx.localNodeId();
+        if (crdId == null) {
+            log.warning("Failed to resolve coordinator to perform services single map message, locId=" + ctx.localNodeId());
+
+            return;
+        }
 
         ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 

@@ -1405,6 +1405,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param msg Services full map message.
      */
     protected void processFullMap(ServicesFullMapMessage msg) {
+        connStatusLock.readLock().lock();
+
         if (disconnected)
             return;
 
@@ -1442,7 +1444,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
 
-                assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances.";
+                assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances, " +
+                    "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
 
                 fullTops.put(srvcId, top);
 
@@ -1463,7 +1466,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 fullTops.forEach((srvcId, top) -> {
                     ServiceInfo desc = registeredSrvcs.get(srvcId);
 
-                    assert desc != null : "Service descriptor has not been found to update deployment topology.";
+                    assert desc != null : "Service descriptor has not been found to update deployment topology, " +
+                        "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
 
                     desc.topologySnapshot(top);
                 });
@@ -1539,6 +1543,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         catch (Exception e) {
             log.error("Error occurred while processing services' full map message." +
                 " [locNode=" + ctx.localNodeId() + ", msg=" + msg, e);
+        }
+        finally {
+            connStatusLock.readLock().unlock();
         }
     }
 
