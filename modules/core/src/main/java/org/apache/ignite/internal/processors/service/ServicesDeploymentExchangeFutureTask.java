@@ -34,7 +34,6 @@ import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
-import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
@@ -44,7 +43,6 @@ import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
-import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteInClosure;
@@ -442,25 +440,30 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
-        if (crdId == null) {
-            log.warning("Failed to resolve coordinator to perform services single map message, locId=" + ctx.localNodeId());
-
-            return;
-        }
-
-        ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
         try {
+            if (crdId == null) {
+                ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null); // Try once again
+
+                if (crd != null)
+                    crdId = crd.id();
+                else {
+                    throw new IgniteCheckedException("Failed to resolve coordinator to perform services single map message," +
+                        " locId=" + ctx.localNodeId());
+                }
+            }
+
+            ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
+
             ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
 
             if (log.isDebugEnabled())
                 log.debug("Send services single map message, msg=" + msg);
         }
         catch (IgniteCheckedException e) {
-            if (log.isDebugEnabled() && X.hasCause(e, ClusterTopologyCheckedException.class))
-                log.debug("Topology changed while message send: " + e.getMessage());
+            log.error("Failed to send services single map message to coordinator over communication spi.", e);
 
-            log.error("Failed to send message over communication spi, msg=" + msg, e);
+            complete(e);
         }
     }
 
@@ -517,19 +520,21 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void onAllReceived() {
         assert !isCompleted();
 
-        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> singleResults = buildSingleDeploymentsResults();
-
-        addDeploymentErrorsToDeploymentResults(singleResults);
-
-        final Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleResults);
-
-        ServicesFullMapMessage msg = new ServicesFullMapMessage(exchId, fullResults);
-
         try {
+            final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> singleResults = buildSingleDeploymentsResults();
+
+            addDeploymentErrorsToDeploymentResults(singleResults);
+
+            final Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleResults);
+
+            ServicesFullMapMessage msg = new ServicesFullMapMessage(exchId, fullResults);
+
             ctx.discovery().sendCustomEvent(msg);
         }
         catch (IgniteCheckedException e) {
-            log.error("Failed to send message across the ring, msg=" + msg, e);
+            log.error("Failed to send services full map message across the ring.", e);
+
+            complete(e);
         }
     }
 
@@ -543,12 +548,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
         AffinityTopologyVersion topVer) throws IgniteCheckedException {
         try {
-            Map<UUID, Integer> srvcTop;
-
             if (lessThenLocalJoin(topVer))
                 return Collections.emptyMap();
 
-            srvcTop = ctx.service().reassign(srvcId, cfg, topVer);
+            Map<UUID, Integer> srvcTop = ctx.service().reassign(srvcId, cfg, topVer);
 
             if (srvcTop.isEmpty())
                 throw new IgniteCheckedException("Failed to determine suitable nodes to deploy service.");
@@ -667,6 +670,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
         Map<IgniteUuid, Collection<Throwable>> errors) {
+        assert !isCompleted();
+
         Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
 
         ctx.service().localInstancesCount().forEach((id, cnt) -> {

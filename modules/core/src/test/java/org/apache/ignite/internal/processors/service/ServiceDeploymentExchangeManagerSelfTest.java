@@ -43,16 +43,14 @@ import static org.mockito.Mockito.when;
 /**
  * Tests of {@link ServicesDeploymentExchangeManager}.
  */
-public class ServiceDeploymentExchangeImplSelfTest {
+public class ServiceDeploymentExchangeManagerSelfTest {
     /** */
     @BeforeClass
     public static void setup() {
         GridTestProperties.init();
     }
 
-    /**
-     *
-     */
+    /** */
     @Test
     public void testAddTaskInEmptyQueue() {
         ServicesDeploymentExchangeManager exchMgr = manager();
@@ -69,9 +67,7 @@ public class ServiceDeploymentExchangeImplSelfTest {
         assertEquals(tasks.size(), exchMgr.tasks().size());
     }
 
-    /**
-     *
-     */
+    /** */
     @Test
     public void testAddTasksInNotEmptyQueue() {
         ServicesDeploymentExchangeManager exchMgr = manager();

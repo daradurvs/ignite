@@ -1412,10 +1412,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     protected void processFullMap(ServicesFullMapMessage msg) {
         connStatusLock.readLock().lock();
 
-        if (disconnected)
-            return;
-
         try {
+            if (disconnected)
+                return;
+
             final Collection<ServiceFullDeploymentsResults> results = msg.results();
 
             final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = new HashMap<>();
