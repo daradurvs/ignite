@@ -317,6 +317,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             if (!exists)
                 registeredSrvcs.put(toStart.serviceId(), toStart);
+            else {
+                log.warning("Ignore service configuration received from joining node : " +
+                    "[nodeId=" + data.joiningNodeId() + ", cfgName=" + toStart.name() + "]. " +
+                    "The same service configuration already registered.");
+            }
         }
     }
 
