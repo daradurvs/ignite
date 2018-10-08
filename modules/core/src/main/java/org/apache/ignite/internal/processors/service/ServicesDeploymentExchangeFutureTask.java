@@ -187,7 +187,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 if (evtType == EVT_NODE_JOINED)
                     toReassign.addAll(ctx.service().servicesReceivedFromJoin(evtNodeId));
 
-                toReassign.addAll(ctx.service().allDeployedServicesIds());
+                toReassign.addAll(ctx.service().deployedServicesIds());
 
                 initReassignment(toReassign, evtTopVer);
             }
@@ -245,7 +245,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
         AffinityTopologyVersion topVer) {
         if (req.activate())
-            initReassignment(ctx.service().allDeployedServicesIds(), topVer);
+            initReassignment(ctx.service().registeredServicesIds(), topVer);
         else {
             ctx.service().onDeActivate(ctx);
 

@@ -1625,7 +1625,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * @return Ids of all deployed services.
      */
-    protected Set<IgniteUuid> allDeployedServicesIds() {
+    protected Set<IgniteUuid> deployedServicesIds() {
         Set<IgniteUuid> ids = new HashSet<>();
 
         registeredSrvcs.forEach((srvcId, desc) -> {
@@ -1634,6 +1634,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         });
 
         return ids;
+    }
+
+    /**
+     * @return Ids of all registered services.
+     */
+    protected Set<IgniteUuid> registeredServicesIds() {
+        return new HashSet<>(registeredSrvcs.keySet());
     }
 
     /**
