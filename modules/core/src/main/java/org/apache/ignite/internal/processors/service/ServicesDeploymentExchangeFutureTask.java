@@ -795,11 +795,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public Set<UUID> remaining() {
-        return Collections.unmodifiableSet(remaining);
-    }
-
-    /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
         out.writeObject(exchId);
         out.writeObject(customMsg);

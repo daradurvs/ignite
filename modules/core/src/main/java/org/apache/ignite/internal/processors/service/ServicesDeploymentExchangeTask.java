@@ -81,13 +81,6 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
     public AffinityTopologyVersion topologyVersion();
 
     /**
-     * Returns of remaining nodes ids to receive single node assignments message.
-     *
-     * @return Unmodifiable collection of nodes ids to wait single node assignments messages.
-     */
-    public Collection<UUID> remaining();
-
-    /**
      * Completes the task.
      *
      * @param err Error to complete with.
