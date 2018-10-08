@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayDeque;
-import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.ignite.IgniteCheckedException;
@@ -166,12 +165,6 @@ public class ServiceDeploymentExchangeImplSelfTest {
         /** {@inheritDoc} */
         @Override public AffinityTopologyVersion topologyVersion() {
             return topVer;
-        }
-
-        /** {@inheritDoc} */
-        @Override public Collection<UUID> remaining() {
-            // No-op.
-            return null;
         }
 
         /** {@inheritDoc} */

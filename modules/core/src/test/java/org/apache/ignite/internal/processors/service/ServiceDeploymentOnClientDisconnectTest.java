@@ -45,9 +45,6 @@ public class ServiceDeploymentOnClientDisconnectTest extends GridCommonAbstractT
     /** */
     private static final long CLIENT_RECONNECT_WAIT_TIMEOUT = 10_000L;
 
-    /** */
-    private static final long CLIENT_DISCONNECT_WAIT_TIMEOUT = 10_000L;
-
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
         IgniteConfiguration cfg = super.getConfiguration(igniteInstanceName);
@@ -188,7 +185,7 @@ public class ServiceDeploymentOnClientDisconnectTest extends GridCommonAbstractT
 
         server().close();
 
-        assertTrue(latch.await(CLIENT_DISCONNECT_WAIT_TIMEOUT, TimeUnit.MILLISECONDS));
+        assertTrue(latch.await(client.configuration().getClientFailureDetectionTimeout(), TimeUnit.MILLISECONDS));
 
         task.run();
     }

@@ -27,6 +27,7 @@ import org.apache.ignite.services.ServiceContext;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 
 /**
@@ -94,7 +95,7 @@ public class ServiceInfoSelfTest {
 
         assertEquals(top, sut.topologySnapshot());
 
-        assertSame(top, sut.topologySnapshot());
+        assertNotSame(top, sut.topologySnapshot());
     }
 
     /**
