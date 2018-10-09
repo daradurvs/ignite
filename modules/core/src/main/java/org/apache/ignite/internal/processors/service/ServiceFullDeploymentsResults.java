@@ -17,35 +17,34 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import java.io.Serializable;
+import java.util.Map;
+import java.util.UUID;
+import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.services.ServiceConfiguration;
 
 /**
- * Service deployment future.
+ * Service full cluster deployments results.
  */
-public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
+public class ServiceFullDeploymentsResults implements Serializable {
     /** */
-    private final ServiceConfiguration cfg;
+    private static final long serialVersionUID = 0L;
 
-    /** */
+    /** Service id. */
     private final IgniteUuid srvcId;
 
-    /**
-     * @param cfg Configuration.
-     * @param srvcId Service id.
-     */
-    public GridServiceDeploymentFuture(ServiceConfiguration cfg, IgniteUuid srvcId) {
-        this.cfg = cfg;
-        this.srvcId = srvcId;
-    }
+    /** Per node deployments results. */
+    @GridToStringInclude
+    private final Map<UUID, ServiceSingleDeploymentsResults> results;
 
     /**
-     * @return Service configuration.
+     * @param srvcId Service id.
+     * @param results Deployments results.
      */
-    ServiceConfiguration configuration() {
-        return cfg;
+    public ServiceFullDeploymentsResults(IgniteUuid srvcId, Map<UUID, ServiceSingleDeploymentsResults> results) {
+        this.srvcId = srvcId;
+        this.results = results;
     }
 
     /**
@@ -55,8 +54,15 @@ public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
         return srvcId;
     }
 
+    /**
+     * @return Per node deployments results.
+     */
+    public Map<UUID, ServiceSingleDeploymentsResults> results() {
+        return results;
+    }
+
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(GridServiceDeploymentFuture.class, this);
+        return S.toString(ServiceFullDeploymentsResults.class, this);
     }
 }

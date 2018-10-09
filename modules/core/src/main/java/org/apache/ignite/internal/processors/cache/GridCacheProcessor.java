@@ -997,8 +997,6 @@ public class GridCacheProcessor extends GridProcessorAdapter implements Metastor
         if (!active)
             return;
 
-        ctx.service().onUtilityCacheStarted();
-
         final AffinityTopologyVersion startTopVer = ctx.discovery().localJoin().joinTopologyVersion();
 
         final List<IgniteInternalFuture> syncFuts = new ArrayList<>(caches.size());
@@ -2482,11 +2480,8 @@ public class GridCacheProcessor extends GridProcessorAdapter implements Metastor
         if (exchActions == null)
             return;
 
-        if (exchActions.systemCachesStarting() && exchActions.stateChangeRequest() == null) {
+        if (exchActions.systemCachesStarting() && exchActions.stateChangeRequest() == null)
             ctx.dataStructures().restoreStructuresState(ctx);
-
-            ctx.service().updateUtilityCache();
-        }
 
         if (err == null)
             processCacheStopRequestOnExchangeDone(exchActions);

@@ -17,46 +17,37 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import java.io.Serializable;
+import java.util.ArrayList;
 import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.lang.IgniteUuid;
-import org.apache.ignite.services.ServiceConfiguration;
+import org.jetbrains.annotations.NotNull;
 
 /**
- * Service deployment future.
+ * Services join node discovery data container.
  */
-public class GridServiceDeploymentFuture extends GridFutureAdapter<Object> {
+public class ServicesJoinNodeDiscoveryData implements Serializable {
     /** */
-    private final ServiceConfiguration cfg;
+    private static final long serialVersionUID = 0L;
 
-    /** */
-    private final IgniteUuid srvcId;
+    /** Static services configurations info. */
+    public final ArrayList<ServiceInfo> staticSrvcsInfo;
 
     /**
-     * @param cfg Configuration.
-     * @param srvcId Service id.
+     * @param staticSrvcsInfo Static services configurations info.
      */
-    public GridServiceDeploymentFuture(ServiceConfiguration cfg, IgniteUuid srvcId) {
-        this.cfg = cfg;
-        this.srvcId = srvcId;
+    public ServicesJoinNodeDiscoveryData(@NotNull ArrayList<ServiceInfo> staticSrvcsInfo) {
+        this.staticSrvcsInfo = staticSrvcsInfo;
     }
 
     /**
-     * @return Service configuration.
+     * @return Static services configurations info.
      */
-    ServiceConfiguration configuration() {
-        return cfg;
-    }
-
-    /**
-     * @return Service id.
-     */
-    public IgniteUuid serviceId() {
-        return srvcId;
+    public ArrayList<ServiceInfo> services() {
+        return staticSrvcsInfo;
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(GridServiceDeploymentFuture.class, this);
+        return S.toString(ServicesJoinNodeDiscoveryData.class, this);
     }
 }

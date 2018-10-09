@@ -794,6 +794,8 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
                     if (!isLocDaemon && !ctx.clientDisconnected()) {
                         ctx.cache().context().exchange().onLocalJoin(discoEvt, discoCache);
 
+                        ctx.service().onLocalJoin(discoEvt, discoCache);
+
                         ctx.authentication().onLocalJoin();
 
                         ctx.encryption().onLocalJoin();
@@ -851,6 +853,8 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
                     ((IgniteKernal)ctx.grid()).onReconnected(clusterRestarted);
 
                     ctx.cache().context().exchange().onLocalJoin(localJoinEvent(), discoCache);
+
+                    ctx.service().onLocalJoin(localJoinEvent(), discoCache);
 
                     ctx.cluster().clientReconnectFuture().listen(new CI1<IgniteFuture<?>>() {
                         @Override public void apply(IgniteFuture<?> fut) {

@@ -36,7 +36,6 @@ import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceContext;
-import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.configvariations.Parameters;
 import org.apache.ignite.testframework.junits.IgniteConfigVariationsAbstractTest;
 
@@ -46,9 +45,6 @@ import org.apache.ignite.testframework.junits.IgniteConfigVariationsAbstractTest
 public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariationsAbstractTest {
     /** Test service name. */
     private static final String SERVICE_NAME = "testService";
-
-    /** Timeout to wait finish of a service's deployment. */
-    private static final long DEPLOYMENT_WAIT_TIMEOUT = 10_000L;
 
     /** Test service name. */
     private static final String CACHE_NAME = "testCache";
@@ -86,11 +82,8 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
      */
     public void testNodeSingletonDeploy() throws Exception {
         runInAllDataModes(new ServiceTestRunnable(true, new DeployClosure() {
-            @Override public void run(IgniteServices services, String svcName, TestService svc) throws Exception {
+            @Override public void run(IgniteServices services, String svcName, TestService svc) {
                 services.deployNodeSingleton(svcName, (Service)svc);
-
-                // TODO: Waiting for deployment should be removed after IEP-17 completion
-                GridTestUtils.waitForCondition(() -> services.service(svcName) != null, DEPLOYMENT_WAIT_TIMEOUT);
             }
         }));
     }
@@ -102,11 +95,8 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
      */
     public void testClusterSingletonDeploy() throws Exception {
         runInAllDataModes(new ServiceTestRunnable(false, new DeployClosure() {
-            @Override public void run(IgniteServices services, String svcName, TestService svc) throws Exception {
+            @Override public void run(IgniteServices services, String svcName, TestService svc) {
                 services.deployClusterSingleton(svcName, (Service)svc);
-
-                // TODO: Waiting for deployment should be removed after IEP-17 completion
-                GridTestUtils.waitForCondition(() -> services.service(svcName) != null, DEPLOYMENT_WAIT_TIMEOUT);
             }
         }));
     }
@@ -151,7 +141,7 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
      */
     public void testDeploy() throws Exception {
         runInAllDataModes(new ServiceTestRunnable(false, new DeployClosure() {
-            @Override public void run(IgniteServices services, String svcName, TestService svc) throws Exception {
+            @Override public void run(IgniteServices services, String svcName, TestService svc) {
                 services.deployClusterSingleton(svcName, (Service)svc);
 
                 ServiceConfiguration cfg = new ServiceConfiguration();
@@ -167,9 +157,6 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
                 cfg.setNodeFilter(services.clusterGroup().predicate());
 
                 services.deploy(cfg);
-
-                // TODO: Waiting for deployment should be removed after IEP-17 completion
-                GridTestUtils.waitForCondition(() -> services.service(svcName) != null, DEPLOYMENT_WAIT_TIMEOUT);
             }
         }));
     }
@@ -211,9 +198,8 @@ public class IgniteServiceConfigVariationsFullApiTest extends IgniteConfigVariat
          * @param services Services.
          * @param svcName Service name.
          * @param svc Service.
-         * @throws Exception In case of an error.
          */
-        void run(IgniteServices services, String svcName, TestService svc) throws Exception;
+        void run(IgniteServices services, String svcName, TestService svc);
     }
 
     /**

@@ -17,51 +17,86 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDescriptor;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Service descriptor.
- *
- * @deprecated This implementation is based on {@code GridServiceDeployment} which has been deprecated because of
- * services internals use messages for deployment management instead of the utility cache, since Ignite 2.8.
+ * Service's information container.
  */
-@Deprecated
-public class ServiceDescriptorImpl implements ServiceDescriptor {
+public class ServiceInfo implements ServiceDescriptor {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Configuration. */
-    @GridToStringInclude
-    private final GridServiceDeployment dep;
+    /** Node ID. */
+    private final UUID nodeId;
+
+    /** Service id. */
+    private final IgniteUuid srvcId;
+
+    /** Service configuration. */
+    private final ServiceConfiguration cfg;
 
     /** Topology snapshot. */
     @GridToStringInclude
-    private Map<UUID, Integer> top;
+    private volatile Map<UUID, Integer> top = Collections.emptyMap();
 
     /**
-     * @param dep Deployment.
+     * @param nodeId Initiating node id.
+     * @param srvcId Service id.
+     * @param cfg Service configuration.
      */
-    public ServiceDescriptorImpl(GridServiceDeployment dep) {
-        this.dep = dep;
+    public ServiceInfo(@NotNull UUID nodeId, @NotNull IgniteUuid srvcId, @NotNull ServiceConfiguration cfg) {
+        this.nodeId = nodeId;
+        this.srvcId = srvcId;
+        this.cfg = cfg;
+    }
+
+    /**
+     * Sets service's new topology snapshot.
+     *
+     * @param top Topology snapshot.
+     */
+    public void topologySnapshot(@NotNull Map<UUID, Integer> top) {
+        this.top = top;
+    }
+
+    /**
+     * Returns service's configuration.
+     *
+     * @return Service configuration.
+     */
+    public ServiceConfiguration configuration() {
+        return cfg;
+    }
+
+    /**
+     * Rerurns services id.
+     *
+     * @return Service id.
+     */
+    public IgniteUuid serviceId() {
+        return srvcId;
     }
 
     /** {@inheritDoc} */
     @Override public String name() {
-        return dep.configuration().getName();
+        return cfg.getName();
     }
 
     /** {@inheritDoc} */
+    @SuppressWarnings("unchecked")
     @Override public Class<? extends Service> serviceClass() {
-        ServiceConfiguration cfg = dep.configuration();
-
         if (cfg instanceof LazyServiceConfiguration) {
             String clsName = ((LazyServiceConfiguration)cfg).serviceClassName();
 
@@ -73,49 +108,42 @@ public class ServiceDescriptorImpl implements ServiceDescriptor {
             }
         }
         else
-            return dep.configuration().getService().getClass();
+            return cfg.getService().getClass();
     }
 
     /** {@inheritDoc} */
     @Override public int totalCount() {
-        return dep.configuration().getTotalCount();
+        return cfg.getTotalCount();
     }
 
     /** {@inheritDoc} */
     @Override public int maxPerNodeCount() {
-        return dep.configuration().getMaxPerNodeCount();
+        return cfg.getMaxPerNodeCount();
     }
 
     /** {@inheritDoc} */
     @Nullable @Override public String cacheName() {
-        return dep.configuration().getCacheName();
+        return cfg.getCacheName();
     }
 
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
     @Nullable @Override public <K> K affinityKey() {
-        return (K)dep.configuration().getAffinityKey();
+        return (K)cfg.getAffinityKey();
     }
 
     /** {@inheritDoc} */
     @Override public UUID originNodeId() {
-        return dep.nodeId();
+        return nodeId;
     }
 
     /** {@inheritDoc} */
     @Override public Map<UUID, Integer> topologySnapshot() {
-        return top;
-    }
-
-    /**
-     * @param top Topology snapshot.
-     */
-    void topologySnapshot(Map<UUID, Integer> top) {
-        this.top = top;
+        return Collections.unmodifiableMap(top);
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServiceDescriptorImpl.class, this);
+        return S.toString(ServiceInfo.class, this);
     }
 }
