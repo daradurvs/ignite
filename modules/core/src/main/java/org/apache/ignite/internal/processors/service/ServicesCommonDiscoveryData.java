@@ -37,7 +37,7 @@ class ServicesCommonDiscoveryData implements Serializable {
     private final ArrayDeque<ServicesDeploymentExchangeTask> exchQueue;
 
     /**
-     * @param registeredSrvcs Services descriptors.
+     * @param registeredSrvcs Clusters registered services descriptors.
      * @param exchQueue Services deployment exchange queue to initialize exchange manager.
      */
     public ServicesCommonDiscoveryData(
@@ -49,7 +49,7 @@ class ServicesCommonDiscoveryData implements Serializable {
     }
 
     /**
-     * Returns already deployed services descriptors.
+     * Returns clusters registered services descriptors.
      *
      * @return Deployed services descriptors.
      */

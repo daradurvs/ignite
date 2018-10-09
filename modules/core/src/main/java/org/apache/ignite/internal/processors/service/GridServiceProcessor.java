@@ -113,7 +113,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     private ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
         oomeHnd);
 
-    /** Mutex. */
+    /** Services topologies update mutex. */
     private final Object srvcsTopsUpdateMux = new Object();
 
     /** Contains all services information across the cluster. */

@@ -33,14 +33,14 @@ public class ServicesJoinNodeDiscoveryData implements Serializable {
     public final ArrayList<ServiceInfo> staticSrvcsInfo;
 
     /**
-     * @param staticSrvcsInfo Static services configurations.
+     * @param staticSrvcsInfo Static services configurations info.
      */
     public ServicesJoinNodeDiscoveryData(@NotNull ArrayList<ServiceInfo> staticSrvcsInfo) {
         this.staticSrvcsInfo = staticSrvcsInfo;
     }
 
     /**
-     * @return Static services configurations.
+     * @return Static services configurations info.
      */
     public ArrayList<ServiceInfo> services() {
         return staticSrvcsInfo;
