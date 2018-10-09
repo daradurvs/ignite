@@ -68,8 +68,8 @@ public class ServicesDeploymentExchangeManager {
     /** Busy lock. */
     private final GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
-    /** Mutex. */
-    private final Object newEvtMux = new Object();
+    /** Addition of new event mutex. */
+    private final Object addEvtMux = new Object();
 
     /** Services discovery messages listener. */
     private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
@@ -131,8 +131,8 @@ public class ServicesDeploymentExchangeManager {
 
             U.cancel(exchWorker);
 
-            synchronized (newEvtMux) {
-                newEvtMux.notify();
+            synchronized (addEvtMux) {
+                addEvtMux.notify();
             }
 
             U.join(exchWorker, log);
@@ -141,7 +141,7 @@ public class ServicesDeploymentExchangeManager {
 
             pendingEvts.clear();
 
-            tasks.values().forEach(t -> t.complete(null));
+            tasks.values().forEach(ServicesDeploymentExchangeTask::complete);
 
             tasks.clear();
         }
@@ -229,7 +229,7 @@ public class ServicesDeploymentExchangeManager {
     protected void addTask(@NotNull ServicesDeploymentExchangeId exchId, @Nullable DiscoveryCustomMessage customMsg) {
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeFutureTask(exchId));
 
-        synchronized (newEvtMux) {
+        synchronized (addEvtMux) {
             if (!exchWorker.tasksQueue.contains(task)) {
                 if (customMsg != null)
                     task.customMessage(customMsg);
@@ -237,7 +237,7 @@ public class ServicesDeploymentExchangeManager {
                 exchWorker.tasksQueue.add(task);
             }
 
-            newEvtMux.notify();
+            addEvtMux.notify();
         }
     }
 
@@ -384,7 +384,7 @@ public class ServicesDeploymentExchangeManager {
                 while (!isCancelled()) {
                     onIdle();
 
-                    synchronized (newEvtMux) {
+                    synchronized (addEvtMux) {
                         // Task shouldn't be removed from queue unless will be completed to avoid the possibility of
                         // losing event on newly joined node where the queue will be transferred.
                         task = tasksQueue.peek();
@@ -393,7 +393,7 @@ public class ServicesDeploymentExchangeManager {
                             blockingSectionBegin();
 
                             try {
-                                newEvtMux.wait();
+                                addEvtMux.wait();
                             }
                             finally {
                                 blockingSectionEnd();
@@ -411,14 +411,7 @@ public class ServicesDeploymentExchangeManager {
                     if (isCancelled())
                         Thread.currentThread().interrupt();
 
-                    try {
-                        task.init(ctx);
-                    }
-                    catch (Exception e) {
-                        task.complete(e);
-
-                        throw e;
-                    }
+                    task.init(ctx);
 
                     final long dumpTimeout = 2 * ctx.config().getNetworkTimeout();
 
@@ -491,7 +484,7 @@ public class ServicesDeploymentExchangeManager {
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
 
-            synchronized (newEvtMux) {
+            synchronized (addEvtMux) {
                 tasksQueue.poll();
             }
 

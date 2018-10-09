@@ -62,7 +62,7 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
 /**
  * Services deployment exchange task implementation based on {@link GridFutureAdapter}.
  */
-public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object>
+public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
     implements ServicesDeploymentExchangeTask, Externalizable {
     /** */
     private static final long serialVersionUID = 0L;
@@ -200,6 +200,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
             initTaskFut.onDone(e);
 
+            complete(e);
+
             throw new IgniteCheckedException(e);
         }
         finally {
@@ -247,7 +249,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         else {
             ctx.service().onDeActivate(ctx);
 
-            complete(null);
+            complete();
         }
     }
 
@@ -269,19 +271,19 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                 IgniteUuid srvcId = reqSrvcId;
                 ServiceConfiguration cfg = req.configuration();
 
-                Exception ex = null;
+                Exception err = null;
 
                 ServiceInfo oldSrvcDesc = ctx.service().serviceInfo(srvcId);
 
                 if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
-                    ex = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
+                    err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
                         "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
                 }
                 else {
                     oldSrvcDesc = ctx.service().serviceInfo(cfg.getName());
 
                     if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
-                        ex = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                        err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
                             "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
                     }
                     else {
@@ -294,7 +296,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                             srvcTop = reassign(srvcId, cfg, topVer);
                         }
                         catch (IgniteCheckedException e) {
-                            ex = e;
+                            err = e;
 
                             srvcTop = Collections.emptyMap();
                         }
@@ -306,8 +308,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
                     }
                 }
 
-                if (ex != null)
-                    depErrors.computeIfAbsent(reqSrvcId, e -> new ArrayList<>()).add(ex);
+                if (err != null)
+                    depErrors.computeIfAbsent(reqSrvcId, e -> new ArrayList<>()).add(err);
             }
         }
 
@@ -322,7 +324,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         Set<IgniteUuid> toReassign = ctx.service().affinityServices();
 
         if (toReassign.isEmpty()) {
-            complete(null);
+            complete();
 
             return;
         }
@@ -346,7 +348,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
 
         if (srvcsToUndeploy.isEmpty()) {
-            complete(null);
+            complete();
 
             return;
         }
@@ -368,17 +370,17 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
             Map<UUID, Integer> top = null;
 
-            Throwable th = null;
+            Throwable err = null;
 
             try {
                 top = reassign(srvcId, cfg, topVer);
             }
             catch (Throwable e) {
-                th = e;
+                err = e;
             }
 
-            if (th != null)
-                depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(th);
+            if (err != null)
+                depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
             else if (top != null && !top.isEmpty())
                 srvcsToDeploy.put(srvcId, top);
         }
@@ -421,8 +423,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
                         proc.redeploy(srvcId, cfg, top);
                     }
-                    catch (Error | RuntimeException t) {
-                        errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(t);
+                    catch (Error | RuntimeException err) {
+                        errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
                     }
                 }
             });
@@ -741,6 +743,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      * false}.
      */
     private boolean lessThenLocalJoin(AffinityTopologyVersion topVer) {
+        assert locJoinTopVer != null;
+
         return locJoinTopVer.compareTo(topVer) > 0;
     }
 
@@ -765,7 +769,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
     }
 
     /** {@inheritDoc} */
-    @Override public void complete(@Nullable Throwable err) {
+    @Override public void complete() {
+        complete(null);
+    }
+
+    /**
+     * @param err Error to complete with.
+     */
+    private void complete(Throwable err) {
         onDone(null, err, false);
 
         if (!initTaskFut.isDone())

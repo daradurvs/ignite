@@ -31,7 +31,6 @@ import org.apache.ignite.testframework.GridTestNode;
 import org.apache.ignite.testframework.config.GridTestProperties;
 import org.apache.ignite.testframework.junits.GridTestKernalContext;
 import org.apache.ignite.testframework.junits.logger.GridTestLog4jLogger;
-import org.jetbrains.annotations.Nullable;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -164,7 +163,7 @@ public class ServiceDeploymentExchangeManagerSelfTest {
         }
 
         /** {@inheritDoc} */
-        @Override public void complete(@Nullable Throwable err) {
+        @Override public void complete() {
             // No-op.
         }
 

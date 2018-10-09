@@ -159,16 +159,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
-        ArrayList<ServiceInfo> staticSrvcsInfo = new ArrayList<>();
+        final ArrayList<ServiceInfo> staticSrvcsInfo = new ArrayList<>();
 
         if (cfgs != null) {
             // Skipped check of marshalling, because {@link GridMarshallerMappingProcessor} is not started at this point.
             PreparedConfigurations prepCfgs = prepareServiceConfigurations(Arrays.asList(cfgs),
                 node -> !node.isClient(), false);
 
-            if (log.isInfoEnabled() && prepCfgs.failedFuts != null) {
+            if (prepCfgs.failedFuts != null) {
                 for (GridServiceDeploymentFuture fut : prepCfgs.failedFuts) {
-                    log.info("Failed to validate static service configuration (won't be deployed), " +
+                    log.warning("Failed to validate static service configuration (won't be deployed), " +
                         "cfg=" + fut.configuration() + ", err=" + fut.result());
                 }
             }

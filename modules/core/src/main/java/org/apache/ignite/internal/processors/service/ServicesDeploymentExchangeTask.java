@@ -18,13 +18,11 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.io.Serializable;
-import java.util.Collection;
 import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Defines methods to manage a task of service deployment exchange.
@@ -82,10 +80,8 @@ public interface ServicesDeploymentExchangeTask extends Serializable {
 
     /**
      * Completes the task.
-     *
-     * @param err Error to complete with.
      */
-    public void complete(@Nullable Throwable err);
+    public void complete();
 
     /**
      * Returns if the task completed.
