@@ -82,19 +82,19 @@ public class ServicesDeploymentExchangeIdSelfTest {
     /** */
     @Test
     public void nodeId() {
-        assertEquals(sut.nodeId(), evt.eventNode().id());
+        assertEquals(evt.eventNode().id(), sut.nodeId());
     }
 
     /** */
     @Test
     public void eventType() {
-        assertEquals(sut.eventType(), evt.type());
+        assertEquals(evt.type(), sut.eventType());
     }
 
     /** */
     @Test
     public void topologyVersion() {
-        assertEquals(sut.topologyVersion(), topVer);
+        assertEquals(topVer, sut.topologyVersion());
     }
 
     /** */
