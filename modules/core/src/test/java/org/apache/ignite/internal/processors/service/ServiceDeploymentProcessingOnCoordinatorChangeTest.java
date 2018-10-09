@@ -30,6 +30,9 @@ import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
  * It uses {@link LongInitializedTestService} with long running #init method to delay requests processing.
  */
 public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridCommonAbstractTest {
+    /** Timeout to avoid tests hang. */
+    private static final long TEST_FUTURE_WAIT_TIMEOUT = 60_000;
+
     /**
      * @throws Exception In case of an error.
      */
@@ -52,9 +55,9 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
 
             ignite0.close();
 
-            fut.get();
-            fut2.get();
-            fut3.get();
+            fut.get(TEST_FUTURE_WAIT_TIMEOUT);
+            fut2.get(TEST_FUTURE_WAIT_TIMEOUT);
+            fut3.get(TEST_FUTURE_WAIT_TIMEOUT);
 
             IgniteEx ignite3 = grid(3);
 
@@ -87,8 +90,8 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
 
             ignite0.close();
 
-            depFut.get();
-            depFut2.get();
+            depFut.get(getTestTimeout());
+            depFut2.get(TEST_FUTURE_WAIT_TIMEOUT);
 
             Ignite ignite2 = grid(2);
 
@@ -104,8 +107,8 @@ public class ServiceDeploymentProcessingOnCoordinatorChangeTest extends GridComm
 
             ignite1.close();
 
-            undepFut.get();
-            undepFut2.get();
+            undepFut.get(TEST_FUTURE_WAIT_TIMEOUT);
+            undepFut2.get(TEST_FUTURE_WAIT_TIMEOUT);
 
             assertNull(ignite4.services().service("testService"));
             assertNull(ignite4.services().service("testService2"));

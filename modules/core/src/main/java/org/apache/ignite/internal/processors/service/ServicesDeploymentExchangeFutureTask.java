@@ -462,8 +462,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
         catch (IgniteCheckedException e) {
             log.error("Failed to send services single map message to coordinator over communication spi.", e);
-
-            complete(e);
         }
     }
 
@@ -533,8 +531,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
         }
         catch (IgniteCheckedException e) {
             log.error("Failed to send services full map message across the ring.", e);
-
-            complete(e);
         }
     }
 
@@ -831,6 +827,8 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesDeploymentExchangeFutureTask.class, this, "locNodeId", ctx.localNodeId(), "crdId", crdId);
+        return S.toString(ServicesDeploymentExchangeFutureTask.class, this,
+            "locNodeId", (ctx != null ? ctx.localNodeId() : "unknown"),
+            "crdId", crdId);
     }
 }
