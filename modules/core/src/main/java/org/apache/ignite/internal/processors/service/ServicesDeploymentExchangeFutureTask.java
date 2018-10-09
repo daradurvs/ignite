@@ -158,12 +158,21 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
         try {
             ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
 
-            if (crd != null) {
-                crdId = crd.id();
+            if (crd == null) {
+                complete();
 
-                if (crd.isLocal())
-                    initCoordinator(evtTopVer);
+                if (log.isDebugEnabled()) {
+                    log.debug("Failed to resolve coordinator to process services map exchange: " +
+                        "[locId=" + ctx.clientNode() + "client=" + ctx.clientNode() + ']');
+                }
+
+                return;
             }
+
+            crdId = crd.id();
+
+            if (crd.isLocal())
+                initCoordinator(evtTopVer);
 
             if (evtType == EVT_DISCOVERY_CUSTOM_EVT) {
                 if (customMsg instanceof ChangeGlobalStateMessage)
@@ -442,19 +451,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
+        assert crdId != null : "Failed to resolve coordinator to perform services single map message," +
+            " locId=" + ctx.localNodeId();
 
         try {
-            if (crdId == null) {
-                ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null); // Try once again
-
-                if (crd != null)
-                    crdId = crd.id();
-                else {
-                    throw new IgniteCheckedException("Failed to resolve coordinator to perform services single map message," +
-                        " locId=" + ctx.localNodeId());
-                }
-            }
-
             ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
             ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
@@ -719,9 +719,11 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
 
                     if (crd.isLocal())
                         initCoordinator(exchId.topologyVersion());
-                }
 
-                createAndSendSingleMapMessage(exchId, depErrors);
+                    createAndSendSingleMapMessage(exchId, depErrors);
+                }
+                else
+                    complete();
             }
             else if (ctx.localNodeId().equals(crdId)) {
                 synchronized (initCrdMux) {
