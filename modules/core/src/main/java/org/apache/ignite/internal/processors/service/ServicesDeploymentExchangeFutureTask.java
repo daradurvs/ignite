@@ -62,7 +62,7 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
 /**
  * Services deployment exchange task implementation based on {@link GridFutureAdapter}.
  */
-public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
+public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Object>
     implements ServicesDeploymentExchangeTask, Externalizable {
     /** */
     private static final long serialVersionUID = 0L;
@@ -183,9 +183,14 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
                     if (customMsg instanceof DynamicCacheChangeBatch)
                         onCacheStateChangeRequest((DynamicCacheChangeBatch)customMsg);
                     else if (customMsg instanceof CacheAffinityChangeMessage)
-                        onCacheAffinityChangeMessage(evtTopVer);
+                        initReassignment(ctx.service().affinityServices(), evtTopVer);
                     else
                         assert false : "Unexpected type of custom message, customMsg=" + customMsg;
+                }
+                else if (log.isDebugEnabled()) {
+                    log.debug("Services exchange topology version less then local join topology. " +
+                        "No actions required, waiting for services deployment full map : " +
+                        "[locId=" + ctx.localNodeId() + ", exchId=" + exchId + ']');
                 }
             }
             else {
@@ -251,8 +256,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
      * @param req Change cluster state message.
      * @param topVer Topology version.
      */
-    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req,
-        AffinityTopologyVersion topVer) {
+    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req, AffinityTopologyVersion topVer) {
         if (req.activate())
             initReassignment(ctx.service().registeredServicesIds(), topVer);
         else {
@@ -327,21 +331,6 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
     }
 
     /**
-     * @param topVer Topology version.
-     */
-    private void onCacheAffinityChangeMessage(AffinityTopologyVersion topVer) {
-        Set<IgniteUuid> toReassign = ctx.service().affinityServices();
-
-        if (toReassign.isEmpty()) {
-            complete();
-
-            return;
-        }
-
-        initReassignment(toReassign, topVer);
-    }
-
-    /**
      * @param req Cache state change request.
      */
     private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) {
@@ -371,6 +360,16 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
      */
     private void initReassignment(Set<IgniteUuid> toReassign, AffinityTopologyVersion topVer) {
         final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
+        if (toReassign.isEmpty()) {
+            complete();
+
+            if (log.isDebugEnabled()) {
+                log.debug("Services reassignments is not required, completed the task without exchange : " +
+                    "[locId=" + ctx.localNodeId() + ", exchId=" + exchId + ']');
+            }
+
+            return;
+        }
 
         for (IgniteUuid srvcId : toReassign) {
             ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
@@ -457,7 +456,10 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter
         try {
             ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
 
-            ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
+            if (ctx.localNodeId().equals(crdId))
+                onReceiveSingleMapMessage(ctx.localNodeId(), msg);
+            else
+                ctx.io().sendToGridTopic(crdId, TOPIC_SERVICES, msg, SERVICE_POOL);
 
             if (log.isDebugEnabled())
                 log.debug("Send services single map message, msg=" + msg);
