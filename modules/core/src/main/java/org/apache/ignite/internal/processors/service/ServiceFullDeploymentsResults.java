@@ -23,9 +23,10 @@ import java.util.UUID;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
+import org.jetbrains.annotations.NotNull;
 
 /**
- * Service full cluster deployments results.
+ * Service cluster deployments results.
  */
 public class ServiceFullDeploymentsResults implements Serializable {
     /** */
@@ -42,7 +43,8 @@ public class ServiceFullDeploymentsResults implements Serializable {
      * @param srvcId Service id.
      * @param results Deployments results.
      */
-    public ServiceFullDeploymentsResults(IgniteUuid srvcId, Map<UUID, ServiceSingleDeploymentsResults> results) {
+    public ServiceFullDeploymentsResults(@NotNull IgniteUuid srvcId,
+        @NotNull Map<UUID, ServiceSingleDeploymentsResults> results) {
         this.srvcId = srvcId;
         this.results = results;
     }

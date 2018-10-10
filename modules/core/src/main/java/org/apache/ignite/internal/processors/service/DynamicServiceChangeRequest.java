@@ -21,6 +21,7 @@ import java.io.Serializable;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Service change request.
@@ -47,7 +48,7 @@ public class DynamicServiceChangeRequest implements Serializable {
     /**
      * @param srvcId Service id.
      */
-    public DynamicServiceChangeRequest(IgniteUuid srvcId) {
+    protected DynamicServiceChangeRequest(@NotNull IgniteUuid srvcId) {
         this.srvcId = srvcId;
     }
 
@@ -58,7 +59,8 @@ public class DynamicServiceChangeRequest implements Serializable {
      * @param cfg Service configuration.
      * @return Deployment request.
      */
-    public static DynamicServiceChangeRequest deploymentRequest(IgniteUuid srvcId, ServiceConfiguration cfg) {
+    public static DynamicServiceChangeRequest deploymentRequest(@NotNull IgniteUuid srvcId,
+        @NotNull ServiceConfiguration cfg) {
         DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(srvcId);
 
         req.configuration(cfg);
@@ -73,7 +75,7 @@ public class DynamicServiceChangeRequest implements Serializable {
      * @param srvcId Service id.
      * @return Undeployment request.
      */
-    public static DynamicServiceChangeRequest undeploymentRequest(IgniteUuid srvcId) {
+    public static DynamicServiceChangeRequest undeploymentRequest(@NotNull IgniteUuid srvcId) {
         DynamicServiceChangeRequest req = new DynamicServiceChangeRequest(srvcId);
 
         req.markUndeploy();

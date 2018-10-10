@@ -99,7 +99,7 @@ public class ServicesDeploymentExchangeManager {
     /**
      * @param ctx Grid kernal context.
      */
-    protected ServicesDeploymentExchangeManager(GridKernalContext ctx) {
+    protected ServicesDeploymentExchangeManager(@NotNull GridKernalContext ctx) {
         this.ctx = ctx;
         this.log = ctx.log(getClass());
 
@@ -158,9 +158,9 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Returns queue of deployments tasks.
+     * Returns queue of services deployment exchanges tasks.
      *
-     * @return Queue of deployment tasks.
+     * @return Queue of services deployment exchanges tasks.
      */
     protected ArrayDeque<ServicesDeploymentExchangeTask> tasks() {
         return exchWorker.tasksQueue;

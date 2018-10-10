@@ -198,18 +198,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         exchMgr.stopProcessing();
 
-        Exception ex = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
+        Exception err = new IgniteCheckedException("Operation has been cancelled (node is stopping).");
 
-        onKernalStop(ex);
+        onKernalStop(err);
 
         if (log.isDebugEnabled())
             log.debug("Stopped service processor.");
     }
 
     /**
-     * @param ex Error to cancel waiting futures.
+     * @param err Error to cancel waiting futures.
      */
-    private void onKernalStop(Exception ex) {
+    private void onKernalStop(Exception err) {
         Collection<ServiceContextImpl> ctxs = new ArrayList<>();
 
         synchronized (locSvcs) {
@@ -255,8 +255,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         }
 
-        cancelFutures(depFuts, ex);
-        cancelFutures(undepFuts, ex);
+        cancelFutures(depFuts, err);
+        cancelFutures(undepFuts, err);
     }
 
     /** {@inheritDoc} */
@@ -277,10 +277,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon() || data.commonData() == null)
             return;
 
-        ServicesCommonDiscoveryData clusterData = (ServicesCommonDiscoveryData)data.commonData();
-
         if (disconnected)
             registeredSrvcs.clear();
+
+        ServicesCommonDiscoveryData clusterData = (ServicesCommonDiscoveryData)data.commonData();
 
         for (ServiceInfo desc : clusterData.registeredServices())
             registeredSrvcs.put(desc.serviceId(), desc);
@@ -341,9 +341,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             log.debug("DeActivate service processor [nodeId=" + ctx.localNodeId() +
                 " topVer=" + ctx.discovery().topologyVersionEx() + " ]");
 
-        Exception ex = new IgniteCheckedException("Operation has been cancelled (node is deactivating).");
+        Exception err = new IgniteCheckedException("Operation has been cancelled (node is deactivating).");
 
-        onKernalStop(ex);
+        onKernalStop(err);
     }
 
     /** {@inheritDoc} */
@@ -1695,7 +1695,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /**
      * Special handler for local join events for which the regular events are not generated.
      * <p/>
-     * Local join event is expected on joining to topology or client reconnect.
+     * Local join event is expected in cases of joining to topology or client reconnect.
      *
      * @param evt Discovery event.
      * @param discoCache Discovery cache.

@@ -450,8 +450,7 @@ public class ServicesDeploymentExchangeFutureTask extends GridFutureAdapter<Obje
      */
     private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
-        assert crdId != null : "Failed to resolve coordinator to perform services single map message," +
-            " locId=" + ctx.localNodeId();
+        assert crdId != null : "Coordinator should be defined at this point, locId=" + ctx.localNodeId();
 
         try {
             ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);

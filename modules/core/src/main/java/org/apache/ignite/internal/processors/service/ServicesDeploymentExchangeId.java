@@ -61,7 +61,7 @@ public class ServicesDeploymentExchangeId implements Message {
      * @param evt Cause discovery event.
      * @param topVer Topology version.
      */
-    protected ServicesDeploymentExchangeId(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+    protected ServicesDeploymentExchangeId(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer) {
         this(
             evt.eventNode().id(),
             evt.type(),
