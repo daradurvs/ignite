@@ -265,64 +265,58 @@ public class ServicesDeploymentExchangeManager {
             if (!enterBusy())
                 return;
 
-            UUID snd = evt.eventNode().id();
+            final UUID snd = evt.eventNode().id();
+            final int evtType = evt.type();
 
-            assert snd != null;
+            assert snd != null : "Event's node id shouldn't be null.";
+            assert evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED
+                || evtType == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event was received, evt=" + evt;
 
             try {
-                switch (evt.type()) {
-                    case EVT_DISCOVERY_CUSTOM_EVT:
-                        DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+                if (evtType == EVT_DISCOVERY_CUSTOM_EVT) {
+                    DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                        if (msg instanceof ChangeGlobalStateFinishMessage) {
-                            ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
+                    if (msg instanceof ChangeGlobalStateFinishMessage) {
+                        ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
 
-                            if (msg0.clusterActive())
-                                pendingEvts.forEach((t) -> addEvent(new ServicesDeploymentExchangeId(t.get1(), t.get2()), t.get1()));
-                            else if (log.isDebugEnabled())
-                                pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
+                        if (msg0.clusterActive())
+                            pendingEvts.forEach((t) -> addEvent(new ServicesDeploymentExchangeId(t.get1(), t.get2()), t.get1()));
+                        else if (log.isDebugEnabled())
+                            pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
 
-                            pendingEvts.clear();
-                        }
-                        else if (msg instanceof ChangeGlobalStateMessage)
-                            addEvent(new ServicesDeploymentExchangeId(evt, discoCache.version()), evt);
+                        pendingEvts.clear();
+                    }
+                    else if (msg instanceof ChangeGlobalStateMessage)
+                        addEvent(new ServicesDeploymentExchangeId(evt, discoCache.version()), evt);
 
-                        else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
-                            msg instanceof DynamicCacheChangeBatch ||
-                            msg instanceof CacheAffinityChangeMessage)
-                            checkStateAndAddEvent(evt, discoCache);
-
-                        else if (msg instanceof ServicesFullMapMessage) {
-                            ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
-
-                            if (log.isDebugEnabled()) {
-                                log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                    ", snd=" + snd + ", msg=" + msg0 + ']');
-                            }
-
-                            ServicesDeploymentExchangeId exchId = msg0.exchangeId();
-
-                            ServicesDeploymentExchangeTask task = tasks.get(exchId);
-
-                            if (task != null) // May be null in case of double delivering
-                                task.onReceiveFullMapMessage(snd, msg0);
-                        }
-
-                        break;
-
-                    case EVT_NODE_LEFT:
-                    case EVT_NODE_FAILED:
-
-                        tasks.values().forEach(t -> t.onNodeLeft(snd));
-
-                    case EVT_NODE_JOINED:
-
+                    else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
+                        msg instanceof DynamicCacheChangeBatch ||
+                        msg instanceof CacheAffinityChangeMessage)
                         checkStateAndAddEvent(evt, discoCache);
 
-                        break;
+                    else if (msg instanceof ServicesFullMapMessage) {
+                        ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
-                    default:
-                        assert false : "Unexpected event was received, evt=" + evt;
+                        if (log.isDebugEnabled()) {
+                            log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
+                                ", snd=" + snd + ", msg=" + msg0 + ']');
+                        }
+
+                        ServicesDeploymentExchangeId exchId = msg0.exchangeId();
+
+                        assert exchId != null;
+
+                        ServicesDeploymentExchangeTask task = tasks.get(exchId);
+
+                        if (task != null) // May be null in case of double delivering
+                            task.onReceiveFullMapMessage(snd, msg0);
+                    }
+                }
+                else {
+                    if (evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED)
+                        tasks.values().forEach(t -> t.onNodeLeft(snd));
+
+                    checkStateAndAddEvent(evt, discoCache);
                 }
             }
             finally {
