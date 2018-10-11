@@ -227,7 +227,7 @@ public class ServicesDeploymentExchangeManager {
      * @param customMsg Discovery custom message.
      */
     protected void addTask(@NotNull ServicesDeploymentExchangeId exchId, @Nullable DiscoveryCustomMessage customMsg) {
-        ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeFutureTask(exchId));
+        ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(exchId));
 
         synchronized (addEvtMux) {
             if (!exchWorker.tasksQueue.contains(task)) {
@@ -343,7 +343,7 @@ public class ServicesDeploymentExchangeManager {
                             ", msg=" + msg0 + ']');
                     }
 
-                    tasks.computeIfAbsent(msg0.exchangeId(), t -> new ServicesDeploymentExchangeFutureTask(msg0.exchangeId()))
+                    tasks.computeIfAbsent(msg0.exchangeId(), t -> new ServicesDeploymentExchangeTask(msg0.exchangeId()))
                         .onReceiveSingleMapMessage(nodeId, msg0);
                 }
             }

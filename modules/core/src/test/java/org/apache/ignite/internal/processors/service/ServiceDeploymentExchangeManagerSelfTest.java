@@ -20,11 +20,9 @@ package org.apache.ignite.internal.processors.service;
 import java.util.ArrayDeque;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.communication.GridIoManager;
-import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.testframework.GridTestNode;
@@ -57,7 +55,7 @@ public class ServiceDeploymentExchangeManagerSelfTest {
         ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
 
         for (int i = 0; i < 5; i++)
-            tasks.add(new TestTaskClass());
+            tasks.add(randomExchangeTask());
 
         assertEquals(0, exchMgr.tasks().size());
 
@@ -71,11 +69,11 @@ public class ServiceDeploymentExchangeManagerSelfTest {
     public void testAddTasksInNotEmptyQueue() {
         ServicesDeploymentExchangeManager exchMgr = manager();
 
-        ServicesDeploymentExchangeTask t1 = new TestTaskClass();
+        ServicesDeploymentExchangeTask t1 = randomExchangeTask();
 
         exchMgr.tasks().add(t1);
 
-        ServicesDeploymentExchangeTask t2 = new TestTaskClass();
+        ServicesDeploymentExchangeTask t2 = randomExchangeTask();
 
         exchMgr.tasks().add(t2);
 
@@ -84,7 +82,7 @@ public class ServiceDeploymentExchangeManagerSelfTest {
         ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
 
         for (int i = 0; i < 5; i++)
-            tasks.add(new TestTaskClass());
+            tasks.add(randomExchangeTask());
 
         tasks.forEach(t -> exchMgr.addTask(t.exchangeId(), t.customMessage()));
 
@@ -114,83 +112,14 @@ public class ServiceDeploymentExchangeManagerSelfTest {
     }
 
     /**
-     * Service deployment exchange task no-op implementation for tests.
+     * @return Service deployment exchange id.
      */
-    private static class TestTaskClass implements ServicesDeploymentExchangeTask {
-        /** */
-        private final DiscoveryEvent evt = new DiscoveryEvent(
+    private ServicesDeploymentExchangeTask randomExchangeTask() {
+        DiscoveryEvent evt = new DiscoveryEvent(
             new GridTestNode(UUID.randomUUID()), "", 10, new GridTestNode(UUID.randomUUID()));
 
-        /** */
-        private final AffinityTopologyVersion topVer = new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong());
+        AffinityTopologyVersion topVer = new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong());
 
-        /** */
-        private final ServicesDeploymentExchangeId exchId = new ServicesDeploymentExchangeId(evt, topVer);
-
-        /** {@inheritDoc} */
-        @Override public void init(GridKernalContext kCtx) throws IgniteCheckedException {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public int eventType() {
-            return evt.type();
-        }
-
-        /** {@inheritDoc} */
-        @Override public UUID nodeId() {
-            return evt.node().id();
-        }
-
-        /** {@inheritDoc} */
-        @Override public void customMessage(DiscoveryCustomMessage customMsg) {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public DiscoveryCustomMessage customMessage() {
-            return null;
-        }
-
-        /** {@inheritDoc} */
-        @Override public ServicesDeploymentExchangeId exchangeId() {
-            return exchId;
-        }
-
-        /** {@inheritDoc} */
-        @Override public AffinityTopologyVersion topologyVersion() {
-            return topVer;
-        }
-
-        /** {@inheritDoc} */
-        @Override public void complete() {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public boolean isCompleted() {
-            // No-op.
-            return false;
-        }
-
-        /** {@inheritDoc} */
-        @Override public void waitForComplete(long timeout) throws IgniteCheckedException {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public void onReceiveFullMapMessage(UUID snd, ServicesFullMapMessage msg) {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public void onNodeLeft(UUID nodeId) {
-            // No-op.
-        }
+        return new ServicesDeploymentExchangeTask(new ServicesDeploymentExchangeId(evt, topVer));
     }
 }
