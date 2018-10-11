@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
@@ -77,6 +78,9 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
 
     /** Coordinator initialization actions mutex. */
     private final Object initCrdMux = new Object();
+
+    /** Added in exchange queue flag. */
+    private AtomicBoolean addedInQueue = new AtomicBoolean(false);
 
     /** Single service messages to process. */
     @GridToStringInclude
@@ -842,7 +846,7 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
      *
      * @return {@code true} if the task completed, otherwise {@code false}.
      */
-    public boolean isCompleted() {
+    protected boolean isCompleted() {
         return completedFut.isDone();
     }
 
@@ -852,8 +856,19 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
      * @param timeout The maximum time to wait in milliseconds.
      * @throws IgniteCheckedException In case of an error.
      */
-    public void waitForComplete(long timeout) throws IgniteCheckedException {
+    protected void waitForComplete(long timeout) throws IgniteCheckedException {
         completedFut.get(timeout);
+    }
+
+    /**
+     * Handles when this task is being added in exchange queue.
+     * <p/>
+     * Introduced to avoid overhead on calling of {@link Collection#contains(Object)}}.
+     *
+     * @return {@code true} if task is has not been added previously, otherwise {@code false}.
+     */
+    protected boolean onAdded() {
+        return addedInQueue.compareAndSet(false, true);
     }
 
     /**

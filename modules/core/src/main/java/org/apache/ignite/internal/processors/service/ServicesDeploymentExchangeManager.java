@@ -229,16 +229,18 @@ public class ServicesDeploymentExchangeManager {
     protected void addTask(@NotNull ServicesDeploymentExchangeId exchId, @Nullable DiscoveryCustomMessage customMsg) {
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(exchId));
 
-        synchronized (addEvtMux) {
-            if (!exchWorker.tasksQueue.contains(task)) {
-                if (customMsg != null)
-                    task.customMessage(customMsg);
+        if (task.onAdded()) {
+            if (customMsg != null) // TODO
+                task.customMessage(customMsg);
 
+            synchronized (addEvtMux) {
                 exchWorker.tasksQueue.add(task);
-            }
 
-            addEvtMux.notify();
+                addEvtMux.notify();
+            }
         }
+        else
+            log.warning("Do not start service deployment exchange, exchId: " + exchId);
     }
 
     /**
