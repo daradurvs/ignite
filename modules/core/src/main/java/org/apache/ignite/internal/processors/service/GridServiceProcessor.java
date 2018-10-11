@@ -277,9 +277,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon() || data.commonData() == null)
             return;
 
-        if (disconnected)
-            registeredSrvcs.clear();
-
         ServicesCommonDiscoveryData clusterData = (ServicesCommonDiscoveryData)data.commonData();
 
         for (ServiceInfo desc : clusterData.registeredServices())
@@ -356,6 +353,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             exchMgr.stopProcessing();
 
             exchMgr = new ServicesDeploymentExchangeManager(ctx);
+
+            registeredSrvcs.clear();
 
             IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
                 ctx.cluster().clientReconnectFuture(), "Client node disconnected, the operation's result is unknown.");
