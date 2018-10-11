@@ -33,8 +33,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
+import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
@@ -51,7 +53,6 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
@@ -102,9 +103,13 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     @GridToStringInclude
     private ServicesDeploymentExchangeId exchId;
 
-    /** Custom message. */
+    /** Cause discovery event. */
     @GridToStringInclude
-    @Nullable private DiscoveryCustomMessage customMsg;
+    private volatile DiscoveryEvent evt;
+
+    /** Topology version. */
+    @GridToStringInclude
+    private volatile AffinityTopologyVersion evtTopVer;
 
     /** Kernal context. */
     private GridKernalContext ctx;
@@ -133,15 +138,17 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     }
 
     /**
-     * Sets discovery custom message.
+     * Handles discovery event receiving.
      *
-     * @param customMsg Discovery custom message.
+     * @param evt Discovery event.
+     * @param topVer Topology version.
      */
-    public void customMessage(@NotNull DiscoveryCustomMessage customMsg) {
-        assert exchId.requestId().equals(customMsg.id()) : "Wrong message's request id : " +
-            "[expected=" + exchId.requestId() + ", actual=" + customMsg.id() + ']';
+    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+        assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED
+            || evt.type() == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event type, evt=" + evt;
 
-        this.customMsg = customMsg;
+        this.evt = evt;
+        this.evtTopVer = topVer;
     }
 
     /**
@@ -158,16 +165,11 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
         this.log = ctx.log(getClass());
         this.locJoinTopVer = ctx.discovery().localJoin().joinTopologyVersion();
 
-        final AffinityTopologyVersion evtTopVer = exchId.topologyVersion();
-        final UUID evtNodeId = exchId.nodeId();
-        final int evtType = exchId.eventType();
-
-        assert ((evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) && customMsg == null) ||
-            (evtType == EVT_DISCOVERY_CUSTOM_EVT && customMsg != null) : "evtType=" + evtType + "customMsg=" + customMsg;
+        final UUID evtNodeId = evt.eventNode().id();
 
         if (log.isDebugEnabled()) {
-            log.debug("Started services exchange task init: [exchId=" + exchangeId() + ", locId=" + this.ctx.localNodeId() +
-                ", evtType=" + U.gridEventName(evtType) + ", evtNodeId=" + evtNodeId + ", customMsg=" + customMsg + ']');
+            log.debug("Started services exchange task init: [exchId=" + exchangeId() +
+                ", locId=" + this.ctx.localNodeId() + ", evt=" + evt + ']');
         }
 
         try {
@@ -189,11 +191,15 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
             if (crd.isLocal())
                 initCoordinator(evtTopVer);
 
-            if (evtType == EVT_DISCOVERY_CUSTOM_EVT) {
+            if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
+                final DiscoveryCustomMessage customMsg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                assert customMsg != null : this;
+
                 if (customMsg instanceof ChangeGlobalStateMessage)
                     onChangeGlobalStateMessage((ChangeGlobalStateMessage)customMsg, evtTopVer);
                 else if (customMsg instanceof DynamicServicesChangeRequestBatchMessage)
-                    onServiceChangeRequest((DynamicServicesChangeRequestBatchMessage)customMsg, evtTopVer);
+                    onServiceChangeRequest(evtNodeId, (DynamicServicesChangeRequestBatchMessage)customMsg, evtTopVer);
                 else if (!lessThenLocalJoin(evtTopVer)) {
                     if (customMsg instanceof DynamicCacheChangeBatch)
                         onCacheStateChangeRequest((DynamicCacheChangeBatch)customMsg);
@@ -211,7 +217,7 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
             else {
                 Set<IgniteUuid> toReassign = new HashSet<>();
 
-                if (evtType == EVT_NODE_JOINED)
+                if (evt.type() == EVT_NODE_JOINED)
                     toReassign.addAll(ctx.service().servicesReceivedFromJoin(evtNodeId));
 
                 toReassign.addAll(ctx.service().deployedServicesIds());
@@ -282,10 +288,11 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     }
 
     /**
+     * @param nodId Event node id.
      * @param batch Set of requests to change service.
      * @param topVer Topology version.
      */
-    private void onServiceChangeRequest(DynamicServicesChangeRequestBatchMessage batch,
+    private void onServiceChangeRequest(UUID nodId, DynamicServicesChangeRequestBatchMessage batch,
         AffinityTopologyVersion topVer) {
         final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
         final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
@@ -329,7 +336,7 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
                             srvcTop = Collections.emptyMap();
                         }
 
-                        ctx.service().putIfAbsentServiceInfo(srvcId, new ServiceInfo(exchId.nodeId(), srvcId, cfg));
+                        ctx.service().putIfAbsentServiceInfo(srvcId, new ServiceInfo(nodId, srvcId, cfg));
 
                         if (srvcTop != null && !srvcTop.isEmpty())
                             srvcsToDeploy.put(reqSrvcId, srvcTop);
@@ -748,7 +755,7 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
                     crdId = crd.id();
 
                     if (crd.isLocal())
-                        initCoordinator(exchId.topologyVersion());
+                        initCoordinator(evtTopVer);
 
                     createAndSendSingleMapMessage(exchId, depErrors);
                 }
@@ -781,39 +788,28 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     }
 
     /**
+     * @return Cause discovery event.
+     */
+    public DiscoveryEvent event() {
+        return evt;
+    }
+
+    /**
+     * Returns cause of exchange topology version.
+     *
+     * @return Cause of exchange topology version.
+     */
+    public AffinityTopologyVersion topologyVersion() {
+        return evtTopVer;
+    }
+
+    /**
      * Returns services deployment exchange id of the task.
      *
      * @return Services deployment exchange id.
      */
     public ServicesDeploymentExchangeId exchangeId() {
         return exchId;
-    }
-
-    /**
-     * Returns cause discovery event type id.
-     *
-     * @return Event's type id.
-     */
-    public int eventType() {
-        return exchId.eventType();
-    }
-
-    /**
-     * Returns cause discovery event node id.
-     *
-     * @return Node id.
-     */
-    public UUID nodeId() {
-        return exchId.nodeId();
-    }
-
-    /**
-     * Returns discovery custom event's message.
-     *
-     * @return Discovery custom event's message.
-     */
-    public DiscoveryCustomMessage customMessage() {
-        return customMsg;
     }
 
     /**
@@ -834,11 +830,19 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
 
         if (!initCrdFut.isDone())
             initCrdFut.onDone();
+    }
 
+    /**
+     * Releases resources to reduce memory usages.
+     */
+    protected void clear() {
         singleMapMsgs.clear();
         expDeps.clear();
         depErrors.clear();
         remaining.clear();
+
+        if (evt instanceof DiscoveryCustomEvent)
+            ((DiscoveryCustomEvent)evt).customMessage(null);
     }
 
     /**
@@ -871,25 +875,17 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
         return addedInQueue.compareAndSet(false, true);
     }
 
-    /**
-     * Returns cause of exchange topology version.
-     *
-     * @return Cause of exchange topology version.
-     */
-    public AffinityTopologyVersion topologyVersion() {
-        return exchId.topologyVersion();
-    }
-
     /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
-        out.writeObject(exchId);
-        out.writeObject(customMsg);
+        out.writeObject(evt);
+        out.writeObject(evtTopVer);
     }
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        exchId = (ServicesDeploymentExchangeId)in.readObject();
-        customMsg = (DiscoveryCustomMessage)in.readObject();
+        evt = (DiscoveryEvent)in.readObject();
+        evtTopVer = (AffinityTopologyVersion)in.readObject();
+        exchId = ServicesDeploymentExchangeManager.exchangeId(evt, evtTopVer);
     }
 
     /** {@inheritDoc} */

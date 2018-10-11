@@ -32,6 +32,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import static org.apache.ignite.internal.processors.service.ServicesDeploymentExchangeManager.exchangeId;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -54,7 +55,7 @@ public class ServicesDeploymentExchangeIdSelfTest {
     public ServicesDeploymentExchangeIdSelfTest(IgniteBiTuple<DiscoveryEvent, AffinityTopologyVersion> data) {
         this.evt = data.get1();
         this.topVer = data.get2();
-        this.sut = new ServicesDeploymentExchangeId(evt, topVer);
+        this.sut = exchangeId(evt, topVer);
     }
 
     /**
@@ -81,19 +82,9 @@ public class ServicesDeploymentExchangeIdSelfTest {
 
     /** */
     @Test
-    public void nodeId() {
-        assertEquals(evt.eventNode().id(), sut.nodeId());
-    }
-
-    /** */
-    @Test
-    public void eventType() {
-        assertEquals(evt.type(), sut.eventType());
-    }
-
-    /** */
-    @Test
     public void topologyVersion() {
+        AffinityTopologyVersion topVer = evt instanceof DiscoveryCustomEvent ? null : this.topVer;
+
         assertEquals(topVer, sut.topologyVersion());
     }
 

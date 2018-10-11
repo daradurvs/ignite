@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.IgniteException;
@@ -38,8 +37,8 @@ public class ServiceInfo implements ServiceDescriptor {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Node ID. */
-    private final UUID nodeId;
+    /** Origin node ID. */
+    private final UUID originNodeId;
 
     /** Service id. */
     private final IgniteUuid srvcId;
@@ -52,12 +51,12 @@ public class ServiceInfo implements ServiceDescriptor {
     private volatile Map<UUID, Integer> top = Collections.emptyMap();
 
     /**
-     * @param nodeId Initiating node id.
+     * @param originNodeId Initiating node id.
      * @param srvcId Service id.
      * @param cfg Service configuration.
      */
-    public ServiceInfo(@NotNull UUID nodeId, @NotNull IgniteUuid srvcId, @NotNull ServiceConfiguration cfg) {
-        this.nodeId = nodeId;
+    public ServiceInfo(@NotNull UUID originNodeId, @NotNull IgniteUuid srvcId, @NotNull ServiceConfiguration cfg) {
+        this.originNodeId = originNodeId;
         this.srvcId = srvcId;
         this.cfg = cfg;
     }
@@ -134,7 +133,7 @@ public class ServiceInfo implements ServiceDescriptor {
 
     /** {@inheritDoc} */
     @Override public UUID originNodeId() {
-        return nodeId;
+        return originNodeId;
     }
 
     /** {@inheritDoc} */

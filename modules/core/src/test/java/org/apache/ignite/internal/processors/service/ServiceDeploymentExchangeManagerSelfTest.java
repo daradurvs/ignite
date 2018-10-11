@@ -32,6 +32,7 @@ import org.apache.ignite.testframework.junits.logger.GridTestLog4jLogger;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import static org.apache.ignite.internal.processors.service.ServicesDeploymentExchangeManager.exchangeId;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -59,7 +60,7 @@ public class ServiceDeploymentExchangeManagerSelfTest {
 
         assertEquals(0, exchMgr.tasks().size());
 
-        tasks.forEach(t -> exchMgr.addTask(t.exchangeId(), t.customMessage()));
+        tasks.forEach(t -> exchMgr.addTask(t.event(), t.topologyVersion()));
 
         assertEquals(tasks.size(), exchMgr.tasks().size());
     }
@@ -84,7 +85,7 @@ public class ServiceDeploymentExchangeManagerSelfTest {
         for (int i = 0; i < 5; i++)
             tasks.add(randomExchangeTask());
 
-        tasks.forEach(t -> exchMgr.addTask(t.exchangeId(), t.customMessage()));
+        tasks.forEach(t -> exchMgr.addTask(t.event(), t.topologyVersion()));
 
         assertEquals(tasks.size() + 2, exchMgr.tasks().size());
     }
@@ -120,6 +121,10 @@ public class ServiceDeploymentExchangeManagerSelfTest {
 
         AffinityTopologyVersion topVer = new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong());
 
-        return new ServicesDeploymentExchangeTask(new ServicesDeploymentExchangeId(evt, topVer));
+        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeTask(exchangeId(evt, topVer));
+
+        task.onEvent(evt, topVer);
+
+        return task;
     }
 }

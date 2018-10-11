@@ -19,9 +19,6 @@ package org.apache.ignite.internal.processors.service;
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
-import java.util.UUID;
-import org.apache.ignite.events.DiscoveryEvent;
-import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -39,17 +36,11 @@ public class ServicesDeploymentExchangeId implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
-    /** Event node id. */
-    private UUID nodeId;
-
-    /** Event type. */
-    private int evtType;
-
     /** Topology version. */
-    private AffinityTopologyVersion topVer;
+    @Nullable private AffinityTopologyVersion topVer;
 
     /** Request's id. */
-    private IgniteUuid reqId;
+    @Nullable private IgniteUuid reqId;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -58,44 +49,17 @@ public class ServicesDeploymentExchangeId implements Message {
     }
 
     /**
-     * @param evt Cause discovery event.
      * @param topVer Topology version.
      */
-    protected ServicesDeploymentExchangeId(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer) {
-        this(
-            evt.eventNode().id(),
-            evt.type(),
-            topVer,
-            ((evt instanceof DiscoveryCustomEvent) ? ((DiscoveryCustomEvent)evt).customMessage().id() : null)
-        );
-    }
-
-    /**
-     * @param nodeId Event node id.
-     * @param evtType Event type.
-     * @param topVer Topology version.
-     * @param reqId Custom message id, possibly {@code null}.
-     */
-    protected ServicesDeploymentExchangeId(@NotNull UUID nodeId, int evtType, @NotNull AffinityTopologyVersion topVer,
-        @Nullable IgniteUuid reqId) {
-        this.nodeId = nodeId;
-        this.evtType = evtType;
+    ServicesDeploymentExchangeId(@NotNull AffinityTopologyVersion topVer) {
         this.topVer = topVer;
+    }
+
+    /**
+     * @param reqId Request's id.
+     */
+    ServicesDeploymentExchangeId(@NotNull IgniteUuid reqId) {
         this.reqId = reqId;
-    }
-
-    /**
-     * @return Event node id.
-     */
-    public UUID nodeId() {
-        return nodeId;
-    }
-
-    /**
-     * @return Event type.
-     */
-    public int eventType() {
-        return evtType;
     }
 
     /**
@@ -125,24 +89,12 @@ public class ServicesDeploymentExchangeId implements Message {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeUuid("nodeId", nodeId))
-                    return false;
-
-                writer.incrementState();
-
-            case 1:
-                if (!writer.writeInt("evtType", evtType))
-                    return false;
-
-                writer.incrementState();
-
-            case 2:
                 if (!writer.writeMessage("topVer", topVer))
                     return false;
 
                 writer.incrementState();
 
-            case 3:
+            case 1:
                 if (!writer.writeIgniteUuid("reqId", reqId))
                     return false;
 
@@ -161,22 +113,6 @@ public class ServicesDeploymentExchangeId implements Message {
 
         switch (reader.state()) {
             case 0:
-                nodeId = reader.readUuid("nodeId");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 1:
-                evtType = reader.readInt("evtType");
-
-                if (!reader.isLastRead())
-                    return false;
-
-                reader.incrementState();
-
-            case 2:
                 topVer = reader.readMessage("topVer");
 
                 if (!reader.isLastRead())
@@ -184,7 +120,7 @@ public class ServicesDeploymentExchangeId implements Message {
 
                 reader.incrementState();
 
-            case 3:
+            case 1:
                 reqId = reader.readIgniteUuid("reqId");
 
                 if (!reader.isLastRead())
@@ -221,13 +157,12 @@ public class ServicesDeploymentExchangeId implements Message {
 
         ServicesDeploymentExchangeId id = (ServicesDeploymentExchangeId)o;
 
-        return F.eq(topVer, id.topVer) && evtType == id.evtType &&
-            F.eq(nodeId, id.nodeId) && F.eq(reqId, id.reqId);
+        return F.eq(topVer, id.topVer) && F.eq(reqId, id.reqId);
     }
 
     /** {@inheritDoc} */
     @Override public int hashCode() {
-        return Objects.hash(nodeId, topVer, evtType, reqId);
+        return Objects.hash(topVer, reqId);
     }
 
     /** {@inheritDoc} */

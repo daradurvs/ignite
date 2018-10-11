@@ -46,7 +46,6 @@ import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT;
 import static org.apache.ignite.IgniteSystemProperties.getLong;
@@ -200,38 +199,19 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Addeds discovery event to exchange queue.
-     *
-     * @param exchId Exchange id.
-     * @param evt Discovery event.
-     */
-    protected void addEvent(ServicesDeploymentExchangeId exchId, DiscoveryEvent evt) {
-        DiscoveryCustomMessage customMsg = null;
-
-        if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
-            DiscoveryCustomEvent customEvt = (DiscoveryCustomEvent)evt;
-
-            customMsg = customEvt.customMessage();
-
-            if (customEvt.customMessage() instanceof DynamicServicesChangeRequestBatchMessage)
-                customEvt.customMessage(null);
-        }
-
-        addTask(exchId, customMsg);
-    }
-
-    /**
      * Addeds exchange task with given exchange id.
      *
-     * @param exchId Exchange id.
-     * @param customMsg Discovery custom message.
+     * @param evt Discovery event.
+     * @param topVer Topology version.
      */
-    protected void addTask(@NotNull ServicesDeploymentExchangeId exchId, @Nullable DiscoveryCustomMessage customMsg) {
+    protected void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer) {
+        final DiscoveryEvent evt0 = copyIfNeeded(evt);
+        final ServicesDeploymentExchangeId exchId = exchangeId(evt0, topVer);
+
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(exchId));
 
         if (task.onAdded()) {
-            if (customMsg != null) // TODO
-                task.customMessage(customMsg);
+            task.onEvent(evt0, topVer);
 
             synchronized (addEvtMux) {
                 exchWorker.tasksQueue.add(task);
@@ -240,7 +220,7 @@ public class ServicesDeploymentExchangeManager {
             }
         }
         else
-            log.warning("Do not start service deployment exchange, exchId: " + exchId);
+            log.warning("Do not start service deployment exchange for event: " + evt0);
     }
 
     /**
@@ -253,9 +233,44 @@ public class ServicesDeploymentExchangeManager {
         if (cache.state().transition())
             pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
         else if (cache.state().active())
-            addEvent(new ServicesDeploymentExchangeId(evt, cache.version()), evt);
+            addTask(evt, cache.version());
         else if (log.isDebugEnabled())
             log.debug("Ignore event, cluster is inactive, evt=" + evt);
+    }
+
+    /**
+     * Creates service exchange id.
+     *
+     * @param evt Discovery event.
+     * @param topVer Topology version.
+     * @return Services deployment exchange id.
+     */
+    public static ServicesDeploymentExchangeId exchangeId(@NotNull DiscoveryEvent evt,
+        @NotNull AffinityTopologyVersion topVer) {
+        if (evt instanceof DiscoveryCustomEvent)
+            return new ServicesDeploymentExchangeId(((DiscoveryCustomEvent)evt).customMessage().id());
+        else
+            return new ServicesDeploymentExchangeId(topVer);
+    }
+
+    /**
+     * Clones some instances of {@link DiscoveryCustomEvent} because their custom messages may be nullifyed earlier by
+     * other subsystems then they will be processed by services exchange worker.
+     *
+     * @param evt Discovery event.
+     * @return Discovery event to process.
+     */
+    private DiscoveryEvent copyIfNeeded(@NotNull DiscoveryEvent evt) {
+        if (!(evt instanceof DiscoveryCustomEvent) ||
+            (((DiscoveryCustomEvent)evt).customMessage() instanceof DynamicServicesChangeRequestBatchMessage))
+            return evt;
+
+        DiscoveryCustomEvent cp = new DiscoveryCustomEvent();
+
+        cp.customMessage(((DiscoveryCustomEvent)evt).customMessage());
+        cp.eventNode(evt.eventNode());
+
+        return cp;
     }
 
     /**
@@ -282,14 +297,14 @@ public class ServicesDeploymentExchangeManager {
                         ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
 
                         if (msg0.clusterActive())
-                            pendingEvts.forEach((t) -> addEvent(new ServicesDeploymentExchangeId(t.get1(), t.get2()), t.get1()));
+                            pendingEvts.forEach((t) -> addTask(t.get1(), t.get2()));
                         else if (log.isDebugEnabled())
                             pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
 
                         pendingEvts.clear();
                     }
                     else if (msg instanceof ChangeGlobalStateMessage)
-                        addEvent(new ServicesDeploymentExchangeId(evt, discoCache.version()), evt);
+                        addTask(evt, discoCache.version());
 
                     else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
                         msg instanceof DynamicCacheChangeBatch ||
@@ -484,7 +499,7 @@ public class ServicesDeploymentExchangeManager {
                 tasksQueue.poll();
             }
 
-            tasks.remove(task.exchangeId());
+            tasks.remove(task.exchangeId()).clear();
         }
     }
 

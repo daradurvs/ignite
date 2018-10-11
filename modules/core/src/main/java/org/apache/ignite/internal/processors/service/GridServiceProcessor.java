@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.service;
 
 import java.lang.Thread.UncaughtExceptionHandler;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -275,12 +274,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         if (ctx.isDaemon() || data.commonData() == null)
             return;
 
-        ServicesCommonDiscoveryData clusterData = (ServicesCommonDiscoveryData)data.commonData();
+        ServicesCommonDiscoveryData exchangeQueue = (ServicesCommonDiscoveryData)data.commonData();
 
-        for (ServiceInfo desc : clusterData.registeredServices())
+        for (ServiceInfo desc : exchangeQueue.registeredServices())
             registeredSrvcs.put(desc.serviceId(), desc);
 
-        clusterData.exchangeQueue().forEach(t -> ctx.service().exchange().addTask(t.exchangeId(), t.customMessage()));
+        exchangeQueue.exchangeQueue().forEach(t -> ctx.service().exchange().addTask(t.event(), t.topologyVersion()));
     }
 
     /** {@inheritDoc} */
