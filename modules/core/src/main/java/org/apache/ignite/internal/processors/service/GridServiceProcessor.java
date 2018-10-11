@@ -128,8 +128,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Client disconnected flag. */
     private boolean disconnected;
 
-    /** Local node's joining data. */
-    private ServicesJoinNodeDiscoveryData locData;
+    /** Local node's static services info. */
+    private ArrayList<ServiceInfo> staticSrvcsInfo;
 
     /**
      * @param ctx Kernal context.
@@ -159,7 +159,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         ServiceConfiguration[] cfgs = ctx.config().getServiceConfiguration();
 
-        final ArrayList<ServiceInfo> staticSrvcsInfo = new ArrayList<>();
+        staticSrvcsInfo = new ArrayList<>();
 
         if (cfgs != null) {
             // Skipped check of marshalling, because {@link GridMarshallerMappingProcessor} is not started at this point.
@@ -176,8 +176,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             for (ServiceConfiguration srvcCfg : prepCfgs.cfgs)
                 staticSrvcsInfo.add(new ServiceInfo(ctx.localNodeId(), IgniteUuid.randomUuid(), srvcCfg));
         }
-
-        locData = new ServicesJoinNodeDiscoveryData(staticSrvcsInfo);
     }
 
     /** {@inheritDoc} */
@@ -266,7 +264,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
         ServicesCommonDiscoveryData clusterData = new ServicesCommonDiscoveryData(
             new ArrayList<>(registeredSrvcs.values()),
-            new ArrayDeque<>(ctx.service().exchange().tasks())
+            new ArrayList<>(ctx.service().exchange().tasks())
         );
 
         dataBag.addGridCommonData(SERVICE_PROC.ordinal(), clusterData);
@@ -287,9 +285,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public void collectJoiningNodeData(DiscoveryDataBag dataBag) {
-        assert locData != null;
+        assert staticSrvcsInfo != null;
 
-        dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), locData);
+        dataBag.addJoiningNodeData(SERVICE_PROC.ordinal(), new ServicesJoinNodeDiscoveryData(staticSrvcsInfo));
     }
 
     /** {@inheritDoc} */
@@ -1715,7 +1713,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             // First node start, {@link #onGridDataReceived(DiscoveryDataBag.GridDiscoveryData)} has not been called
             if (first)
-                locData.services().forEach(desc -> registeredSrvcs.put(desc.serviceId(), desc));
+                staticSrvcsInfo.forEach(desc -> registeredSrvcs.put(desc.serviceId(), desc));
         }
 
         exchMgr.onLocalEvent(evt, discoCache);
