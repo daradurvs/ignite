@@ -25,6 +25,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
+import org.jetbrains.annotations.NotNull;
 
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.IGNITE_UUID;
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
@@ -54,8 +55,8 @@ public class ServicesSingleMapMessage implements Message {
      * @param exchId Exchange id.
      * @param results Services deployments results.
      */
-    public ServicesSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, ServiceSingleDeploymentsResults> results) {
+    public ServicesSingleMapMessage(@NotNull ServicesDeploymentExchangeId exchId,
+        @NotNull Map<IgniteUuid, ServiceSingleDeploymentsResults> results) {
         this.exchId = exchId;
         this.results = results;
     }

@@ -305,17 +305,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (desc.configuration().equalsIgnoreNodeFilter(toStart.configuration())) {
                     exists = true;
 
+                    log.warning("Ignore service configuration received from joining node : " +
+                        "[nodeId=" + data.joiningNodeId() + ", cfgName=" + toStart.name() + "]. " +
+                        "The same service configuration already registered.");
+
                     break;
                 }
             }
 
-            if (!exists)
-                registeredSrvcs.put(toStart.serviceId(), toStart);
-            else {
-                log.warning("Ignore service configuration received from joining node : " +
-                    "[nodeId=" + data.joiningNodeId() + ", cfgName=" + toStart.name() + "]. " +
-                    "The same service configuration already registered.");
-            }
+            if (exists)
+                continue;
+
+            registeredSrvcs.put(toStart.serviceId(), toStart);
         }
     }
 
@@ -1105,10 +1106,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                                 // Avoid redundant moving of services.
                                 for (Map.Entry<UUID, Integer> e : oldTop.entrySet()) {
-                                    // Do not assign services to left nodes.
-                                    if (ctx.discovery().node(e.getKey()) == null)
-                                        continue;
-
                                     // If old count and new count match, then reuse the assignment.
                                     if (e.getValue() == cnt) {
                                         cnts.put(e.getKey(), cnt);

@@ -329,7 +329,7 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
 
                             if (oldSrvcDesc != null) {
                                 srvcId = oldSrvcDesc.serviceId();
-                                oldTop = oldSrvcDesc.topologySnapshot();
+                                oldTop = filterDeadNodes(oldSrvcDesc.topologySnapshot());
                             }
 
                             srvcTop = reassign(srvcId, cfg, topVer, oldTop);
@@ -407,7 +407,7 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
             Throwable err = null;
 
             try {
-                top = reassign(srvcId, desc.configuration(), topVer, desc.topologySnapshot());
+                top = reassign(srvcId, desc.configuration(), topVer, filterDeadNodes(desc.topologySnapshot()));
             }
             catch (Throwable e) {
                 err = e;
@@ -600,6 +600,26 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
         catch (Throwable e) {
             throw new IgniteCheckedException("Failed to calculate assignments for service, cfg=" + cfg, e);
         }
+    }
+
+    /**
+     * Filters dead nodes from given service topology snapshot.
+     *
+     * @param top Service topology snapshot.
+     * @return Filtered service topology snapshot.
+     */
+    private Map<UUID, Integer> filterDeadNodes(Map<UUID, Integer> top) {
+        if (top == null || top.isEmpty())
+            return top;
+
+        Map<UUID, Integer> filtered = new HashMap<>();
+
+        top.forEach((nodeId, cnt) -> {
+            if (ctx.discovery().alive(nodeId))
+                filtered.put(nodeId, cnt);
+        });
+
+        return filtered;
     }
 
     /**

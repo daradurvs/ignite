@@ -24,6 +24,7 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
+import org.jetbrains.annotations.NotNull;
 
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.BYTE_ARR;
 
@@ -38,7 +39,7 @@ public class ServiceSingleDeploymentsResults implements Message {
     private int cnt;
 
     /** Serialized exceptions. */
-    private Collection<byte[]> errors = Collections.emptyList();
+    private Collection<byte[]> errors = null;
 
     /**
      * Empty constructor for marshalling purposes.
@@ -70,8 +71,8 @@ public class ServiceSingleDeploymentsResults implements Message {
     /**
      * @return Serialized exceptions.
      */
-    public Collection<byte[]> errors() {
-        return errors;
+    @NotNull public Collection<byte[]> errors() {
+        return errors != null ? errors : Collections.emptyList();
     }
 
     /**

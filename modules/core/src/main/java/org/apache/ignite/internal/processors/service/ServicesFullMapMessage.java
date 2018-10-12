@@ -25,6 +25,7 @@ import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -48,8 +49,8 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
      * @param exchId Exchange id.
      * @param results Services deployments results.
      */
-    public ServicesFullMapMessage(ServicesDeploymentExchangeId exchId,
-        Collection<ServiceFullDeploymentsResults> results) {
+    public ServicesFullMapMessage(@NotNull ServicesDeploymentExchangeId exchId,
+        @NotNull Collection<ServiceFullDeploymentsResults> results) {
         this.exchId = exchId;
         this.results = results;
     }
