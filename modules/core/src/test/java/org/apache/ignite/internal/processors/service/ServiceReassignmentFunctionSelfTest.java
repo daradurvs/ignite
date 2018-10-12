@@ -20,8 +20,10 @@ package org.apache.ignite.internal.processors.service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.managers.communication.GridIoManager;
@@ -93,7 +95,7 @@ public class ServiceReassignmentFunctionSelfTest {
 
     /**
      * Mocks GridServiceProcessor to test method {@link GridServiceProcessor#reassign(IgniteUuid, ServiceConfiguration,
-     * AffinityTopologyVersion)}.
+     * AffinityTopologyVersion, Map)} )}.
      */
     private GridServiceProcessor mockServiceProcessor() {
         GridTestKernalContext spyCtx = spy(new GridTestKernalContext(new GridTestLog4jLogger()));
@@ -123,7 +125,28 @@ public class ServiceReassignmentFunctionSelfTest {
         cfg.setName(TEST_SERVICE_NAME);
         cfg.setTotalCount(1);
 
-        runTestReassignFunction(IgniteUuid.randomUuid(), cfg);
+        runTestReassignFunction(IgniteUuid.randomUuid(), cfg, null);
+    }
+
+    /**
+     * @throws Exception In case of an error.
+     */
+    @Test
+    public void testClusterSingletonWithOldTop() throws Exception {
+        ServiceConfiguration cfg = new ServiceConfiguration();
+
+        cfg.setName(TEST_SERVICE_NAME);
+        cfg.setTotalCount(1);
+
+        IgniteUuid srvcId = IgniteUuid.randomUuid();
+
+        Map<UUID, Integer> oldTop = new HashMap<>();
+
+        ClusterNode randomNode = nodes.get(new Random().nextInt(nodes.size()));
+
+        oldTop.put(randomNode.id(), 1);
+
+        runTestReassignFunction(srvcId, cfg, oldTop);
     }
 
     /**
@@ -136,7 +159,27 @@ public class ServiceReassignmentFunctionSelfTest {
         cfg.setName(TEST_SERVICE_NAME);
         cfg.setMaxPerNodeCount(1);
 
-        runTestReassignFunction(IgniteUuid.randomUuid(), cfg);
+        runTestReassignFunction(IgniteUuid.randomUuid(), cfg, null);
+    }
+
+    /**
+     * @throws Exception In case of an error.
+     */
+    @Test
+    public void testNodeSingletonWithOldTop() throws Exception {
+        ServiceConfiguration cfg = new ServiceConfiguration();
+
+        cfg.setName(TEST_SERVICE_NAME);
+        cfg.setMaxPerNodeCount(1);
+
+        IgniteUuid srvcId = IgniteUuid.randomUuid();
+
+        Map<UUID, Integer> oldTop = new HashMap<>();
+
+        for (ClusterNode node : nodes)
+            oldTop.put(node.id(), 1);
+
+        runTestReassignFunction(srvcId, cfg, oldTop);
     }
 
     /**
@@ -150,22 +193,23 @@ public class ServiceReassignmentFunctionSelfTest {
         cfg.setMaxPerNodeCount(3);
         cfg.setTotalCount(10);
 
-        runTestReassignFunction(IgniteUuid.randomUuid(), cfg);
+        runTestReassignFunction(IgniteUuid.randomUuid(), cfg, null);
     }
 
     /**
      * @param cfg Service configuration to test.
      * @throws Exception In case of an error.
      */
-    public void runTestReassignFunction(IgniteUuid srvcId, ServiceConfiguration cfg) throws Exception {
+    public void runTestReassignFunction(IgniteUuid srvcId, ServiceConfiguration cfg,
+        Map<UUID, Integer> oldTop) throws Exception {
         GridServiceProcessor proc0 = processors.get(0);
 
-        Map<UUID, Integer> sut = proc0.reassign(srvcId, cfg, null);
+        Map<UUID, Integer> sut = proc0.reassign(srvcId, cfg, null, oldTop);
 
         for (int idx = 1; idx < nodes.size(); idx++) {
             GridServiceProcessor proc = processors.get(idx);
 
-            Map<UUID, Integer> assign = proc.reassign(srvcId, cfg, null);
+            Map<UUID, Integer> assign = proc.reassign(srvcId, cfg, null, oldTop);
 
             assertEquals(sut, assign);
         }

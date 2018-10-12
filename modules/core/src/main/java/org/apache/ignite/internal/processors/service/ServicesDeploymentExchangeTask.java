@@ -325,10 +325,14 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
                         Map<UUID, Integer> srvcTop;
 
                         try {
-                            if (oldSrvcDesc != null)
-                                srvcId = oldSrvcDesc.serviceId();
+                            Map<UUID, Integer> oldTop = null;
 
-                            srvcTop = reassign(srvcId, cfg, topVer);
+                            if (oldSrvcDesc != null) {
+                                srvcId = oldSrvcDesc.serviceId();
+                                oldTop = oldSrvcDesc.topologySnapshot();
+                            }
+
+                            srvcTop = reassign(srvcId, cfg, topVer, oldTop);
                         }
                         catch (IgniteCheckedException e) {
                             err = e;
@@ -394,16 +398,16 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
         }
 
         for (IgniteUuid srvcId : toReassign) {
-            ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
+            ServiceInfo desc = ctx.service().serviceInfo(srvcId);
 
-            assert cfg != null;
+            assert desc != null;
 
             Map<UUID, Integer> top = null;
 
             Throwable err = null;
 
             try {
-                top = reassign(srvcId, cfg, topVer);
+                top = reassign(srvcId, desc.configuration(), topVer, desc.topologySnapshot());
             }
             catch (Throwable e) {
                 err = e;
@@ -574,15 +578,16 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
      *
      * @param cfg Service configuration.
      * @param topVer Topology version.
+     * @param oldTop Previous topology snapshot.
      * @throws IgniteCheckedException In case of an error.
      */
     private Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        AffinityTopologyVersion topVer, Map<UUID, Integer> oldTop) throws IgniteCheckedException {
         try {
             if (lessThenLocalJoin(topVer))
                 return Collections.emptyMap();
 
-            Map<UUID, Integer> srvcTop = ctx.service().reassign(srvcId, cfg, topVer);
+            Map<UUID, Integer> srvcTop = ctx.service().reassign(srvcId, cfg, topVer, oldTop);
 
             if (srvcTop.isEmpty())
                 throw new IgniteCheckedException("Failed to determine suitable nodes to deploy service.");

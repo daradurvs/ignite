@@ -1030,10 +1030,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param srvcId Service id.
      * @param cfg Service configuration.
      * @param topVer Topology version.
+     * @param oldTop Previous topology snapshot.
      * @throws IgniteCheckedException If failed.
      */
     public Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
-        AffinityTopologyVersion topVer) throws IgniteCheckedException {
+        AffinityTopologyVersion topVer, Map<UUID, Integer> oldTop) throws IgniteCheckedException {
         Object nodeFilter = cfg.getNodeFilter();
 
         if (nodeFilter != null)
@@ -1065,12 +1066,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 nodes = null;
 
             try {
-                String name = cfg.getName();
-
-                IgniteUuid id = lookupId(name);
-
-                Map<UUID, Integer> oldTop = id != null ? registeredSrvcs.get(id).topologySnapshot() : null;
-
                 Map<UUID, Integer> cnts = new HashMap<>();
 
                 if (affKey != null && cacheName != null) {
@@ -1105,15 +1100,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                             Random rnd = new Random(srvcId.localId());
 
-                            if (oldTop != null) {
+                            if (oldTop != null && !oldTop.isEmpty()) {
                                 Collection<UUID> used = new HashSet<>();
 
                                 // Avoid redundant moving of services.
                                 for (Map.Entry<UUID, Integer> e : oldTop.entrySet()) {
-                                    // Do not assign services to left nodes.
-                                    if (ctx.discovery().node(e.getKey()) == null)
-                                        continue;
-
                                     // If old count and new count match, then reuse the assignment.
                                     if (e.getValue() == cnt) {
                                         cnts.put(e.getKey(), cnt);
