@@ -202,14 +202,15 @@ public class ServiceReassignmentFunctionSelfTest {
      */
     public void runTestReassignFunction(IgniteUuid srvcId, ServiceConfiguration cfg,
         Map<UUID, Integer> oldTop) throws Exception {
-        GridServiceProcessor proc0 = processors.get(0);
+        final GridServiceProcessor proc0 = processors.get(0);
+        final AffinityTopologyVersion stubTopVer = AffinityTopologyVersion.NONE;
 
-        Map<UUID, Integer> sut = proc0.reassign(srvcId, cfg, null, oldTop);
+        Map<UUID, Integer> sut = proc0.reassign(srvcId, cfg, stubTopVer, oldTop);
 
         for (int idx = 1; idx < nodes.size(); idx++) {
             GridServiceProcessor proc = processors.get(idx);
 
-            Map<UUID, Integer> assign = proc.reassign(srvcId, cfg, null, oldTop);
+            Map<UUID, Integer> assign = proc.reassign(srvcId, cfg, stubTopVer, oldTop);
 
             assertEquals(sut, assign);
         }

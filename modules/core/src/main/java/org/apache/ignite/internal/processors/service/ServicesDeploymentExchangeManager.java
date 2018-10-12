@@ -211,6 +211,8 @@ public class ServicesDeploymentExchangeManager {
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(exchId));
 
         if (task.onAdded()) {
+            assert task.event() == null && task.topologyVersion() == null;
+
             task.onEvent(evt0, topVer);
 
             synchronized (addEvtMux) {
