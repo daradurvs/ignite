@@ -1033,8 +1033,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param oldTop Previous topology snapshot.
      * @throws IgniteCheckedException If failed.
      */
-    public Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
-        AffinityTopologyVersion topVer, Map<UUID, Integer> oldTop) throws IgniteCheckedException {
+    public Map<UUID, Integer> reassign(@NotNull IgniteUuid srvcId, @NotNull ServiceConfiguration cfg,
+        @NotNull AffinityTopologyVersion topVer, @Nullable Map<UUID, Integer> oldTop) throws IgniteCheckedException {
         Object nodeFilter = cfg.getNodeFilter();
 
         if (nodeFilter != null)
@@ -1105,6 +1105,10 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                                 // Avoid redundant moving of services.
                                 for (Map.Entry<UUID, Integer> e : oldTop.entrySet()) {
+                                    // Do not assign services to left nodes.
+                                    if (ctx.discovery().node(e.getKey()) == null)
+                                        continue;
+
                                     // If old count and new count match, then reuse the assignment.
                                     if (e.getValue() == cnt) {
                                         cnts.put(e.getKey(), cnt);
