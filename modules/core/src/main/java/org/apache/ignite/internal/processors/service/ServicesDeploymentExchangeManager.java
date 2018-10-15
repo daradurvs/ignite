@@ -61,9 +61,6 @@ import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVE
  * Services deployment exchange manager.
  */
 public class ServicesDeploymentExchangeManager {
-    /** Default dump operation limit. */
-    private static final long DFLT_DUMP_TIMEOUT_LIMIT = 30 * 60_000;
-
     /** Busy lock. */
     private final GridSpinBusyLock busyLock = new GridSpinBusyLock();
 
@@ -91,6 +88,9 @@ public class ServicesDeploymentExchangeManager {
     /** Exchange worker. */
     private final ServicesDeploymentExchangeWorker exchWorker;
 
+    /** Default dump operation limit. */
+    private final long dfltDumpTimeoutLimit;
+
     /** Topology version of latest deployment task's event. */
     private final AtomicReference<AffinityTopologyVersion> readyTopVer =
         new AtomicReference<>(AffinityTopologyVersion.NONE);
@@ -108,6 +108,10 @@ public class ServicesDeploymentExchangeManager {
         ctx.io().addMessageListener(TOPIC_SERVICES, commLsnr);
 
         this.exchWorker = new ServicesDeploymentExchangeWorker();
+
+        long limit = getLong(IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT, 0);
+
+        dfltDumpTimeoutLimit = limit <= 0 ? 30 * 60_000 : limit;
     }
 
     /**
@@ -428,13 +432,19 @@ public class ServicesDeploymentExchangeManager {
 
                     final long dumpTimeout = 2 * ctx.config().getNetworkTimeout();
 
-                    long nextDumpTime = dumpTimeout;
+                    long dumpCnt = 0;
+                    long nextDumpTime = 0;
 
                     while (true) {
-                        blockingSectionBegin();
-
                         try {
-                            task.waitForComplete(nextDumpTime);
+                            blockingSectionBegin();
+
+                            try {
+                                task.waitForComplete(dumpTimeout);
+                            }
+                            finally {
+                                blockingSectionEnd();
+                            }
 
                             taskPostProcessing(task);
 
@@ -448,23 +458,10 @@ public class ServicesDeploymentExchangeManager {
                                 log.warning("Failed to wait service deployment exchange or timeout had been reached" +
                                     ", timeout=" + dumpTimeout + ", task=" + task);
 
-                                long limit = getLong(IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT, DFLT_DUMP_TIMEOUT_LIMIT);
+                                long nextTimeout = dumpTimeout * (2 + dumpCnt++);
 
-                                limit = limit <= 0 ? DFLT_DUMP_TIMEOUT_LIMIT : limit;
-
-                                long nextTimeout = U.currentTimeMillis() + dumpTimeout * 2;
-
-                                nextDumpTime = nextTimeout <= limit ? nextTimeout : limit;
+                                nextDumpTime = U.currentTimeMillis() + Math.min(nextTimeout, dfltDumpTimeoutLimit);
                             }
-
-                            if (task.isCompleted()) {
-                                taskPostProcessing(task);
-
-                                break;
-                            }
-                        }
-                        finally {
-                            blockingSectionEnd();
                         }
                     }
                 }

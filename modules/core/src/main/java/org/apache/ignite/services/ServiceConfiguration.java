@@ -270,9 +270,12 @@ public class ServiceConfiguration implements Serializable {
      * Sets services deployment policy used to handle deployment errors.
      *
      * @param plc Service deployment failures policy.
+     * @return {@code this} for chaining.
      */
-    public void setPolicy(ServiceDeploymentFailuresPolicy plc) {
+    public ServiceConfiguration setPolicy(ServiceDeploymentFailuresPolicy plc) {
         this.plc = plc;
+
+        return this;
     }
 
     /** {@inheritDoc} */
