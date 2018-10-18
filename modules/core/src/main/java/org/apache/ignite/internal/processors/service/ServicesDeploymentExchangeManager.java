@@ -200,8 +200,8 @@ public class ServicesDeploymentExchangeManager {
      * @param evt Discovery event.
      * @param topVer Topology version.
      */
-    protected void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
-        @Nullable ServicesExchangeActions exchangeActions) {
+    private void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
+        @Nullable ServicesDeploymentActions depActions) {
         final ServicesDeploymentExchangeId exchId = exchangeId(evt, topVer);
 
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(ctx, exchId));
@@ -209,7 +209,7 @@ public class ServicesDeploymentExchangeManager {
         if (task.onAdded()) {
             assert task.event() == null && task.topologyVersion() == null;
 
-            task.onEvent(evt, topVer, exchangeActions);
+            task.onEvent(evt, topVer, depActions);
 
             synchronized (addEvtMux) {
                 exchWorker.tasksQueue.add(task);
@@ -303,23 +303,22 @@ public class ServicesDeploymentExchangeManager {
 
                             if (task != null) // May be null in case of double delivering
                                 task.onReceiveFullMapMessage(snd, msg0);
-
-                            return;
                         }
-
-                        ServicesExchangeActions exchangeActions = null;
-
-                        if (msg instanceof ChangeGlobalStateMessage)
-                            exchangeActions = ((ChangeGlobalStateMessage)msg).servicesExchangeActions;
-                        else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
-                            exchangeActions = ((DynamicServicesChangeRequestBatchMessage)msg).exchActions;
-                        else if (msg instanceof DynamicCacheChangeBatch)
-                            exchangeActions = ((DynamicCacheChangeBatch)msg).exchActions;
                         else if (msg instanceof CacheAffinityChangeMessage)
-                            exchangeActions = ((CacheAffinityChangeMessage)msg).exchActions;
+                            addTask(copyIfNeeded((DiscoveryCustomEvent)evt), discoCache.version(), null);
+                        else {
+                            ServicesDeploymentActions depActions = null;
 
-                        if (exchangeActions != null)
-                            addTask(copyIfNeeded((DiscoveryCustomEvent)evt), discoCache.version(), exchangeActions);
+                            if (msg instanceof ChangeGlobalStateMessage)
+                                depActions = ((ChangeGlobalStateMessage)msg).servicesDeploymentsActions();
+                            else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
+                                depActions = ((DynamicServicesChangeRequestBatchMessage)msg).servicesDeploymentsActions();
+                            else if (msg instanceof DynamicCacheChangeBatch)
+                                depActions = ((DynamicCacheChangeBatch)msg).servicesDeploymentsActions();
+
+                            if (depActions != null)
+                                addTask(copyIfNeeded((DiscoveryCustomEvent)evt), discoCache.version(), depActions);
+                        }
                     }
                 }
                 else {

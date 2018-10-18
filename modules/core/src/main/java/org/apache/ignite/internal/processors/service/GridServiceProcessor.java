@@ -39,6 +39,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterGroup;
@@ -583,12 +584,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
-            return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
+            return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
         else if (prj.predicate() == F.<ClusterNode>alwaysTrue())
-            return deployAll(cfgs,  null);
+            return deployAll(cfgs, null);
         else
             // Deploy to predicate nodes by default.
-            return deployAll(cfgs,  prj.predicate());
+            return deployAll(cfgs, prj.predicate());
     }
 
     /**
@@ -865,7 +866,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Collection of deployed service descriptors.
      */
     public Collection<ServiceDescriptor> serviceDescriptors() {
-        return new ArrayList<>(startedSrvcs.values());
+        return startedSrvcs.values().stream()
+            .filter(d -> !d.topologySnapshot().isEmpty())
+            .collect(Collectors.toSet());
     }
 
     /**
@@ -1375,7 +1378,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param srvcId Service id.
      */
     protected void undeploy(IgniteUuid srvcId) {
-        registeredSrvcs.remove(srvcId);
+        startedSrvcs.remove(srvcId);
 
         Collection<ServiceContextImpl> ctxs;
 
@@ -1660,15 +1663,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         startedSrvcs.putIfAbsent(srvcId, desc);
     }
 
-    protected void updateStartedDescriptors(ServicesExchangeActions exchangeActions) {
-        if (exchangeActions.srvcsToDeploy != null)
-            exchangeActions.srvcsToDeploy.forEach(startedSrvcs::putIfAbsent);
+    protected void updateStartedDescriptors(ServicesDeploymentActions depActions) {
+        depActions.servicesToDeploy().forEach(startedSrvcs::putIfAbsent);
 
-        if (exchangeActions.srvcsToUndeploy != null)
-            exchangeActions.srvcsToUndeploy.keySet().forEach(startedSrvcs::remove);
+        depActions.servicesToUndeploy().keySet().forEach(startedSrvcs::remove);
     }
 
-    protected Map<IgniteUuid, ServiceInfo> startedService() {
+    protected Map<IgniteUuid, ServiceInfo> startedServices() {
         return new HashMap<>(startedSrvcs);
     }
 
@@ -1679,7 +1680,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return List of services to deploy received on node joining with given id.
      */
     @NotNull protected List<ServiceInfo> servicesReceivedFromJoin(UUID nodeId) {
-        List<ServiceInfo> descs= new ArrayList<>();
+        List<ServiceInfo> descs = new ArrayList<>();
 
         for (ServiceInfo desc : registeredSrvcs.values()) {
             if (desc.originNodeId().equals(nodeId))
@@ -1730,10 +1731,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         DiscoveryDataClusterState state) {
         assert msg != null;
 
-
         if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
-            Map<IgniteUuid, ServiceInfo> srvcsToStart = new HashMap<>();
-            Map<IgniteUuid, ServiceInfo> srvcToUndeploy = new HashMap<>();
+            Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
+            Map<IgniteUuid, ServiceInfo> toUndeploy = new HashMap<>();
 
             for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
                 IgniteUuid reqSrvcId = req.serviceId();
@@ -1749,9 +1749,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     else {
                         ServiceConfiguration cfg = req.configuration();
 
-                        for (Map.Entry<IgniteUuid, ServiceInfo> e : registeredSrvcs.entrySet()) {
-                            if (e.getValue().configuration().equalsIgnoreNodeFilter(cfg)) {
-                                oldSrvcDesc = e.getValue();
+                        for (ServiceInfo desc : registeredSrvcs.values()) {
+                            if (desc.name().equals(cfg.getName())) {
+                                oldSrvcDesc = desc;
 
                                 break;
                             }
@@ -1762,23 +1762,23 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                             registeredSrvcs.put(reqSrvcId, desc);
 
-                            srvcsToStart.put(reqSrvcId, desc);
-
-                            continue;
-                        }
-
-                        GridServiceDeploymentFuture fut = depFuts.get(reqSrvcId);
-
-                        if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
-                            err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                                "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                            toDeploy.put(reqSrvcId, desc);
                         }
                         else {
-                            if (fut != null)
-                                fut.onDone();
+                            if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
+                                err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                                    "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                            }
+                            else {
+                                GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
 
-                            if (log.isDebugEnabled())
-                                log.debug("Already deployed with srvcId");
+                                if (fut != null) {
+                                    fut.onDone();
+
+                                    if (log.isDebugEnabled())
+                                        log.debug("Service is already deployed with, srvcId=" + oldSrvcDesc.serviceId());
+                                }
+                            }
                         }
                     }
 
@@ -1794,37 +1794,38 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 else if (req.undeploy()) {
                     ServiceInfo rmv = registeredSrvcs.remove(reqSrvcId);
 
-                    assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification";
+                    assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification.";
 
-                    srvcToUndeploy.put(reqSrvcId, rmv);
+                    toUndeploy.put(reqSrvcId, rmv);
                 }
             }
 
-            if (!srvcsToStart.isEmpty() || !srvcToUndeploy.isEmpty()) {
-                ServicesExchangeActions exchActions = new ServicesExchangeActions();
+            if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
+                ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
-                if (!srvcsToStart.isEmpty())
-                    exchActions.srvcsToDeploy = srvcsToStart;
+                if (!toDeploy.isEmpty())
+                    depActions.servicesToDeploy(toDeploy);
 
-                if (!srvcToUndeploy.isEmpty())
-                    exchActions.srvcsToUndeploy = srvcToUndeploy;
+                if (!toUndeploy.isEmpty())
+                    depActions.servicesToUndeploy(toUndeploy);
 
-                ((DynamicServicesChangeRequestBatchMessage)msg).exchActions = exchActions;
+                ((DynamicServicesChangeRequestBatchMessage)msg).servicesDeploymentActions(depActions);
             }
-        } else if (msg instanceof ChangeGlobalStateMessage) {
+        }
+        else if (msg instanceof ChangeGlobalStateMessage) {
             ChangeGlobalStateMessage msg0 = (ChangeGlobalStateMessage)msg;
 
             if (msg0.activate() && registeredSrvcs.isEmpty())
                 return;
 
-            ServicesExchangeActions exchangeActions = new ServicesExchangeActions();
+            ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
             if (msg0.activate())
-                exchangeActions.srvcsToDeploy = new HashMap<>(registeredSrvcs);
+                depActions.servicesToDeploy(new HashMap<>(registeredSrvcs));
             else
-                exchangeActions.deactivate = true;
+                depActions.deactivate(true);
 
-            msg0.servicesExchangeActions = exchangeActions;
+            msg0.servicesDeploymentActions(depActions);
         }
     }
 }

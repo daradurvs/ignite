@@ -42,7 +42,8 @@ public class DynamicServicesChangeRequestBatchMessage implements DiscoveryCustom
     @GridToStringInclude
     private final Collection<DynamicServiceChangeRequest> reqs;
 
-    transient ServicesExchangeActions exchActions;
+    /** Services deployment actions to be processed on services deployment exchange. */
+    @Nullable private transient ServicesDeploymentActions servicesDepActions;
 
     /**
      * @param reqs Change requests.
@@ -58,6 +59,20 @@ public class DynamicServicesChangeRequestBatchMessage implements DiscoveryCustom
      */
     public Collection<DynamicServiceChangeRequest> requests() {
         return reqs;
+    }
+
+    /**
+     * @param servicesDepActions Services deployment actions to be processed on services deployment exchange.
+     */
+    public void servicesDeploymentActions(ServicesDeploymentActions servicesDepActions) {
+        this.servicesDepActions = servicesDepActions;
+    }
+
+    /**
+     * @return Services deployment actions to be processed on services deployment exchange.
+     */
+    @Nullable public ServicesDeploymentActions servicesDeploymentsActions() {
+        return servicesDepActions;
     }
 
     /** {@inheritDoc} */

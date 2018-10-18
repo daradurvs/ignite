@@ -34,7 +34,9 @@ import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
@@ -106,7 +108,7 @@ public class ServicesDeploymentExchangeTask {
     @GridToStringInclude
     private volatile AffinityTopologyVersion evtTopVer;
 
-    private volatile ServicesExchangeActions exchangeActions;
+    private volatile ServicesDeploymentActions exchangeActions;
 
     /** Kernal context. */
     private GridKernalContext ctx;
@@ -137,7 +139,8 @@ public class ServicesDeploymentExchangeTask {
      * @param evt Discovery event.
      * @param topVer Topology version.
      */
-    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesExchangeActions exchangeActions) {
+    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer,
+        ServicesDeploymentActions exchangeActions) {
         assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED
             || evt.type() == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event type, evt=" + evt;
 
@@ -155,14 +158,22 @@ public class ServicesDeploymentExchangeTask {
         if (isCompleted() || initTaskFut.isDone())
             return;
 
-        final UUID evtNodeId = evt.eventNode().id();
-
         if (log.isDebugEnabled()) {
             log.debug("Started services exchange task init: [exchId=" + exchangeId() +
                 ", locId=" + this.ctx.localNodeId() + ", evt=" + evt + ']');
         }
 
         try {
+            if (exchangeActions != null && exchangeActions.deactivate()) {
+                ctx.service().onDeActivate(ctx);
+
+                complete();
+
+                return;
+            }
+
+            final UUID evtNodeId = evt.eventNode().id();
+
             ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
 
             if (crd == null) {
@@ -182,29 +193,71 @@ public class ServicesDeploymentExchangeTask {
                 initCoordinator(evtTopVer);
 
             if (exchangeActions == null) {
-                assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED;
+                if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
+                    DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
-                Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().startedService();
+                    assert msg != null : "DiscoveryCustomEvent has been nullified concurrently.";
 
-                if (evt.type() == EVT_NODE_JOINED) {
-                    List<ServiceInfo> fromJoin = ctx.service().servicesReceivedFromJoin(evtNodeId);
+                    if (msg instanceof CacheAffinityChangeMessage) {
+                        CacheAffinityChangeMessage msg0 = (CacheAffinityChangeMessage)msg;
 
-                    for (ServiceInfo desc : fromJoin)
-                        toRedeploy.put(desc.serviceId(), desc);
+                        Map<IgniteUuid, ServiceInfo> descs = ctx.service().startedServices();
+
+                        if (!descs.isEmpty()) {
+                            Map<Integer, Map<Integer, List<UUID>>> change = msg0.assignmentChange();
+
+                            if (change != null) {
+                                Set<String> names = new HashSet<>();
+
+                                ctx.cache().cacheDescriptors().forEach((name, desc) -> {
+                                    if (change.containsKey(desc.groupId()))
+                                        names.add(name);
+                                });
+
+                                Map<IgniteUuid, ServiceInfo> toReassign = new HashMap<>();
+
+                                descs.forEach((srvcId, desc) -> {
+                                    if (names.contains(desc.cacheName()))
+                                        toReassign.put(srvcId, desc);
+                                });
+
+                                if (!toReassign.isEmpty()) {
+                                    exchangeActions = new ServicesDeploymentActions();
+
+                                    exchangeActions.servicesToDeploy(toReassign);
+                                }
+                            }
+                        }
+                    }
                 }
+                else {
+                    assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED;
 
-                exchangeActions = new ServicesExchangeActions();
+                    Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().startedServices();
 
-                if (toRedeploy.isEmpty()) {
-                    complete();
+                    if (evt.type() == EVT_NODE_JOINED) {
+                        List<ServiceInfo> fromJoin = ctx.service().servicesReceivedFromJoin(evtNodeId);
 
-                    return;
+                        for (ServiceInfo desc : fromJoin)
+                            toRedeploy.put(desc.serviceId(), desc);
+                    }
+
+                    if (!toRedeploy.isEmpty()) {
+                        exchangeActions = new ServicesDeploymentActions();
+
+                        exchangeActions.servicesToDeploy(toRedeploy);
+                    }
                 }
-
-                exchangeActions.srvcsToDeploy = toRedeploy;
             }
 
-            processExchangeActions(exchangeActions);
+            if (exchangeActions != null)
+                processExchangeActions(exchangeActions);
+            else {
+                complete();
+
+                if (log.isDebugEnabled())
+                    log.debug("No action required.");
+            }
 
             if (log.isDebugEnabled()) {
                 log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
@@ -226,8 +279,8 @@ public class ServicesDeploymentExchangeTask {
         }
     }
 
-    private void processExchangeActions(@NotNull ServicesExchangeActions actions) {
-        if (actions.deactivate) {
+    private void processExchangeActions(@NotNull ServicesDeploymentActions actions) {
+        if (actions.deactivate()) {
             ctx.service().onDeActivate(ctx);
 
             complete();
@@ -243,34 +296,31 @@ public class ServicesDeploymentExchangeTask {
 
             proc.exchange().exchangerBlockingSectionBegin();
 
-            if (actions.srvcsToUndeploy != null) {
-                actions.srvcsToUndeploy.forEach((srvcId, desc) -> {
-                    proc.undeploy(srvcId);
-                });
-            }
+            actions.servicesToUndeploy().forEach((srvcId, desc) -> {
+                proc.undeploy(srvcId);
+            });
 
-            if (actions.srvcsToDeploy != null) {
-                actions.srvcsToDeploy.forEach((srvcId, desc) -> {
-                    try {
-                        Map<UUID, Integer> top = ctx.service().reassign(srvcId, desc.configuration(), evtTopVer, desc.topologySnapshot());
+            actions.servicesToDeploy().forEach((srvcId, desc) -> {
+                try {
+                    Map<UUID, Integer> top = ctx.service().reassign(srvcId, desc.configuration(), evtTopVer,
+                        filterDeadNodes(desc.topologySnapshot()));
 
-                        Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
+                    Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
 
-                        boolean needDeploy = expCnt > 0 && proc.localInstancesCount(srvcId) != expCnt;
+                    boolean needDeploy = expCnt > 0 && proc.localInstancesCount(srvcId) != expCnt;
 
-                        if (needDeploy) {
-                            ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
+                    if (needDeploy) {
+                        ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
 
-                            assert cfg != null;
+                        assert cfg != null;
 
-                            proc.redeploy(srvcId, cfg, top);
-                        }
+                        proc.redeploy(srvcId, cfg, top);
                     }
-                    catch (Error | RuntimeException | IgniteCheckedException err) {
-                        errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
-                    }
-                });
-            }
+                }
+                catch (Error | RuntimeException | IgniteCheckedException err) {
+                    errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
+                }
+            });
         }
         finally {
             proc.exchange().exchangerBlockingSectionEnd();
@@ -459,10 +509,10 @@ public class ServicesDeploymentExchangeTask {
     }
 
     /**
-     * Deploys service with given ids {@param srvcsToDeploy} if a number of local instances less than its number in
+     * Deploys service with given ids {@param servicesToDeploy} if a number of local instances less than its number in
      * given topology.
      *
-     * Undeploys service with given ids {@param srvcsToDeploy}.
+     * Undeploys service with given ids {@param servicesToDeploy}.
      *
      * @param srvcsToDeploy Services to deploy.
      * @param srvcsToUndeploy Services to undeploy.

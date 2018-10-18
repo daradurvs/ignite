@@ -26,7 +26,6 @@ import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionExchangeId;
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionsFullMessage;
-import org.apache.ignite.internal.processors.service.ServicesExchangeActions;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
@@ -59,8 +58,6 @@ public class CacheAffinityChangeMessage implements DiscoveryCustomMessage {
 
     /** */
     private transient boolean exchangeNeeded;
-
-    public transient ServicesExchangeActions exchActions;
 
     /**
      * Constructor used when message is created after cache rebalance finished.
