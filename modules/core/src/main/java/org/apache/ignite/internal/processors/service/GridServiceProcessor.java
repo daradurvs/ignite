@@ -1734,84 +1734,106 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         assert msg != null;
 
         if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
-            Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
-            Map<IgniteUuid, ServiceInfo> toUndeploy = new HashMap<>();
+            if (state.active() && !state.transition()) {
+                Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
+                Map<IgniteUuid, ServiceInfo> toUndeploy = new HashMap<>();
 
-            for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
-                IgniteUuid reqSrvcId = req.serviceId();
-                ServiceInfo oldSrvcDesc = registeredSrvcs.get(reqSrvcId);
+                for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
+                    IgniteUuid reqSrvcId = req.serviceId();
+                    ServiceInfo oldSrvcDesc = registeredSrvcs.get(reqSrvcId);
 
-                if (req.deploy()) {
-                    Exception err = null;
+                    if (req.deploy()) {
+                        Exception err = null;
 
-                    if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
-                        err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
-                            "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
-                    }
-                    else {
-                        ServiceConfiguration cfg = req.configuration();
-
-                        for (ServiceInfo desc : registeredSrvcs.values()) {
-                            if (desc.name().equals(cfg.getName())) {
-                                oldSrvcDesc = desc;
-
-                                break;
-                            }
-                        }
-
-                        if (oldSrvcDesc == null) {
-                            ServiceInfo desc = new ServiceInfo(node.id(), reqSrvcId, cfg);
-
-                            registeredSrvcs.put(reqSrvcId, desc);
-
-                            toDeploy.put(reqSrvcId, desc);
+                        if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+                            err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
+                                "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
                         }
                         else {
-                            if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
-                                err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                                    "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                            ServiceConfiguration cfg = req.configuration();
+
+                            for (ServiceInfo desc : registeredSrvcs.values()) {
+                                if (desc.name().equals(cfg.getName())) {
+                                    oldSrvcDesc = desc;
+
+                                    break;
+                                }
+                            }
+
+                            if (oldSrvcDesc == null) {
+                                if (cfg.getCacheName() != null && ctx.cache().cacheDescriptor(cfg.getCacheName()) == null) {
+                                    GridFutureAdapter<?> fut = depFuts.remove(reqSrvcId);
+
+                                    if (fut != null) {
+                                        fut.onDone(new IgniteCheckedException("Failed to deploy service, " +
+                                            "affinity cache is not found, cfg=" + cfg));
+                                    }
+                                }
+                                else {
+                                    ServiceInfo desc = new ServiceInfo(node.id(), reqSrvcId, cfg);
+
+                                    registeredSrvcs.put(reqSrvcId, desc);
+
+                                    toDeploy.put(reqSrvcId, desc);
+                                }
                             }
                             else {
-                                GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
+                                if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
+                                    err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                                        "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                                }
+                                else {
+                                    GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
 
-                                if (fut != null) {
-                                    fut.onDone();
+                                    if (fut != null) {
+                                        fut.onDone();
 
-                                    if (log.isDebugEnabled())
-                                        log.debug("Service is already deployed with, srvcId=" + oldSrvcDesc.serviceId());
+                                        if (log.isDebugEnabled())
+                                            log.debug("Service is already deployed with, srvcId=" + oldSrvcDesc.serviceId());
+                                    }
                                 }
                             }
                         }
+
+                        if (err != null) {
+                            log.error(err.getMessage(), err);
+
+                            GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
+
+                            if (fut != null)
+                                fut.onDone(err);
+                        }
                     }
+                    else if (req.undeploy()) {
+                        ServiceInfo rmv = registeredSrvcs.remove(reqSrvcId);
 
-                    if (err != null) {
-                        log.error(err.getMessage(), err);
+                        assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification.";
 
-                        GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
-
-                        if (fut != null)
-                            fut.onDone(err);
+                        toUndeploy.put(reqSrvcId, rmv);
                     }
                 }
-                else if (req.undeploy()) {
-                    ServiceInfo rmv = registeredSrvcs.remove(reqSrvcId);
 
-                    assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification.";
+                if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
+                    ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
-                    toUndeploy.put(reqSrvcId, rmv);
+                    if (!toDeploy.isEmpty())
+                        depActions.servicesToDeploy(toDeploy);
+
+                    if (!toUndeploy.isEmpty())
+                        depActions.servicesToUndeploy(toUndeploy);
+
+                    ((DynamicServicesChangeRequestBatchMessage)msg).servicesDeploymentActions(depActions);
                 }
             }
+            else {
+                Exception err = new IgniteCheckedException("Operation has been cancelled cluster state change is in progress.");
 
-            if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
-                ServicesDeploymentActions depActions = new ServicesDeploymentActions();
+                for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
+                    GridFutureAdapter<?> fut = req.deploy() ? depFuts.remove(req.serviceId()) : undepFuts.remove(req.serviceId());
 
-                if (!toDeploy.isEmpty())
-                    depActions.servicesToDeploy(toDeploy);
-
-                if (!toUndeploy.isEmpty())
-                    depActions.servicesToUndeploy(toUndeploy);
-
-                ((DynamicServicesChangeRequestBatchMessage)msg).servicesDeploymentActions(depActions);
+                    if (fut != null)
+                        fut.onDone(err);
+                }
             }
         }
         else if (msg instanceof ChangeGlobalStateMessage) {
