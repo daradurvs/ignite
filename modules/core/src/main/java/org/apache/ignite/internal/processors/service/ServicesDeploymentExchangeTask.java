@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import jdk.nashorn.internal.ir.IfNode;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
@@ -35,9 +34,7 @@ import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
-import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
-import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
@@ -230,8 +227,15 @@ public class ServicesDeploymentExchangeTask {
     }
 
     private void processExchangeActions(@NotNull ServicesExchangeActions actions) {
-        final GridServiceProcessor proc = ctx.service();
+        if (actions.deactivate) {
+            ctx.service().onDeActivate(ctx);
 
+            complete();
+
+            return;
+        }
+
+        final GridServiceProcessor proc = ctx.service();
         final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
         try {

@@ -7,4 +7,6 @@ public class ServicesExchangeActions {
     Map<IgniteUuid, ServiceInfo> srvcsToDeploy;
 
     Map<IgniteUuid, ServiceInfo> srvcsToUndeploy;
+
+    boolean deactivate;
 }

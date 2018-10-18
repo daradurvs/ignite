@@ -1811,6 +1811,20 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
                 ((DynamicServicesChangeRequestBatchMessage)msg).exchActions = exchActions;
             }
+        } else if (msg instanceof ChangeGlobalStateMessage) {
+            ChangeGlobalStateMessage msg0 = (ChangeGlobalStateMessage)msg;
+
+            if (msg0.activate() && registeredSrvcs.isEmpty())
+                return;
+
+            ServicesExchangeActions exchangeActions = new ServicesExchangeActions();
+
+            if (msg0.activate())
+                exchangeActions.srvcsToDeploy = new HashMap<>(registeredSrvcs);
+            else
+                exchangeActions.deactivate = true;
+
+            msg0.servicesExchangeActions = exchangeActions;
         }
     }
 }
