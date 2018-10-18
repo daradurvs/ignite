@@ -56,6 +56,8 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
 import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.processors.cluster.DiscoveryDataClusterState;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
@@ -1826,6 +1828,25 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 depActions.deactivate(true);
 
             msg0.servicesDeploymentActions(depActions);
+        }
+        else if (msg instanceof DynamicCacheChangeBatch) {
+            Map<IgniteUuid, ServiceInfo> toUndeploy = new HashMap<>();
+
+            for (DynamicCacheChangeRequest chReq : ((DynamicCacheChangeBatch)msg).requests()) {
+                if (chReq.stop()) {
+                    for (ServiceInfo desc : registeredSrvcs.values()) {
+                        if (desc.cacheName().equals(chReq.cacheName()))
+                            toUndeploy.put(desc.serviceId(), desc);
+                    }
+                }
+            }
+
+            if (!toUndeploy.isEmpty()) {
+                ServicesDeploymentActions depActions = new ServicesDeploymentActions();
+                depActions.servicesToUndeploy(toUndeploy);
+
+                ((DynamicCacheChangeBatch)msg).servicesDeploymentActions(depActions);
+            }
         }
     }
 }

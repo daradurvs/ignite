@@ -251,7 +251,7 @@ public class ServicesDeploymentExchangeTask {
             }
 
             if (exchangeActions != null)
-                processExchangeActions(exchangeActions);
+                processDeploymentActions(exchangeActions);
             else {
                 complete();
 
@@ -279,8 +279,8 @@ public class ServicesDeploymentExchangeTask {
         }
     }
 
-    private void processExchangeActions(@NotNull ServicesDeploymentActions actions) {
-        if (actions.deactivate()) {
+    private void processDeploymentActions(@NotNull ServicesDeploymentActions depActions) {
+        if (depActions.deactivate()) {
             ctx.service().onDeActivate(ctx);
 
             complete();
@@ -292,18 +292,19 @@ public class ServicesDeploymentExchangeTask {
         final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
         try {
-            proc.updateStartedDescriptors(actions);
+            proc.updateStartedDescriptors(depActions);
 
             proc.exchange().exchangerBlockingSectionBegin();
 
-            actions.servicesToUndeploy().forEach((srvcId, desc) -> {
+            depActions.servicesToUndeploy().forEach((srvcId, desc) -> {
                 proc.undeploy(srvcId);
             });
 
-            actions.servicesToDeploy().forEach((srvcId, desc) -> {
+            depActions.servicesToDeploy().forEach((srvcId, desc) -> {
                 try {
-                    Map<UUID, Integer> top = ctx.service().reassign(srvcId, desc.configuration(), evtTopVer,
-                        filterDeadNodes(desc.topologySnapshot()));
+                    Map<UUID, Integer> top = reassign(srvcId, desc.configuration(), evtTopVer, filterDeadNodes(desc.topologySnapshot()));
+
+                    expDeps.put(srvcId, top);
 
                     Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
 
@@ -668,15 +669,15 @@ public class ServicesDeploymentExchangeTask {
     private Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
         AffinityTopologyVersion topVer, Map<UUID, Integer> oldTop) throws IgniteCheckedException {
         try {
-            Map<UUID, Integer> srvcTop = ctx.service().reassign(srvcId, cfg, topVer, oldTop);
+            Map<UUID, Integer> top = ctx.service().reassign(srvcId, cfg, topVer, oldTop);
 
-            if (srvcTop.isEmpty())
+            if (top.isEmpty())
                 throw new IgniteCheckedException("Failed to determine suitable nodes to deploy service.");
 
             if (log.isDebugEnabled())
-                log.debug("Calculated service assignment : [srvcId=" + srvcId + ", srvcTop=" + srvcTop + ']');
+                log.debug("Calculated service assignment : [srvcId=" + srvcId + ", srvcTop=" + top + ']');
 
-            return srvcTop;
+            return top;
         }
         catch (Throwable e) {
             throw new IgniteCheckedException("Failed to calculate assignments for service, cfg=" + cfg, e);
@@ -834,6 +835,32 @@ public class ServicesDeploymentExchangeTask {
             }
 
             results.put(id, depRes);
+        });
+
+        errors.forEach((srvcId, err) -> {
+            if (results.containsKey(srvcId))
+                return;
+
+            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(0);
+
+            if (err != null && !err.isEmpty()) {
+                Collection<byte[]> errorsBytes = new ArrayList<>();
+
+                for (Throwable th : err) {
+                    try {
+                        byte[] arr = U.marshal(ctx, th);
+
+                        errorsBytes.add(arr);
+                    }
+                    catch (IgniteCheckedException e) {
+                        log.error("Failed to marshal deployment error, err=" + th, e);
+                    }
+                }
+
+                depRes.errors(errorsBytes);
+            }
+
+            results.put(srvcId, depRes);
         });
 
         return new ServicesSingleMapMessage(exchId, results);
