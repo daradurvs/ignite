@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.service;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -37,9 +36,6 @@ import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
-import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
-import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
-import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
@@ -50,6 +46,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.events.EventType.EVT_NODE_FAILED;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
@@ -108,7 +105,8 @@ public class ServicesDeploymentExchangeTask {
     @GridToStringInclude
     private volatile AffinityTopologyVersion evtTopVer;
 
-    private volatile ServicesDeploymentActions exchangeActions;
+    /** Services deployment actions. */
+    private volatile ServicesDeploymentActions depActions;
 
     /** Kernal context. */
     private GridKernalContext ctx;
@@ -119,9 +117,6 @@ public class ServicesDeploymentExchangeTask {
     /** Coordinator node id. */
     @GridToStringExclude
     private volatile UUID crdId;
-
-    /** Topology version of local join. */
-    private AffinityTopologyVersion locJoinTopVer;
 
     /**
      * @param ctx Kernal context.
@@ -138,15 +133,16 @@ public class ServicesDeploymentExchangeTask {
      *
      * @param evt Discovery event.
      * @param topVer Topology version.
+     * @param depActions Services deployment actions.
      */
-    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer,
-        ServicesDeploymentActions exchangeActions) {
+    public void onEvent(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
+        @Nullable ServicesDeploymentActions depActions) {
         assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED
             || evt.type() == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event type, evt=" + evt;
 
         this.evt = evt;
         this.evtTopVer = topVer;
-        this.exchangeActions = exchangeActions;
+        this.depActions = depActions;
     }
 
     /**
@@ -164,7 +160,7 @@ public class ServicesDeploymentExchangeTask {
         }
 
         try {
-            if (exchangeActions != null && exchangeActions.deactivate()) {
+            if (depActions != null && depActions.deactivate()) {
                 ctx.service().onDeActivate(ctx);
 
                 complete();
@@ -192,7 +188,7 @@ public class ServicesDeploymentExchangeTask {
             if (crd.isLocal())
                 initCoordinator(evtTopVer);
 
-            if (exchangeActions == null) {
+            if (depActions == null) {
                 if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
@@ -222,9 +218,9 @@ public class ServicesDeploymentExchangeTask {
                                 });
 
                                 if (!toReassign.isEmpty()) {
-                                    exchangeActions = new ServicesDeploymentActions();
+                                    depActions = new ServicesDeploymentActions();
 
-                                    exchangeActions.servicesToDeploy(toReassign);
+                                    depActions.servicesToDeploy(toReassign);
                                 }
                             }
                         }
@@ -243,15 +239,15 @@ public class ServicesDeploymentExchangeTask {
                     }
 
                     if (!toRedeploy.isEmpty()) {
-                        exchangeActions = new ServicesDeploymentActions();
+                        depActions = new ServicesDeploymentActions();
 
-                        exchangeActions.servicesToDeploy(toRedeploy);
+                        depActions.servicesToDeploy(toRedeploy);
                     }
                 }
             }
 
-            if (exchangeActions != null)
-                processDeploymentActions(exchangeActions);
+            if (depActions != null)
+                processDeploymentActions(depActions);
             else {
                 complete();
 
@@ -279,6 +275,9 @@ public class ServicesDeploymentExchangeTask {
         }
     }
 
+    /**
+     * @param depActions Services deployment actions.
+     */
     private void processDeploymentActions(@NotNull ServicesDeploymentActions depActions) {
         if (depActions.deactivate()) {
             ctx.service().onDeActivate(ctx);
@@ -289,7 +288,6 @@ public class ServicesDeploymentExchangeTask {
         }
 
         final GridServiceProcessor proc = ctx.service();
-        final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
 
         try {
             proc.updateStartedDescriptors(depActions);
@@ -319,7 +317,7 @@ public class ServicesDeploymentExchangeTask {
                     }
                 }
                 catch (Error | RuntimeException | IgniteCheckedException err) {
-                    errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
+                    depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
                 }
             });
         }
@@ -327,7 +325,7 @@ public class ServicesDeploymentExchangeTask {
             proc.exchange().exchangerBlockingSectionEnd();
         }
 
-        createAndSendSingleMapMessage(exchId, errors);
+        createAndSendSingleMapMessage(exchId, depErrors);
     }
 
     /**
@@ -356,203 +354,6 @@ public class ServicesDeploymentExchangeTask {
                     initCrdFut.onDone();
             }
         }
-    }
-
-    /**
-     * @param req Change cluster state message.
-     * @param topVer Topology version.
-     */
-    private void onChangeGlobalStateMessage(ChangeGlobalStateMessage req, AffinityTopologyVersion topVer) {
-        if (req.activate())
-            initReassignment(ctx.service().registeredServicesIds(), topVer);
-        else {
-            ctx.service().onDeActivate(ctx);
-
-            complete();
-        }
-    }
-
-    /**
-     * @param nodId Event node id.
-     * @param batch Set of requests to change service.
-     * @param topVer Topology version.
-     */
-    private void onServiceChangeRequest(UUID nodId, DynamicServicesChangeRequestBatchMessage batch,
-        AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
-        final Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
-
-        for (DynamicServiceChangeRequest req : batch.requests()) {
-            IgniteUuid reqSrvcId = req.serviceId();
-
-            if (req.undeploy())
-                srvcsToUndeploy.add(reqSrvcId);
-            else if (req.deploy()) {
-                IgniteUuid srvcId = reqSrvcId;
-                ServiceConfiguration cfg = req.configuration();
-
-                Exception err = null;
-
-                ServiceInfo oldSrvcDesc = ctx.service().serviceInfo(srvcId);
-
-                if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
-                    err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
-                        "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
-                }
-                else {
-                    oldSrvcDesc = ctx.service().serviceInfo(cfg.getName());
-
-                    if (oldSrvcDesc != null && !oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
-                        err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                            "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
-                    }
-                    else {
-                        Map<UUID, Integer> srvcTop;
-
-                        try {
-                            Map<UUID, Integer> oldTop = null;
-
-                            if (oldSrvcDesc != null) {
-                                srvcId = oldSrvcDesc.serviceId();
-                                oldTop = filterDeadNodes(oldSrvcDesc.topologySnapshot());
-                            }
-
-                            srvcTop = reassign(srvcId, cfg, topVer, oldTop);
-                        }
-                        catch (IgniteCheckedException e) {
-                            err = e;
-
-                            srvcTop = Collections.emptyMap();
-                        }
-
-                        ctx.service().putIfAbsentServiceInfo(srvcId, new ServiceInfo(nodId, srvcId, cfg));
-
-                        if (srvcTop != null && !srvcTop.isEmpty())
-                            srvcsToDeploy.put(reqSrvcId, srvcTop);
-                    }
-                }
-
-                if (err != null)
-                    depErrors.computeIfAbsent(reqSrvcId, e -> new ArrayList<>()).add(err);
-            }
-        }
-
-        if (!lessThenLocalJoin(topVer))
-            changeServices(srvcsToDeploy, srvcsToUndeploy);
-    }
-
-    /**
-     * @param req Cache state change request.
-     */
-    private void onCacheStateChangeRequest(DynamicCacheChangeBatch req) {
-        Set<IgniteUuid> srvcsToUndeploy = new HashSet<>();
-
-        for (DynamicCacheChangeRequest chReq : req.requests()) {
-            if (chReq.stop()) {
-                IgniteUuid srvcId = ctx.service().affinityService(chReq.cacheName());
-
-                if (srvcId != null)
-                    srvcsToUndeploy.add(srvcId);
-            }
-        }
-
-        if (srvcsToUndeploy.isEmpty()) {
-            complete();
-
-            return;
-        }
-
-        changeServices(Collections.emptyMap(), srvcsToUndeploy);
-    }
-
-    /**
-     * @param toReassign Services to reassign.
-     * @param topVer Topology version.
-     */
-    private void initReassignment(Set<IgniteUuid> toReassign, AffinityTopologyVersion topVer) {
-        final Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy = new HashMap<>();
-        if (toReassign.isEmpty()) {
-            complete();
-
-            if (log.isDebugEnabled()) {
-                log.debug("Services reassignments is not required, completed the task without exchange : " +
-                    "[locId=" + ctx.localNodeId() + ", exchId=" + exchId + ']');
-            }
-
-            return;
-        }
-
-        for (IgniteUuid srvcId : toReassign) {
-            ServiceInfo desc = ctx.service().serviceInfo(srvcId);
-
-            assert desc != null;
-
-            Map<UUID, Integer> top = null;
-
-            Throwable err = null;
-
-            try {
-                top = reassign(srvcId, desc.configuration(), topVer, filterDeadNodes(desc.topologySnapshot()));
-            }
-            catch (Throwable e) {
-                err = e;
-            }
-
-            if (err != null)
-                depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
-            else if (top != null && !top.isEmpty())
-                srvcsToDeploy.put(srvcId, top);
-        }
-
-        expDeps.putAll(srvcsToDeploy);
-
-        changeServices(srvcsToDeploy, Collections.emptySet());
-    }
-
-    /**
-     * Deploys service with given ids {@param servicesToDeploy} if a number of local instances less than its number in
-     * given topology.
-     *
-     * Undeploys service with given ids {@param servicesToDeploy}.
-     *
-     * @param srvcsToDeploy Services to deploy.
-     * @param srvcsToUndeploy Services to undeploy.
-     */
-    private void changeServices(Map<IgniteUuid, Map<UUID, Integer>> srvcsToDeploy, Set<IgniteUuid> srvcsToUndeploy) {
-        final GridServiceProcessor proc = ctx.service();
-
-        final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
-
-        try {
-            proc.exchange().exchangerBlockingSectionBegin();
-
-            for (IgniteUuid srvcId : srvcsToUndeploy)
-                proc.undeploy(srvcId);
-
-            srvcsToDeploy.forEach((srvcId, top) -> {
-                Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
-
-                boolean needDeploy = expCnt > 0 && proc.localInstancesCount(srvcId) != expCnt;
-
-                if (needDeploy) {
-                    try {
-                        ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
-
-                        assert cfg != null;
-
-                        proc.redeploy(srvcId, cfg, top);
-                    }
-                    catch (Error | RuntimeException err) {
-                        errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
-                    }
-                }
-            });
-        }
-        finally {
-            proc.exchange().exchangerBlockingSectionEnd();
-        }
-
-        createAndSendSingleMapMessage(exchId, errors);
     }
 
     /**
@@ -645,7 +446,7 @@ public class ServicesDeploymentExchangeTask {
         try {
             final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> singleResults = buildSingleDeploymentsResults();
 
-            addDeploymentErrorsToDeploymentResults(singleResults);
+//            addDeploymentErrorsToDeploymentResults(singleResults);
 
             final Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleResults);
 
@@ -745,37 +546,6 @@ public class ServicesDeploymentExchangeTask {
 
     /**
      * @param results Services per node single deployments results.
-     */
-    private void addDeploymentErrorsToDeploymentResults(
-        final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> results) {
-        depErrors.forEach((srvcId, errBytes) -> {
-            Collection<byte[]> srvcErrors = new ArrayList<>(errBytes.size());
-
-            for (Throwable th : errBytes) {
-                try {
-                    srvcErrors.add(U.marshal(ctx, th));
-                }
-                catch (IgniteCheckedException e) {
-                    log.error("Failed to marshal deployments error.", e);
-                }
-            }
-
-            if (!srvcErrors.isEmpty()) {
-                Map<UUID, ServiceSingleDeploymentsResults> depResults = results.computeIfAbsent(srvcId, r -> new HashMap<>());
-
-                ServiceSingleDeploymentsResults singleDepRes = depResults.computeIfAbsent(
-                    ctx.localNodeId(), r -> new ServiceSingleDeploymentsResults(0));
-
-                if (singleDepRes.errors().isEmpty())
-                    singleDepRes.errors(srvcErrors);
-                else
-                    singleDepRes.errors().addAll(srvcErrors);
-            }
-        });
-    }
-
-    /**
-     * @param results Services per node single deployments results.
      * @return Services full deployments results.
      */
     private Collection<ServiceFullDeploymentsResults> buildFullDeploymentsResults(
@@ -817,22 +587,8 @@ public class ServicesDeploymentExchangeTask {
 
             Collection<Throwable> err = errors.get(id);
 
-            if (err != null && !err.isEmpty()) {
-                Collection<byte[]> errorsBytes = new ArrayList<>();
-
-                for (Throwable th : err) {
-                    try {
-                        byte[] arr = U.marshal(ctx, th);
-
-                        errorsBytes.add(arr);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Failed to marshal deployment error, err=" + th, e);
-                    }
-                }
-
-                depRes.errors(errorsBytes);
-            }
+            if (err != null && !err.isEmpty())
+                fillDeploymentErrors(depRes, err);
 
             results.put(id, depRes);
         });
@@ -843,27 +599,35 @@ public class ServicesDeploymentExchangeTask {
 
             ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(0);
 
-            if (err != null && !err.isEmpty()) {
-                Collection<byte[]> errorsBytes = new ArrayList<>();
-
-                for (Throwable th : err) {
-                    try {
-                        byte[] arr = U.marshal(ctx, th);
-
-                        errorsBytes.add(arr);
-                    }
-                    catch (IgniteCheckedException e) {
-                        log.error("Failed to marshal deployment error, err=" + th, e);
-                    }
-                }
-
-                depRes.errors(errorsBytes);
-            }
+            if (err != null && !err.isEmpty())
+                fillDeploymentErrors(depRes, err);
 
             results.put(srvcId, depRes);
         });
 
         return new ServicesSingleMapMessage(exchId, results);
+    }
+
+    /**
+     * @param depRes Service single deployments results.
+     * @param errors Deployment errors.
+     */
+    private void fillDeploymentErrors(@NotNull ServiceSingleDeploymentsResults depRes,
+        @NotNull Collection<Throwable> errors) {
+        Collection<byte[]> errorsBytes = new ArrayList<>();
+
+        for (Throwable th : errors) {
+            try {
+                byte[] arr = U.marshal(ctx, th);
+
+                errorsBytes.add(arr);
+            }
+            catch (IgniteCheckedException e) {
+                log.error("Failed to marshal deployment error, err=" + th, e);
+            }
+        }
+
+        depRes.errors(errorsBytes);
     }
 
     /**
@@ -907,17 +671,6 @@ public class ServicesDeploymentExchangeTask {
                 }
             }
         });
-    }
-
-    /**
-     * @param topVer Topology version.
-     * @return {@code true} if given topology version less then topology version of local join event, otherwise {@code
-     * false}.
-     */
-    private boolean lessThenLocalJoin(AffinityTopologyVersion topVer) {
-        assert locJoinTopVer != null;
-
-        return locJoinTopVer.compareTo(topVer) > 0;
     }
 
     /**

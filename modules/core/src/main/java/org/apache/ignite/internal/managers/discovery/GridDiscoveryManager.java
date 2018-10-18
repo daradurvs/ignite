@@ -717,7 +717,7 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
                 }
 
                 if (type == EVT_DISCOVERY_CUSTOM_EVT)
-                    ctx.service().onCustomEvent(customMsg, node, nextTopVer, ctx.state().clusterState());
+                    ctx.service().onCustomEvent(customMsg, node, ctx.state().clusterState());
 
                 if (type == EVT_DISCOVERY_CUSTOM_EVT) {
                     for (Class cls = customMsg.getClass(); cls != null; cls = cls.getSuperclass()) {

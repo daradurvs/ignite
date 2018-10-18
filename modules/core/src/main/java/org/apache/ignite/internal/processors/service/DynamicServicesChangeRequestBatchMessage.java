@@ -62,17 +62,17 @@ public class DynamicServicesChangeRequestBatchMessage implements DiscoveryCustom
     }
 
     /**
-     * @param servicesDepActions Services deployment actions to be processed on services deployment exchange.
-     */
-    public void servicesDeploymentActions(ServicesDeploymentActions servicesDepActions) {
-        this.servicesDepActions = servicesDepActions;
-    }
-
-    /**
      * @return Services deployment actions to be processed on services deployment exchange.
      */
     @Nullable public ServicesDeploymentActions servicesDeploymentsActions() {
         return servicesDepActions;
+    }
+
+    /**
+     * @param servicesDepActions Services deployment actions to be processed on services deployment exchange.
+     */
+    public void servicesDeploymentActions(ServicesDeploymentActions servicesDepActions) {
+        this.servicesDepActions = servicesDepActions;
     }
 
     /** {@inheritDoc} */

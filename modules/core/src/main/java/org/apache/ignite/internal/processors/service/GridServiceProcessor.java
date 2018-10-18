@@ -124,6 +124,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     /** Contains all services information across the cluster. */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> registeredSrvcs = new ConcurrentHashMap<>();
 
+    /** TODO */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> startedSrvcs = new ConcurrentHashMap<>();
 
     /** Connection status lock. */
@@ -1582,33 +1583,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Ids of affinity services deployed across the cluster.
-     */
-    @NotNull protected Set<IgniteUuid> affinityServices() {
-        Set<IgniteUuid> srvcs = new HashSet<>();
-
-        registeredSrvcs.values().forEach(desc -> {
-            if (desc.configuration().getCacheName() != null)
-                srvcs.add(desc.serviceId());
-        });
-
-        return srvcs;
-    }
-
-    /**
-     * @param cacheName Cache name.
-     * @return Id of affinity service with given cache name. Possibly {@code null} if not found.
-     */
-    @Nullable protected IgniteUuid affinityService(String cacheName) {
-        for (ServiceInfo desc : registeredSrvcs.values()) {
-            if (desc.cacheName().equals(cacheName))
-                return desc.serviceId();
-        }
-
-        return null;
-    }
-
-    /**
      * @param srvcId Service id.
      * @return Service configuration of service deployed with given id. Possibly {@code null} if not found.
      */
@@ -1619,58 +1593,21 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * @return Ids of all deployed services.
+     * Callback invoked from exchange worker.
+     *
+     * @param depActions Service deployment actions.
      */
-    protected Set<IgniteUuid> deployedServicesIds() {
-        Set<IgniteUuid> ids = new HashSet<>();
-
-        registeredSrvcs.forEach((srvcId, desc) -> {
-            if (!desc.topologySnapshot().isEmpty())
-                ids.add(srvcId);
-        });
-
-        return ids;
-    }
-
-    /**
-     * @return Ids of all registered services.
-     */
-    protected Set<IgniteUuid> registeredServicesIds() {
-        return new HashSet<>(registeredSrvcs.keySet());
-    }
-
-    /**
-     * @param srvcId Service id.
-     * @return {@link ServiceInfo} instance of deployed service with given id. Possibly {@code null} if not found.
-     */
-    @Nullable protected ServiceInfo serviceInfo(IgniteUuid srvcId) {
-        return registeredSrvcs.get(srvcId);
-    }
-
-    /**
-     * @param name Service name.
-     * @return {@link ServiceInfo} instance of deployed service with given id. Possibly {@code null} if not found.
-     */
-    @Nullable protected ServiceInfo serviceInfo(String name) {
-        IgniteUuid srvcId = lookupId(name);
-
-        return srvcId != null ? serviceInfo(srvcId) : null;
-    }
-
-    /**
-     * @param srvcId Service id.
-     * @param desc {@link ServiceInfo} instance.
-     */
-    protected void putIfAbsentServiceInfo(IgniteUuid srvcId, ServiceInfo desc) {
-        startedSrvcs.putIfAbsent(srvcId, desc);
-    }
-
     protected void updateStartedDescriptors(ServicesDeploymentActions depActions) {
         depActions.servicesToDeploy().forEach(startedSrvcs::putIfAbsent);
 
         depActions.servicesToUndeploy().keySet().forEach(startedSrvcs::remove);
     }
 
+    /**
+     * TODO
+     *
+     * @return
+     */
     protected Map<IgniteUuid, ServiceInfo> startedServices() {
         return new HashMap<>(startedSrvcs);
     }
@@ -1729,103 +1666,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return exchMgr;
     }
 
-    public void onCustomEvent(DiscoveryCustomMessage msg, ClusterNode node, AffinityTopologyVersion topVer,
-        DiscoveryDataClusterState state) {
+    /**
+     * Callback invoked from discovery thread when discovery custom message is received, before discovery listeners
+     * notification.
+     *
+     * @param msg Discovery custom message.
+     * @param node Event node.
+     * @param state Current cluster state.
+     */
+    public void onCustomEvent(DiscoveryCustomMessage msg, ClusterNode node, DiscoveryDataClusterState state) {
         assert msg != null;
 
         if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
-            if (state.active() && !state.transition()) {
-                Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
-                Map<IgniteUuid, ServiceInfo> toUndeploy = new HashMap<>();
-
-                for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
-                    IgniteUuid reqSrvcId = req.serviceId();
-                    ServiceInfo oldSrvcDesc = registeredSrvcs.get(reqSrvcId);
-
-                    if (req.deploy()) {
-                        Exception err = null;
-
-                        if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
-                            err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
-                                "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
-                        }
-                        else {
-                            ServiceConfiguration cfg = req.configuration();
-
-                            for (ServiceInfo desc : registeredSrvcs.values()) {
-                                if (desc.name().equals(cfg.getName())) {
-                                    oldSrvcDesc = desc;
-
-                                    break;
-                                }
-                            }
-
-                            if (oldSrvcDesc == null) {
-                                if (cfg.getCacheName() != null && ctx.cache().cacheDescriptor(cfg.getCacheName()) == null) {
-                                    GridFutureAdapter<?> fut = depFuts.remove(reqSrvcId);
-
-                                    if (fut != null) {
-                                        fut.onDone(new IgniteCheckedException("Failed to deploy service, " +
-                                            "affinity cache is not found, cfg=" + cfg));
-                                    }
-                                }
-                                else {
-                                    ServiceInfo desc = new ServiceInfo(node.id(), reqSrvcId, cfg);
-
-                                    registeredSrvcs.put(reqSrvcId, desc);
-
-                                    toDeploy.put(reqSrvcId, desc);
-                                }
-                            }
-                            else {
-                                if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
-                                    err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
-                                        "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
-                                }
-                                else {
-                                    GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
-
-                                    if (fut != null) {
-                                        fut.onDone();
-
-                                        if (log.isDebugEnabled())
-                                            log.debug("Service is already deployed with, srvcId=" + oldSrvcDesc.serviceId());
-                                    }
-                                }
-                            }
-                        }
-
-                        if (err != null) {
-                            log.error(err.getMessage(), err);
-
-                            GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
-
-                            if (fut != null)
-                                fut.onDone(err);
-                        }
-                    }
-                    else if (req.undeploy()) {
-                        ServiceInfo rmv = registeredSrvcs.remove(reqSrvcId);
-
-                        assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification.";
-
-                        toUndeploy.put(reqSrvcId, rmv);
-                    }
-                }
-
-                if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
-                    ServicesDeploymentActions depActions = new ServicesDeploymentActions();
-
-                    if (!toDeploy.isEmpty())
-                        depActions.servicesToDeploy(toDeploy);
-
-                    if (!toUndeploy.isEmpty())
-                        depActions.servicesToUndeploy(toUndeploy);
-
-                    ((DynamicServicesChangeRequestBatchMessage)msg).servicesDeploymentActions(depActions);
-                }
-            }
-            else {
+            if (!state.active() || state.transition()) {
                 Exception err = new IgniteCheckedException("Operation has been cancelled cluster state change is in progress.");
 
                 for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
@@ -1834,6 +1687,92 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     if (fut != null)
                         fut.onDone(err);
                 }
+
+                return;
+            }
+
+            Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
+            Map<IgniteUuid, ServiceInfo> toUndeploy = new HashMap<>();
+
+            for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
+                IgniteUuid reqSrvcId = req.serviceId();
+                ServiceInfo oldSrvcDesc = registeredSrvcs.get(reqSrvcId);
+
+                if (req.deploy()) {
+                    IgniteCheckedException err = null;
+
+                    if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+                        err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
+                            "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
+                    }
+                    else {
+                        ServiceConfiguration cfg = req.configuration();
+
+                        for (ServiceInfo desc : registeredSrvcs.values()) {
+                            if (desc.name().equals(cfg.getName())) {
+                                oldSrvcDesc = desc;
+
+                                break;
+                            }
+                        }
+
+                        if (oldSrvcDesc == null) {
+                            if (cfg.getCacheName() != null && ctx.cache().cacheDescriptor(cfg.getCacheName()) == null)
+                                err = new IgniteCheckedException("Failed to deploy service, affinity cache is not found, cfg=" + cfg);
+                            else {
+                                ServiceInfo desc = new ServiceInfo(node.id(), reqSrvcId, cfg);
+
+                                registeredSrvcs.put(reqSrvcId, desc);
+
+                                toDeploy.put(reqSrvcId, desc);
+                            }
+                        }
+                        else {
+                            if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
+                                err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                                    "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                            }
+                            else {
+                                GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
+
+                                if (fut != null) {
+                                    fut.onDone();
+
+                                    if (log.isDebugEnabled())
+                                        log.debug("Service is already deployed with, srvcId=" + oldSrvcDesc.serviceId());
+                                }
+                            }
+                        }
+                    }
+
+                    if (err != null) {
+                        GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
+
+                        if (fut != null)
+                            fut.onDone(err);
+
+                        log.warning(err.getMessage(), err);
+                    }
+                }
+                else if (req.undeploy()) {
+                    ServiceInfo rmv = registeredSrvcs.remove(reqSrvcId);
+
+                    assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification.";
+
+                    toUndeploy.put(reqSrvcId, rmv);
+                }
+            }
+
+            if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
+                ServicesDeploymentActions depActions = new ServicesDeploymentActions();
+
+                if (!toDeploy.isEmpty())
+                    depActions.servicesToDeploy(toDeploy);
+
+                if (!toUndeploy.isEmpty())
+                    depActions.servicesToUndeploy(toUndeploy);
+
+                ((DynamicServicesChangeRequestBatchMessage)msg).servicesDeploymentActions(depActions);
             }
         }
         else if (msg instanceof ChangeGlobalStateMessage) {
@@ -1856,10 +1795,17 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             for (DynamicCacheChangeRequest chReq : ((DynamicCacheChangeBatch)msg).requests()) {
                 if (chReq.stop()) {
-                    for (ServiceInfo desc : registeredSrvcs.values()) {
-                        if (desc.cacheName().equals(chReq.cacheName()))
+                    registeredSrvcs.entrySet().removeIf(e -> {
+                        ServiceInfo desc = e.getValue();
+
+                        if (desc.cacheName().equals(chReq.cacheName())) {
                             toUndeploy.put(desc.serviceId(), desc);
-                    }
+
+                            return true;
+                        }
+
+                        return false;
+                    });
                 }
             }
 

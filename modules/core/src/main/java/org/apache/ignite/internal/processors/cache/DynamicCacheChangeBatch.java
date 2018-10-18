@@ -115,10 +115,12 @@ public class DynamicCacheChangeBatch implements DiscoveryCustomMessage {
     }
 
     /**
-     * @param servicesDepActions Services deployment actions to be processed on services deployment exchange.
+     * @param exchangeActions Cache updates to be executed on exchange.
      */
-    public void servicesDeploymentActions(ServicesDeploymentActions servicesDepActions) {
-        this.servicesDepActions = servicesDepActions;
+    void exchangeActions(ExchangeActions exchangeActions) {
+        assert exchangeActions != null && !exchangeActions.empty() : exchangeActions;
+
+        this.exchangeActions = exchangeActions;
     }
 
     /**
@@ -129,12 +131,10 @@ public class DynamicCacheChangeBatch implements DiscoveryCustomMessage {
     }
 
     /**
-     * @param exchangeActions Cache updates to be executed on exchange.
+     * @param servicesDepActions Services deployment actions to be processed on services deployment exchange.
      */
-    void exchangeActions(ExchangeActions exchangeActions) {
-        assert exchangeActions != null && !exchangeActions.empty() : exchangeActions;
-
-        this.exchangeActions = exchangeActions;
+    public void servicesDeploymentActions(ServicesDeploymentActions servicesDepActions) {
+        this.servicesDepActions = servicesDepActions;
     }
 
     /**
