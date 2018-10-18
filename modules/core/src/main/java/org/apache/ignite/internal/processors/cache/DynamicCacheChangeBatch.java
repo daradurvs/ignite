@@ -23,6 +23,7 @@ import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.service.ServicesExchangeActions;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -51,6 +52,9 @@ public class DynamicCacheChangeBatch implements DiscoveryCustomMessage {
 
     /** Restarting caches. */
     private Set<String> restartingCaches;
+
+    /** Affinity (cache related) services updates to be processed on services deployment exchange. */
+    public transient ServicesExchangeActions exchActions;
 
     /**
      * @param reqs Requests.

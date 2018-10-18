@@ -42,6 +42,8 @@ public class DynamicServicesChangeRequestBatchMessage implements DiscoveryCustom
     @GridToStringInclude
     private final Collection<DynamicServiceChangeRequest> reqs;
 
+    transient ServicesExchangeActions exchActions;
+
     /**
      * @param reqs Change requests.
      */

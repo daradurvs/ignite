@@ -47,84 +47,84 @@ public class ServiceDeploymentExchangeManagerSelfTest {
     public static void setup() {
         GridTestProperties.init();
     }
-
-    /** */
-    @Test
-    public void testAddTaskInEmptyQueue() {
-        ServicesDeploymentExchangeManager exchMgr = manager();
-
-        ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
-
-        for (int i = 0; i < 5; i++)
-            tasks.add(randomExchangeTask());
-
-        assertEquals(0, exchMgr.tasks().size());
-
-        tasks.forEach(t -> exchMgr.addTask(t.event(), t.topologyVersion()));
-
-        assertEquals(tasks.size(), exchMgr.tasks().size());
-    }
-
-    /** */
-    @Test
-    public void testAddTasksInNotEmptyQueue() {
-        ServicesDeploymentExchangeManager exchMgr = manager();
-
-        ServicesDeploymentExchangeTask t1 = randomExchangeTask();
-
-        exchMgr.tasks().add(t1);
-
-        ServicesDeploymentExchangeTask t2 = randomExchangeTask();
-
-        exchMgr.tasks().add(t2);
-
-        assertEquals(2, exchMgr.tasks().size());
-
-        ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
-
-        for (int i = 0; i < 5; i++)
-            tasks.add(randomExchangeTask());
-
-        tasks.forEach(t -> exchMgr.addTask(t.event(), t.topologyVersion()));
-
-        assertEquals(tasks.size() + 2, exchMgr.tasks().size());
-    }
-
-    /**
-     * @return Instance of ServicesDeploymentExchangeManager.
-     */
-    private ServicesDeploymentExchangeManager manager() {
-        return new ServicesDeploymentExchangeManager(mockKernalContext());
-    }
-
-    /**
-     * @return Mocked GridKernalContext.
-     */
-    private GridKernalContext mockKernalContext() {
-        GridTestKernalContext spyCtx = spy(new GridTestKernalContext(new GridTestLog4jLogger()));
-
-        GridEventStorageManager mockEvt = mock(GridEventStorageManager.class);
-        GridIoManager mockIo = mock(GridIoManager.class);
-
-        when(spyCtx.event()).thenReturn(mockEvt);
-        when(spyCtx.io()).thenReturn(mockIo);
-
-        return spyCtx;
-    }
-
-    /**
-     * @return Service deployment exchange id.
-     */
-    private ServicesDeploymentExchangeTask randomExchangeTask() {
-        DiscoveryEvent evt = new DiscoveryEvent(
-            new GridTestNode(UUID.randomUUID()), "", 10, new GridTestNode(UUID.randomUUID()));
-
-        AffinityTopologyVersion topVer = new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong());
-
-        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeTask(exchangeId(evt, topVer));
-
-        task.onEvent(evt, topVer);
-
-        return task;
-    }
+//
+//    /** */
+//    @Test
+//    public void testAddTaskInEmptyQueue() {
+//        ServicesDeploymentExchangeManager exchMgr = manager();
+//
+//        ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
+//
+//        for (int i = 0; i < 5; i++)
+//            tasks.add(randomExchangeTask());
+//
+//        assertEquals(0, exchMgr.tasks().size());
+//
+//        tasks.forEach(t -> exchMgr.addTask(t.event(), t.topologyVersion()));
+//
+//        assertEquals(tasks.size(), exchMgr.tasks().size());
+//    }
+//
+//    /** */
+//    @Test
+//    public void testAddTasksInNotEmptyQueue() {
+//        ServicesDeploymentExchangeManager exchMgr = manager();
+//
+//        ServicesDeploymentExchangeTask t1 = randomExchangeTask();
+//
+//        exchMgr.tasks().add(t1);
+//
+//        ServicesDeploymentExchangeTask t2 = randomExchangeTask();
+//
+//        exchMgr.tasks().add(t2);
+//
+//        assertEquals(2, exchMgr.tasks().size());
+//
+//        ArrayDeque<ServicesDeploymentExchangeTask> tasks = new ArrayDeque<>();
+//
+//        for (int i = 0; i < 5; i++)
+//            tasks.add(randomExchangeTask());
+//
+//        tasks.forEach(t -> exchMgr.addTask(t.event(), t.topologyVersion()));
+//
+//        assertEquals(tasks.size() + 2, exchMgr.tasks().size());
+//    }
+//
+//    /**
+//     * @return Instance of ServicesDeploymentExchangeManager.
+//     */
+//    private ServicesDeploymentExchangeManager manager() {
+//        return new ServicesDeploymentExchangeManager(mockKernalContext());
+//    }
+//
+//    /**
+//     * @return Mocked GridKernalContext.
+//     */
+//    private GridKernalContext mockKernalContext() {
+//        GridTestKernalContext spyCtx = spy(new GridTestKernalContext(new GridTestLog4jLogger()));
+//
+//        GridEventStorageManager mockEvt = mock(GridEventStorageManager.class);
+//        GridIoManager mockIo = mock(GridIoManager.class);
+//
+//        when(spyCtx.event()).thenReturn(mockEvt);
+//        when(spyCtx.io()).thenReturn(mockIo);
+//
+//        return spyCtx;
+//    }
+//
+//    /**
+//     * @return Service deployment exchange id.
+//     */
+//    private ServicesDeploymentExchangeTask randomExchangeTask() {
+//        DiscoveryEvent evt = new DiscoveryEvent(
+//            new GridTestNode(UUID.randomUUID()), "", 10, new GridTestNode(UUID.randomUUID()));
+//
+//        AffinityTopologyVersion topVer = new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong());
+//
+//        ServicesDeploymentExchangeTask task = new ServicesDeploymentExchangeTask(exchangeId(evt, topVer));
+//
+//        task.onEvent(evt, topVer);
+//
+//        return task;
+//    }
 }

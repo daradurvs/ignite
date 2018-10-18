@@ -17,19 +17,17 @@
 
 package org.apache.ignite.internal.processors.service;
 
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import jdk.nashorn.internal.ir.IfNode;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cluster.ClusterNode;
@@ -64,7 +62,7 @@ import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SER
 /**
  * Services deployment exchange task.
  */
-public class ServicesDeploymentExchangeTask implements Externalizable {
+public class ServicesDeploymentExchangeTask {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -111,6 +109,8 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     @GridToStringInclude
     private volatile AffinityTopologyVersion evtTopVer;
 
+    private volatile ServicesExchangeActions exchangeActions;
+
     /** Kernal context. */
     private GridKernalContext ctx;
 
@@ -125,16 +125,13 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     private AffinityTopologyVersion locJoinTopVer;
 
     /**
-     * Empty constructor for marshalling purposes.
-     */
-    public ServicesDeploymentExchangeTask() {
-    }
-
-    /**
+     * @param ctx Kernal context.
      * @param exchId Service deployment exchange id.
      */
-    protected ServicesDeploymentExchangeTask(ServicesDeploymentExchangeId exchId) {
+    protected ServicesDeploymentExchangeTask(GridKernalContext ctx, ServicesDeploymentExchangeId exchId) {
         this.exchId = exchId;
+        this.ctx = ctx;
+        this.log = ctx.log(getClass());
     }
 
     /**
@@ -143,27 +140,23 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
      * @param evt Discovery event.
      * @param topVer Topology version.
      */
-    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer) {
+    public void onEvent(DiscoveryEvent evt, AffinityTopologyVersion topVer, ServicesExchangeActions exchangeActions) {
         assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED
             || evt.type() == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event type, evt=" + evt;
 
         this.evt = evt;
         this.evtTopVer = topVer;
+        this.exchangeActions = exchangeActions;
     }
 
     /**
      * Initializes exchange task.
      *
-     * @param ctx Kernal context.
      * @throws IgniteCheckedException In case of an error.
      */
-    public void init(@NotNull GridKernalContext ctx) throws IgniteCheckedException {
+    public void init() throws IgniteCheckedException {
         if (isCompleted() || initTaskFut.isDone())
             return;
-
-        this.ctx = ctx;
-        this.log = ctx.log(getClass());
-        this.locJoinTopVer = ctx.discovery().localJoin().joinTopologyVersion();
 
         final UUID evtNodeId = evt.eventNode().id();
 
@@ -191,39 +184,30 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
             if (crd.isLocal())
                 initCoordinator(evtTopVer);
 
-            if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
-                final DiscoveryCustomMessage customMsg = ((DiscoveryCustomEvent)evt).customMessage();
+            if (exchangeActions == null) {
+                assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED;
 
-                assert customMsg != null : this;
+                Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().startedService();
 
-                if (customMsg instanceof ChangeGlobalStateMessage)
-                    onChangeGlobalStateMessage((ChangeGlobalStateMessage)customMsg, evtTopVer);
-                else if (customMsg instanceof DynamicServicesChangeRequestBatchMessage)
-                    onServiceChangeRequest(evtNodeId, (DynamicServicesChangeRequestBatchMessage)customMsg, evtTopVer);
-                else if (!lessThenLocalJoin(evtTopVer)) {
-                    if (customMsg instanceof DynamicCacheChangeBatch)
-                        onCacheStateChangeRequest((DynamicCacheChangeBatch)customMsg);
-                    else if (customMsg instanceof CacheAffinityChangeMessage)
-                        initReassignment(ctx.service().affinityServices(), evtTopVer);
-                    else
-                        assert false : "Unexpected type of custom message, customMsg=" + customMsg;
+                if (evt.type() == EVT_NODE_JOINED) {
+                    List<ServiceInfo> fromJoin = ctx.service().servicesReceivedFromJoin(evtNodeId);
+
+                    for (ServiceInfo desc : fromJoin)
+                        toRedeploy.put(desc.serviceId(), desc);
                 }
-                else if (log.isDebugEnabled()) {
-                    log.debug("Services exchange topology version less then local join topology. " +
-                        "No actions required, waiting for services deployment full map : " +
-                        "[locId=" + ctx.localNodeId() + ", exchId=" + exchId + ']');
+
+                exchangeActions = new ServicesExchangeActions();
+
+                if (toRedeploy.isEmpty()) {
+                    complete();
+
+                    return;
                 }
+
+                exchangeActions.srvcsToDeploy = toRedeploy;
             }
-            else {
-                Set<IgniteUuid> toReassign = new HashSet<>();
 
-                if (evt.type() == EVT_NODE_JOINED)
-                    toReassign.addAll(ctx.service().servicesReceivedFromJoin(evtNodeId));
-
-                toReassign.addAll(ctx.service().deployedServicesIds());
-
-                initReassignment(toReassign, evtTopVer);
-            }
+            processExchangeActions(exchangeActions);
 
             if (log.isDebugEnabled()) {
                 log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
@@ -243,6 +227,52 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
             if (!initTaskFut.isDone())
                 initTaskFut.onDone();
         }
+    }
+
+    private void processExchangeActions(@NotNull ServicesExchangeActions actions) {
+        final GridServiceProcessor proc = ctx.service();
+
+        final Map<IgniteUuid, Collection<Throwable>> errors = new HashMap<>();
+
+        try {
+            proc.updateStartedDescriptors(actions);
+
+            proc.exchange().exchangerBlockingSectionBegin();
+
+            if (actions.srvcsToUndeploy != null) {
+                actions.srvcsToUndeploy.forEach((srvcId, desc) -> {
+                    proc.undeploy(srvcId);
+                });
+            }
+
+            if (actions.srvcsToDeploy != null) {
+                actions.srvcsToDeploy.forEach((srvcId, desc) -> {
+                    try {
+                        Map<UUID, Integer> top = ctx.service().reassign(srvcId, desc.configuration(), evtTopVer, desc.topologySnapshot());
+
+                        Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
+
+                        boolean needDeploy = expCnt > 0 && proc.localInstancesCount(srvcId) != expCnt;
+
+                        if (needDeploy) {
+                            ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
+
+                            assert cfg != null;
+
+                            proc.redeploy(srvcId, cfg, top);
+                        }
+                    }
+                    catch (Error | RuntimeException | IgniteCheckedException err) {
+                        errors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
+                    }
+                });
+            }
+        }
+        finally {
+            proc.exchange().exchangerBlockingSectionEnd();
+        }
+
+        createAndSendSingleMapMessage(exchId, errors);
     }
 
     /**
@@ -584,9 +614,6 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
     private Map<UUID, Integer> reassign(IgniteUuid srvcId, ServiceConfiguration cfg,
         AffinityTopologyVersion topVer, Map<UUID, Integer> oldTop) throws IgniteCheckedException {
         try {
-            if (lessThenLocalJoin(topVer))
-                return Collections.emptyMap();
-
             Map<UUID, Integer> srvcTop = ctx.service().reassign(srvcId, cfg, topVer, oldTop);
 
             if (srvcTop.isEmpty())
@@ -898,19 +925,6 @@ public class ServicesDeploymentExchangeTask implements Externalizable {
      */
     protected boolean onAdded() {
         return addedInQueue.compareAndSet(false, true);
-    }
-
-    /** {@inheritDoc} */
-    @Override public void writeExternal(ObjectOutput out) throws IOException {
-        out.writeObject(evt);
-        out.writeObject(evtTopVer);
-    }
-
-    /** {@inheritDoc} */
-    @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        evt = (DiscoveryEvent)in.readObject();
-        evtTopVer = (AffinityTopologyVersion)in.readObject();
-        exchId = ServicesDeploymentExchangeManager.exchangeId(evt, evtTopVer);
     }
 
     /** {@inheritDoc} */

@@ -52,8 +52,11 @@ import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
+import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
+import org.apache.ignite.internal.processors.cluster.DiscoveryDataClusterState;
 import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupport;
 import org.apache.ignite.internal.util.future.GridCompoundFuture;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
@@ -117,6 +120,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** Contains all services information across the cluster. */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> registeredSrvcs = new ConcurrentHashMap<>();
+
+    private final ConcurrentMap<IgniteUuid, ServiceInfo> startedSrvcs = new ConcurrentHashMap<>();
 
     /** Connection status lock. */
     private final ReadWriteLock connStatusLock = new ReentrantReadWriteLock();
@@ -262,8 +267,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             return;
 
         ServicesCommonDiscoveryData clusterData = new ServicesCommonDiscoveryData(
-            new ArrayList<>(registeredSrvcs.values()),
-            new ArrayList<>(ctx.service().exchange().tasks())
+            new ArrayList<>(registeredSrvcs.values())
         );
 
         dataBag.addGridCommonData(SERVICE_PROC.ordinal(), clusterData);
@@ -279,7 +283,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         for (ServiceInfo desc : exchangeQueue.registeredServices())
             registeredSrvcs.put(desc.serviceId(), desc);
 
-        exchangeQueue.exchangeQueue().forEach(t -> ctx.service().exchange().addTask(t.event(), t.topologyVersion()));
+        startedSrvcs.putAll(registeredSrvcs);
     }
 
     /** {@inheritDoc} */
@@ -353,6 +357,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             exchMgr = new ServicesDeploymentExchangeManager(ctx);
 
             registeredSrvcs.clear();
+
+            startedSrvcs.clear();
 
             IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
                 ctx.cluster().clientReconnectFuture(), "Client node disconnected, the operation's result is unknown.");
@@ -859,16 +865,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return Collection of deployed service descriptors.
      */
     public Collection<ServiceDescriptor> serviceDescriptors() {
-        Collection<ServiceDescriptor> descs = new ArrayList<>();
-
-        registeredSrvcs.forEach((srvcId, desc) -> {
-            Map<UUID, Integer> top = desc.topologySnapshot();
-
-            if (top != null && !top.isEmpty())
-                descs.add(desc);
-        });
-
-        return descs;
+        return new ArrayList<>(startedSrvcs.values());
     }
 
     /**
@@ -1436,7 +1433,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     continue;
                 }
 
-                ServiceInfo srvcDesc = registeredSrvcs.get(srvcId);
+                ServiceInfo srvcDesc = startedSrvcs.get(srvcId);
 
                 assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances, " +
                     "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
@@ -1458,7 +1455,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
             synchronized (srvcsTopsUpdateMux) {
                 fullTops.forEach((srvcId, top) -> {
-                    ServiceInfo desc = registeredSrvcs.get(srvcId);
+                    ServiceInfo desc = startedSrvcs.get(srvcId);
 
                     assert desc != null : "Service descriptor has not been found to update deployment topology, " +
                         "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
@@ -1501,7 +1498,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     return true;
                 }
                 else {
-                    for (ServiceInfo dep : registeredSrvcs.values()) {
+                    for (ServiceInfo dep : startedSrvcs.values()) {
                         if (dep.configuration().equalsIgnoreNodeFilter(cfg)) {
                             fut.onDone();
 
@@ -1548,7 +1545,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @return @return Service's id if exists, otherwise {@code null};
      */
     @Nullable private IgniteUuid lookupId(String name) {
-        for (ServiceInfo desc : registeredSrvcs.values()) {
+        for (ServiceInfo desc : startedSrvcs.values()) {
             if (desc.name().equals(name))
                 return desc.serviceId();
         }
@@ -1660,7 +1657,19 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param desc {@link ServiceInfo} instance.
      */
     protected void putIfAbsentServiceInfo(IgniteUuid srvcId, ServiceInfo desc) {
-        registeredSrvcs.putIfAbsent(srvcId, desc);
+        startedSrvcs.putIfAbsent(srvcId, desc);
+    }
+
+    protected void updateStartedDescriptors(ServicesExchangeActions exchangeActions) {
+        if (exchangeActions.srvcsToDeploy != null)
+            exchangeActions.srvcsToDeploy.forEach(startedSrvcs::putIfAbsent);
+
+        if (exchangeActions.srvcsToUndeploy != null)
+            exchangeActions.srvcsToUndeploy.keySet().forEach(startedSrvcs::remove);
+    }
+
+    protected Map<IgniteUuid, ServiceInfo> startedService() {
+        return new HashMap<>(startedSrvcs);
     }
 
     /**
@@ -1669,15 +1678,15 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      * @param nodeId Joined node id.
      * @return List of services to deploy received on node joining with given id.
      */
-    @NotNull protected Set<IgniteUuid> servicesReceivedFromJoin(UUID nodeId) {
-        Set<IgniteUuid> ids = new HashSet<>();
+    @NotNull protected List<ServiceInfo> servicesReceivedFromJoin(UUID nodeId) {
+        List<ServiceInfo> descs= new ArrayList<>();
 
         for (ServiceInfo desc : registeredSrvcs.values()) {
             if (desc.originNodeId().equals(nodeId))
-                ids.add(desc.serviceId());
+                descs.add(desc);
         }
 
-        return ids;
+        return descs;
     }
 
     /**
@@ -1715,5 +1724,93 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
      */
     public ServicesDeploymentExchangeManager exchange() {
         return exchMgr;
+    }
+
+    public void onCustomEvent(DiscoveryCustomMessage msg, ClusterNode node, AffinityTopologyVersion topVer,
+        DiscoveryDataClusterState state) {
+        assert msg != null;
+
+
+        if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
+            Map<IgniteUuid, ServiceInfo> srvcsToStart = new HashMap<>();
+            Map<IgniteUuid, ServiceInfo> srvcToUndeploy = new HashMap<>();
+
+            for (DynamicServiceChangeRequest req : ((DynamicServicesChangeRequestBatchMessage)msg).requests()) {
+                IgniteUuid reqSrvcId = req.serviceId();
+                ServiceInfo oldSrvcDesc = registeredSrvcs.get(reqSrvcId);
+
+                if (req.deploy()) {
+                    Exception err = null;
+
+                    if (oldSrvcDesc != null) { // In case of a collision of IgniteUuid.randomUuid() (almost impossible case)
+                        err = new IgniteCheckedException("Failed to deploy service. Service with generated id already exists : [" +
+                            "srvcId" + reqSrvcId + ", srvcTop=" + oldSrvcDesc.topologySnapshot() + ']');
+                    }
+                    else {
+                        ServiceConfiguration cfg = req.configuration();
+
+                        for (Map.Entry<IgniteUuid, ServiceInfo> e : registeredSrvcs.entrySet()) {
+                            if (e.getValue().configuration().equalsIgnoreNodeFilter(cfg)) {
+                                oldSrvcDesc = e.getValue();
+
+                                break;
+                            }
+                        }
+
+                        if (oldSrvcDesc == null) {
+                            ServiceInfo desc = new ServiceInfo(node.id(), reqSrvcId, cfg);
+
+                            registeredSrvcs.put(reqSrvcId, desc);
+
+                            srvcsToStart.put(reqSrvcId, desc);
+
+                            continue;
+                        }
+
+                        GridServiceDeploymentFuture fut = depFuts.get(reqSrvcId);
+
+                        if (!oldSrvcDesc.configuration().equalsIgnoreNodeFilter(cfg)) {
+                            err = new IgniteCheckedException("Failed to deploy service (service already exists with " +
+                                "different configuration) : [deployed=" + oldSrvcDesc.configuration() + ", new=" + cfg + ']');
+                        }
+                        else {
+                            if (fut != null)
+                                fut.onDone();
+
+                            if (log.isDebugEnabled())
+                                log.debug("Already deployed with srvcId");
+                        }
+                    }
+
+                    if (err != null) {
+                        log.error(err.getMessage(), err);
+
+                        GridServiceDeploymentFuture fut = depFuts.remove(reqSrvcId);
+
+                        if (fut != null)
+                            fut.onDone(err);
+                    }
+                }
+                else if (req.undeploy()) {
+                    ServiceInfo rmv = registeredSrvcs.remove(reqSrvcId);
+
+                    assert rmv != null && oldSrvcDesc == rmv : "Concurrent map modification";
+
+                    srvcToUndeploy.put(reqSrvcId, rmv);
+                }
+            }
+
+            if (!srvcsToStart.isEmpty() || !srvcToUndeploy.isEmpty()) {
+                ServicesExchangeActions exchActions = new ServicesExchangeActions();
+
+                if (!srvcsToStart.isEmpty())
+                    exchActions.srvcsToDeploy = srvcsToStart;
+
+                if (!srvcToUndeploy.isEmpty())
+                    exchActions.srvcsToUndeploy = srvcToUndeploy;
+
+                ((DynamicServicesChangeRequestBatchMessage)msg).exchActions = exchActions;
+            }
+        }
     }
 }

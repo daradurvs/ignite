@@ -25,6 +25,7 @@ import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.ExchangeActions;
 import org.apache.ignite.internal.processors.cache.StoredCacheData;
+import org.apache.ignite.internal.processors.service.ServicesExchangeActions;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteUuid;
@@ -64,6 +65,8 @@ public class ChangeGlobalStateMessage implements DiscoveryCustomMessage {
     /** */
     @GridToStringExclude
     private transient ExchangeActions exchangeActions;
+
+    public transient ServicesExchangeActions servicesExchangeActions;
 
     /**
      * @param reqId State change request ID.

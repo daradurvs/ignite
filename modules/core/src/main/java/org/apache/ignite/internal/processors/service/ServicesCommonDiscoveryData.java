@@ -32,19 +32,11 @@ class ServicesCommonDiscoveryData implements Serializable {
     /** Clusters registered services descriptors. */
     private final ArrayList<ServiceInfo> registeredSrvcs;
 
-    /** Services deployment exchange queue to initialize exchange manager. */
-    private final ArrayList<ServicesDeploymentExchangeTask> exchQueue;
-
     /**
      * @param registeredSrvcs Clusters registered services descriptors.
-     * @param exchQueue Services deployment exchange queue to initialize exchange manager.
      */
-    public ServicesCommonDiscoveryData(
-        @NotNull ArrayList<ServiceInfo> registeredSrvcs,
-        @NotNull ArrayList<ServicesDeploymentExchangeTask> exchQueue
-    ) {
+    public ServicesCommonDiscoveryData(@NotNull ArrayList<ServiceInfo> registeredSrvcs) {
         this.registeredSrvcs = registeredSrvcs;
-        this.exchQueue = exchQueue;
     }
 
     /**
@@ -54,15 +46,6 @@ class ServicesCommonDiscoveryData implements Serializable {
      */
     public ArrayList<ServiceInfo> registeredServices() {
         return registeredSrvcs;
-    }
-
-    /**
-     * Returns services deployment exchange queue to initialize exchange manager.
-     *
-     * @return Queue of unhandled exchange tasks.
-     */
-    public ArrayList<ServicesDeploymentExchangeTask> exchangeQueue() {
-        return exchQueue;
     }
 
     /** {@inheritDoc} */

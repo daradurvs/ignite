@@ -46,6 +46,7 @@ import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_LONG_OPERATIONS_DUMP_TIMEOUT_LIMIT;
 import static org.apache.ignite.IgniteSystemProperties.getLong;
@@ -161,15 +162,6 @@ public class ServicesDeploymentExchangeManager {
     }
 
     /**
-     * Returns queue of services deployment exchanges tasks.
-     *
-     * @return Queue of services deployment exchanges tasks.
-     */
-    protected ArrayDeque<ServicesDeploymentExchangeTask> tasks() {
-        return exchWorker.tasksQueue;
-    }
-
-    /**
      * Special handler for local discovery events for which the regular events are not generated, e.g. local join and
      * client reconnect events.
      *
@@ -208,16 +200,16 @@ public class ServicesDeploymentExchangeManager {
      * @param evt Discovery event.
      * @param topVer Topology version.
      */
-    protected void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer) {
-        final DiscoveryEvent evt0 = copyIfNeeded(evt);
-        final ServicesDeploymentExchangeId exchId = exchangeId(evt0, topVer);
+    protected void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
+        @Nullable ServicesExchangeActions exchangeActions) {
+        final ServicesDeploymentExchangeId exchId = exchangeId(evt, topVer);
 
-        ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(exchId));
+        ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId, t -> new ServicesDeploymentExchangeTask(ctx, exchId));
 
         if (task.onAdded()) {
             assert task.event() == null && task.topologyVersion() == null;
 
-            task.onEvent(evt0, topVer);
+            task.onEvent(evt, topVer, exchangeActions);
 
             synchronized (addEvtMux) {
                 exchWorker.tasksQueue.add(task);
@@ -226,22 +218,7 @@ public class ServicesDeploymentExchangeManager {
             }
         }
         else
-            log.warning("Do not start service deployment exchange for event: " + evt0);
-    }
-
-    /**
-     * Addeds discovery event to exchange queue with check if cluster is active or not.
-     *
-     * @param evt Discovery event.
-     * @param cache Discovery cache.
-     */
-    private void checkStateAndAddEvent(DiscoveryEvent evt, DiscoCache cache) {
-        if (cache.state().transition())
-            pendingEvts.add(new IgniteBiTuple<>(evt, cache.version()));
-        else if (cache.state().active())
-            addTask(evt, cache.version());
-        else if (log.isDebugEnabled())
-            log.debug("Ignore event, cluster is inactive, evt=" + evt);
+            log.warning("Do not start service deployment exchange for event: " + evt);
     }
 
     /**
@@ -266,15 +243,15 @@ public class ServicesDeploymentExchangeManager {
      * @param evt Discovery event.
      * @return Discovery event to process.
      */
-    private DiscoveryEvent copyIfNeeded(@NotNull DiscoveryEvent evt) {
-        if (!(evt instanceof DiscoveryCustomEvent) ||
-            (((DiscoveryCustomEvent)evt).customMessage() instanceof DynamicServicesChangeRequestBatchMessage))
+    private DiscoveryCustomEvent copyIfNeeded(@NotNull DiscoveryCustomEvent evt) {
+        if (evt.customMessage() instanceof DynamicServicesChangeRequestBatchMessage)
             return evt;
 
         DiscoveryCustomEvent cp = new DiscoveryCustomEvent();
 
-        cp.customMessage(((DiscoveryCustomEvent)evt).customMessage());
+        cp.customMessage(evt.customMessage());
         cp.eventNode(evt.eventNode());
+        cp.affinityTopologyVersion(evt.affinityTopologyVersion());
 
         return cp;
     }
@@ -303,43 +280,58 @@ public class ServicesDeploymentExchangeManager {
                         ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
 
                         if (msg0.clusterActive())
-                            pendingEvts.forEach((t) -> addTask(t.get1(), t.get2()));
+                            pendingEvts.forEach((t) -> addTask(t.get1(), t.get2(), null));
                         else if (log.isDebugEnabled())
                             pendingEvts.forEach((t) -> log.debug("Ignore event, cluster is inactive: " + t.get1()));
 
                         pendingEvts.clear();
                     }
-                    else if (msg instanceof ChangeGlobalStateMessage)
-                        addTask(evt, discoCache.version());
+                    else {
+                        if (msg instanceof ServicesFullMapMessage) {
+                            ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
 
-                    else if (msg instanceof DynamicServicesChangeRequestBatchMessage ||
-                        msg instanceof DynamicCacheChangeBatch ||
-                        msg instanceof CacheAffinityChangeMessage)
-                        checkStateAndAddEvent(evt, discoCache);
+                            if (log.isDebugEnabled()) {
+                                log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
+                                    ", snd=" + snd + ", msg=" + msg0 + ']');
+                            }
 
-                    else if (msg instanceof ServicesFullMapMessage) {
-                        ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
+                            ServicesDeploymentExchangeId exchId = msg0.exchangeId();
 
-                        if (log.isDebugEnabled()) {
-                            log.debug("Received services full map message: [locId=" + ctx.localNodeId() +
-                                ", snd=" + snd + ", msg=" + msg0 + ']');
+                            assert exchId != null;
+
+                            ServicesDeploymentExchangeTask task = tasks.get(exchId);
+
+                            if (task != null) // May be null in case of double delivering
+                                task.onReceiveFullMapMessage(snd, msg0);
+
+                            return;
                         }
 
-                        ServicesDeploymentExchangeId exchId = msg0.exchangeId();
+                        ServicesExchangeActions exchangeActions = null;
 
-                        assert exchId != null;
+                        if (msg instanceof ChangeGlobalStateMessage)
+                            exchangeActions = ((ChangeGlobalStateMessage)msg).servicesExchangeActions;
+                        else if (msg instanceof DynamicServicesChangeRequestBatchMessage)
+                            exchangeActions = ((DynamicServicesChangeRequestBatchMessage)msg).exchActions;
+                        else if (msg instanceof DynamicCacheChangeBatch)
+                            exchangeActions = ((DynamicCacheChangeBatch)msg).exchActions;
+                        else if (msg instanceof CacheAffinityChangeMessage)
+                            exchangeActions = ((CacheAffinityChangeMessage)msg).exchActions;
 
-                        ServicesDeploymentExchangeTask task = tasks.get(exchId);
-
-                        if (task != null) // May be null in case of double delivering
-                            task.onReceiveFullMapMessage(snd, msg0);
+                        if (exchangeActions != null)
+                            addTask(copyIfNeeded((DiscoveryCustomEvent)evt), discoCache.version(), exchangeActions);
                     }
                 }
                 else {
                     if (evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED)
                         tasks.values().forEach(t -> t.onNodeLeft(snd));
 
-                    checkStateAndAddEvent(evt, discoCache);
+                    if (discoCache.state().transition())
+                        pendingEvts.add(new IgniteBiTuple<>(evt, discoCache.version()));
+                    else if (discoCache.state().active())
+                        addTask(evt, discoCache.version(), null);
+                    else if (log.isDebugEnabled())
+                        log.debug("Ignore event, cluster is inactive, evt=" + evt);
                 }
             }
             finally {
@@ -366,7 +358,7 @@ public class ServicesDeploymentExchangeManager {
                             ", msg=" + msg0 + ']');
                     }
 
-                    tasks.computeIfAbsent(msg0.exchangeId(), t -> new ServicesDeploymentExchangeTask(msg0.exchangeId()))
+                    tasks.computeIfAbsent(msg0.exchangeId(), t -> new ServicesDeploymentExchangeTask(ctx, msg0.exchangeId()))
                         .onReceiveSingleMapMessage(nodeId, msg0);
                 }
             }
@@ -428,7 +420,7 @@ public class ServicesDeploymentExchangeManager {
                     if (isCancelled())
                         Thread.currentThread().interrupt();
 
-                    task.init(ctx);
+                    task.init();
 
                     final long dumpTimeout = 2 * ctx.config().getNetworkTimeout();
 
