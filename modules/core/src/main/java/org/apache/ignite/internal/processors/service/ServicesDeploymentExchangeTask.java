@@ -168,26 +168,6 @@ public class ServicesDeploymentExchangeTask {
                 return;
             }
 
-            final UUID evtNodeId = evt.eventNode().id();
-
-            ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
-
-            if (crd == null) {
-                complete();
-
-                if (log.isDebugEnabled()) {
-                    log.debug("Failed to resolve coordinator to process services map exchange: " +
-                        "[locId=" + ctx.clientNode() + "client=" + ctx.clientNode() + ']');
-                }
-
-                return;
-            }
-
-            crdId = crd.id();
-
-            if (crd.isLocal())
-                initCoordinator(evtTopVer);
-
             if (depActions == null) {
                 if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
@@ -232,7 +212,7 @@ public class ServicesDeploymentExchangeTask {
                     Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().startedServices();
 
                     if (evt.type() == EVT_NODE_JOINED) {
-                        List<ServiceInfo> fromJoin = ctx.service().servicesReceivedFromJoin(evtNodeId);
+                        List<ServiceInfo> fromJoin = ctx.service().servicesReceivedFromJoin(evt.eventNode().id());
 
                         for (ServiceInfo desc : fromJoin)
                             toRedeploy.put(desc.serviceId(), desc);
@@ -246,8 +226,27 @@ public class ServicesDeploymentExchangeTask {
                 }
             }
 
-            if (depActions != null)
+            if (depActions != null) {
+                ClusterNode crd = U.oldest(ctx.discovery().aliveServerNodes(), null);
+
+                if (crd == null) {
+                    complete();
+
+                    if (log.isDebugEnabled()) {
+                        log.debug("Failed to resolve coordinator to process services map exchange: " +
+                            "[locId=" + ctx.clientNode() + "client=" + ctx.clientNode() + ']');
+                    }
+
+                    return;
+                }
+
+                crdId = crd.id();
+
+                if (crd.isLocal())
+                    initCoordinator(evtTopVer);
+
                 processDeploymentActions(depActions);
+            }
             else {
                 complete();
 
@@ -365,7 +364,32 @@ public class ServicesDeploymentExchangeTask {
         assert crdId != null : "Coordinator should be defined at this point, locId=" + ctx.localNodeId();
 
         try {
-            ServicesSingleMapMessage msg = createSingleMapMessage(exchId, errors);
+            Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
+
+            ctx.service().localInstancesCount().forEach((id, cnt) -> {
+                ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(cnt);
+
+                Collection<Throwable> err = errors.get(id);
+
+                if (err != null && !err.isEmpty())
+                    fillDeploymentErrors(depRes, err);
+
+                results.put(id, depRes);
+            });
+
+            errors.forEach((srvcId, err) -> {
+                if (results.containsKey(srvcId))
+                    return;
+
+                ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(0);
+
+                if (err != null && !err.isEmpty())
+                    fillDeploymentErrors(depRes, err);
+
+                results.put(srvcId, depRes);
+            });
+
+            ServicesSingleMapMessage msg = new ServicesSingleMapMessage(exchId, results);
 
             if (ctx.localNodeId().equals(crdId))
                 onReceiveSingleMapMessage(ctx.localNodeId(), msg);
@@ -445,8 +469,6 @@ public class ServicesDeploymentExchangeTask {
 
         try {
             final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> singleResults = buildSingleDeploymentsResults();
-
-//            addDeploymentErrorsToDeploymentResults(singleResults);
 
             final Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleResults);
 
@@ -569,43 +591,6 @@ public class ServicesDeploymentExchangeTask {
         });
 
         return fullResults;
-    }
-
-    /**
-     * @param exchId Exchange id.
-     * @param errors Deployment errors.
-     * @return Services single map message.
-     */
-    private ServicesSingleMapMessage createSingleMapMessage(ServicesDeploymentExchangeId exchId,
-        Map<IgniteUuid, Collection<Throwable>> errors) {
-        assert !isCompleted();
-
-        Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
-
-        ctx.service().localInstancesCount().forEach((id, cnt) -> {
-            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(cnt);
-
-            Collection<Throwable> err = errors.get(id);
-
-            if (err != null && !err.isEmpty())
-                fillDeploymentErrors(depRes, err);
-
-            results.put(id, depRes);
-        });
-
-        errors.forEach((srvcId, err) -> {
-            if (results.containsKey(srvcId))
-                return;
-
-            ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(0);
-
-            if (err != null && !err.isEmpty())
-                fillDeploymentErrors(depRes, err);
-
-            results.put(srvcId, depRes);
-        });
-
-        return new ServicesSingleMapMessage(exchId, results);
     }
 
     /**

@@ -77,6 +77,7 @@ import org.apache.ignite.plugin.security.SecurityPermission;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
+import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
 import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.apache.ignite.spi.discovery.DiscoverySpi;
@@ -93,6 +94,7 @@ import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_SERVICES_COMPATIBILITY_MODE;
+import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.CANCEL;
 
 /**
  * Grid service processor.
@@ -261,6 +263,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             }
         }
 
+        startedSrvcs.clear();
+
         cancelFutures(depFuts, err);
         cancelFutures(undepFuts, err);
     }
@@ -310,12 +314,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             boolean exists = false;
 
             for (ServiceInfo desc : registeredSrvcs.values()) {
-                if (desc.configuration().equalsIgnoreNodeFilter(toStart.configuration())) {
+                if (desc.name().equals(toStart.name())) {
                     exists = true;
 
-                    log.warning("Ignore service configuration received from joining node : " +
-                        "[nodeId=" + data.joiningNodeId() + ", cfgName=" + toStart.name() + "]. " +
-                        "The same service configuration already registered.");
+                    if (desc.configuration().equalsIgnoreNodeFilter(toStart.configuration())) {
+                        log.warning("Ignore service configuration received from joining node : " +
+                            "[nodeId=" + data.joiningNodeId() + ", cfgName=" + toStart.name() + "]. " +
+                            "The same service configuration already registered.");
+                    }
+                    else // TODO
+                        log.warning("");
 
                     break;
                 }
@@ -1433,16 +1441,14 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 if (!errors.isEmpty())
                     fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).addAll(errors);
 
-                if (top.isEmpty()) {
-                    undeploy(srvcId);
-
-                    continue;
-                }
-
                 ServiceInfo srvcDesc = startedSrvcs.get(srvcId);
 
                 assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances, " +
                     "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
+
+                // TODO
+                if (top.isEmpty() && !errors.isEmpty() && srvcDesc.configuration().getPolicy() == CANCEL)
+                    undeploy(srvcId);
 
                 fullTops.put(srvcId, top);
 

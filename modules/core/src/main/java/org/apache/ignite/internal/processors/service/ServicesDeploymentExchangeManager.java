@@ -199,6 +199,7 @@ public class ServicesDeploymentExchangeManager {
      *
      * @param evt Discovery event.
      * @param topVer Topology version.
+     * @param depActions Services deployment actions.
      */
     private void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
         @Nullable ServicesDeploymentActions depActions) {
@@ -244,7 +245,11 @@ public class ServicesDeploymentExchangeManager {
      * @return Discovery event to process.
      */
     private DiscoveryCustomEvent copyIfNeeded(@NotNull DiscoveryCustomEvent evt) {
-        if (evt.customMessage() instanceof DynamicServicesChangeRequestBatchMessage)
+        DiscoveryCustomMessage msg = evt.customMessage();
+
+        assert msg != null;
+
+        if (msg instanceof DynamicServicesChangeRequestBatchMessage)
             return evt;
 
         DiscoveryCustomEvent cp = new DiscoveryCustomEvent();
