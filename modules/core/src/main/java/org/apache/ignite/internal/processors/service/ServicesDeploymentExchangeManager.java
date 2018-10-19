@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.events.DiscoveryEvent;
@@ -64,9 +65,6 @@ import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVE
 public class ServicesDeploymentExchangeManager {
     /** Busy lock. */
     private final GridSpinBusyLock busyLock = new GridSpinBusyLock();
-
-    /** Addition of new event mutex. */
-    private final Object addEvtMux = new Object();
 
     /** Services discovery messages listener. */
     private final DiscoveryEventListener discoLsnr = new ServiceDiscoveryListener();
@@ -134,10 +132,6 @@ public class ServicesDeploymentExchangeManager {
             ctx.io().removeMessageListener(commLsnr);
 
             U.cancel(exchWorker);
-
-            synchronized (addEvtMux) {
-                addEvtMux.notify();
-            }
 
             U.join(exchWorker, log);
 
@@ -212,11 +206,7 @@ public class ServicesDeploymentExchangeManager {
 
             task.onEvent(evt, topVer, depActions);
 
-            synchronized (addEvtMux) {
-                exchWorker.tasksQueue.add(task);
-
-                addEvtMux.notify();
-            }
+            exchWorker.tasksQueue.add(task);
         }
         else
             log.warning("Do not start service deployment exchange for event: " + evt);
@@ -377,14 +367,12 @@ public class ServicesDeploymentExchangeManager {
      */
     private class ServicesDeploymentExchangeWorker extends GridWorker {
         /** Queue to process. */
-        private final ArrayDeque<ServicesDeploymentExchangeTask> tasksQueue;
+        private final LinkedBlockingDeque<ServicesDeploymentExchangeTask> tasksQueue = new LinkedBlockingDeque<>();
 
         /** {@inheritDoc} */
         private ServicesDeploymentExchangeWorker() {
             super(ctx.igniteInstanceName(), "services-deployment-exchanger",
                 ServicesDeploymentExchangeManager.this.log, ctx.workersRegistry());
-
-            this.tasksQueue = new ArrayDeque<>();
         }
 
         /** {@inheritDoc} */
@@ -397,29 +385,7 @@ public class ServicesDeploymentExchangeManager {
                 while (!isCancelled()) {
                     onIdle();
 
-                    synchronized (addEvtMux) {
-                        // Task shouldn't be removed from queue unless will be completed to avoid the possibility of
-                        // losing event on newly joined node where the queue will be transferred.
-                        task = tasksQueue.peek();
-
-                        if (task == null) {
-                            blockingSectionBegin();
-
-                            try {
-                                addEvtMux.wait();
-                            }
-                            finally {
-                                blockingSectionEnd();
-                            }
-
-                            continue;
-                        }
-                        else if (task.isCompleted()) {
-                            tasksQueue.poll();
-
-                            continue;
-                        }
-                    }
+                    task = tasksQueue.take();
 
                     if (isCancelled())
                         Thread.currentThread().interrupt();
@@ -489,10 +455,6 @@ public class ServicesDeploymentExchangeManager {
             AffinityTopologyVersion readyVer = readyTopVer.get();
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
-
-            synchronized (addEvtMux) {
-                tasksQueue.poll();
-            }
 
             tasks.remove(task.exchangeId()).clear();
         }
