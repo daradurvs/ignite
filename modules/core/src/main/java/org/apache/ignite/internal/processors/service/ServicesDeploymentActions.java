@@ -17,8 +17,11 @@
 
 package org.apache.ignite.internal.processors.service;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.ignite.lang.IgniteUuid;
 import org.jetbrains.annotations.NotNull;
 
@@ -35,10 +38,16 @@ public class ServicesDeploymentActions {
     /** Services info to undeploy. */
     private Map<IgniteUuid, ServiceInfo> servicesToUndeploy;
 
+    /** Services deployment topologies. */
+    private Map<IgniteUuid, HashMap<UUID, Integer>> depTops;
+
+    /** Services deployment errors. */
+    private Map<IgniteUuid, Collection<byte[]>> depErrors;
+
     /**
      * @param servicesToDeploy Services info to deploy.
      */
-    public void servicesToDeploy(Map<IgniteUuid, ServiceInfo> servicesToDeploy) {
+    public void servicesToDeploy(@NotNull Map<IgniteUuid, ServiceInfo> servicesToDeploy) {
         this.servicesToDeploy = servicesToDeploy;
     }
 
@@ -52,7 +61,7 @@ public class ServicesDeploymentActions {
     /**
      * @param servicesToUndeploy Services info to undeploy.
      */
-    public void servicesToUndeploy(Map<IgniteUuid, ServiceInfo> servicesToUndeploy) {
+    public void servicesToUndeploy(@NotNull Map<IgniteUuid, ServiceInfo> servicesToUndeploy) {
         this.servicesToUndeploy = servicesToUndeploy;
     }
 
@@ -75,5 +84,33 @@ public class ServicesDeploymentActions {
      */
     public boolean deactivate() {
         return deactivate;
+    }
+
+    /**
+     * @return Deployment topologies.
+     */
+    public Map<IgniteUuid, HashMap<UUID, Integer>> deploymentTopologies() {
+        return depTops;
+    }
+
+    /**
+     * @param fullTops Deployment topologies.
+     */
+    public void deploymentTopologies(@NotNull Map<IgniteUuid, HashMap<UUID, Integer>> fullTops) {
+        this.depTops = fullTops;
+    }
+
+    /**
+     * @return Deployment errors.
+     */
+    public Map<IgniteUuid, Collection<byte[]>> deploymentErrors() {
+        return depErrors;
+    }
+
+    /**
+     * @param fullErrors Deployment errors.
+     */
+    public void deploymentErrors(@NotNull Map<IgniteUuid, Collection<byte[]>> fullErrors) {
+        this.depErrors = fullErrors;
     }
 }

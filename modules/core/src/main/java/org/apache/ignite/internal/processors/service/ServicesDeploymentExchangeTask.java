@@ -445,40 +445,6 @@ public class ServicesDeploymentExchangeTask {
             ctx.closure().runLocalSafe(() -> {
                 Throwable th = null;
 
-                //
-//
-//                final Collection<ServiceFullDeploymentsResults> results = msg.results();
-//
-//                final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = new HashMap<>();
-//                final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
-//
-//                for (ServiceFullDeploymentsResults depRes : results) {
-//                    final IgniteUuid srvcId = depRes.serviceId();
-//                    final Map<UUID, ServiceSingleDeploymentsResults> deps = depRes.results();
-//
-//                    final HashMap<UUID, Integer> top = new HashMap<>();
-//                    final Collection<byte[]> errors = new ArrayList<>();
-//
-//                    deps.forEach((nodeId, res) -> {
-//                        int cnt = res.count();
-//
-//                        if (cnt > 0)
-//                            top.put(nodeId, cnt);
-//
-//                        if (!res.errors().isEmpty())
-//                            errors.addAll(res.errors());
-//                    });
-//
-//                    if (!top.isEmpty())
-//                        fullTops.put(srvcId, top);
-//
-//                    if (!errors.isEmpty())
-//                        fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).addAll(errors);
-//                }
-//
-//                ctx.service().processFullMap0(fullTops, fullErrors);
-                //
-
                 try {
                     ctx.service().processFullMap(msg);
                 }
