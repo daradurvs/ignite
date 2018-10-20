@@ -212,10 +212,12 @@ public class ServicesDeploymentExchangeTask {
                     Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().startedServices();
 
                     if (evt.type() == EVT_NODE_JOINED) {
-                        List<ServiceInfo> fromJoin = ctx.service().servicesReceivedFromJoin(evt.eventNode().id());
-
-                        for (ServiceInfo desc : fromJoin)
-                            toRedeploy.put(desc.serviceId(), desc);
+                        if (evt.eventNode().isLocal())
+                            toRedeploy.putAll(ctx.service().localJoinDeployServices());
+                        else {
+                            for (ServiceInfo desc : ctx.service().servicesReceivedFromJoin(evt.eventNode().id()))
+                                toRedeploy.put(desc.serviceId(), desc);
+                        }
                     }
 
                     if (!toRedeploy.isEmpty()) {
@@ -299,7 +301,9 @@ public class ServicesDeploymentExchangeTask {
 
             depActions.servicesToDeploy().forEach((srvcId, desc) -> {
                 try {
-                    Map<UUID, Integer> top = reassign(srvcId, desc.configuration(), evtTopVer, filterDeadNodes(desc.topologySnapshot()));
+                    ServiceConfiguration cfg = desc.configuration();
+
+                    Map<UUID, Integer> top = reassign(srvcId, cfg, evtTopVer, filterDeadNodes(desc.topologySnapshot()));
 
                     expDeps.put(srvcId, top);
 
@@ -307,13 +311,8 @@ public class ServicesDeploymentExchangeTask {
 
                     boolean needDeploy = expCnt > 0 && proc.localInstancesCount(srvcId) != expCnt;
 
-                    if (needDeploy) {
-                        ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
-
-                        assert cfg != null;
-
+                    if (needDeploy)
                         proc.redeploy(srvcId, cfg, top);
-                    }
                 }
                 catch (Error | RuntimeException | IgniteCheckedException err) {
                     depErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).add(err);
@@ -446,6 +445,40 @@ public class ServicesDeploymentExchangeTask {
             ctx.closure().runLocalSafe(() -> {
                 Throwable th = null;
 
+                //
+//
+//                final Collection<ServiceFullDeploymentsResults> results = msg.results();
+//
+//                final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = new HashMap<>();
+//                final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
+//
+//                for (ServiceFullDeploymentsResults depRes : results) {
+//                    final IgniteUuid srvcId = depRes.serviceId();
+//                    final Map<UUID, ServiceSingleDeploymentsResults> deps = depRes.results();
+//
+//                    final HashMap<UUID, Integer> top = new HashMap<>();
+//                    final Collection<byte[]> errors = new ArrayList<>();
+//
+//                    deps.forEach((nodeId, res) -> {
+//                        int cnt = res.count();
+//
+//                        if (cnt > 0)
+//                            top.put(nodeId, cnt);
+//
+//                        if (!res.errors().isEmpty())
+//                            errors.addAll(res.errors());
+//                    });
+//
+//                    if (!top.isEmpty())
+//                        fullTops.put(srvcId, top);
+//
+//                    if (!errors.isEmpty())
+//                        fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).addAll(errors);
+//                }
+//
+//                ctx.service().processFullMap0(fullTops, fullErrors);
+                //
+
                 try {
                     ctx.service().processFullMap(msg);
                 }
@@ -575,8 +608,14 @@ public class ServicesDeploymentExchangeTask {
 
         final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
 
+        final Map<IgniteUuid, ServiceInfo> descs = ctx.service().startedServices();
+
         results.forEach((srvcId, dep) -> {
-            ServiceConfiguration cfg = ctx.service().serviceConfiguration(srvcId);
+            ServiceInfo desc = descs.get(srvcId);
+
+            assert desc != null;
+
+            ServiceConfiguration cfg = desc.configuration();
 
             if (dep.values().stream().anyMatch(r -> !r.errors().isEmpty() && cfg != null)) {
                 ServiceDeploymentFailuresPolicy plc = cfg.getPolicy();

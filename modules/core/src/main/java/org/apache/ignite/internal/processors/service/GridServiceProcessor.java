@@ -77,7 +77,6 @@ import org.apache.ignite.plugin.security.SecurityPermission;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
 import org.apache.ignite.services.ServiceDeploymentException;
-import org.apache.ignite.services.ServiceDeploymentFailuresPolicy;
 import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.discovery.DiscoveryDataBag;
 import org.apache.ignite.spi.discovery.DiscoverySpi;
@@ -128,6 +127,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
 
     /** TODO */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> startedSrvcs = new ConcurrentHashMap<>();
+
+    /** */
+    private Map<IgniteUuid, ServiceInfo> locJoinDeployServices;
 
     /** Connection status lock. */
     private final ReadWriteLock connStatusLock = new ReentrantReadWriteLock();
@@ -291,7 +293,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         for (ServiceInfo desc : exchangeQueue.registeredServices())
             registeredSrvcs.put(desc.serviceId(), desc);
 
-        startedSrvcs.putAll(registeredSrvcs);
+        if (!registeredSrvcs.isEmpty())
+            locJoinDeployServices = new HashMap<>(registeredSrvcs);
     }
 
     /** {@inheritDoc} */
@@ -371,6 +374,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             registeredSrvcs.clear();
 
             startedSrvcs.clear();
+
+            locJoinDeployServices = null;
 
             IgniteClientDisconnectedCheckedException err = new IgniteClientDisconnectedCheckedException(
                 ctx.cluster().clientReconnectFuture(), "Client node disconnected, the operation's result is unknown.");
@@ -1404,6 +1409,160 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
+//
+//    /**
+//     * Handles services full map message.
+//     *
+//     * @param msg Services full map message.
+//     */
+//    protected void processFullMap0(@NotNull Map<IgniteUuid, HashMap<UUID, Integer>> fullTops,
+//        @NotNull final Map<IgniteUuid, Collection<byte[]>> fullErrors) {
+//        connStatusLock.readLock().lock();
+//
+//        try {
+//            if (disconnected)
+//                return;
+//
+//            fullTops.forEach((srvcId, top) -> {
+//
+//            });
+//
+//            fullErrors.forEach((srvcId, err) -> {
+//                if (top.isEmpty() && !errors.isEmpty() && srvcDesc.configuration().getPolicy() == CANCEL)
+//                    undeploy(srvcId);
+//            });
+//
+//            for (ServiceFullDeploymentsResults depRes : results) {
+//                final IgniteUuid srvcId = depRes.serviceId();
+//                final Map<UUID, ServiceSingleDeploymentsResults> deps = depRes.results();
+//
+//                final HashMap<UUID, Integer> top = new HashMap<>();
+//                final Collection<byte[]> errors = new ArrayList<>();
+//
+//                deps.forEach((nodeId, res) -> {
+//                    int cnt = res.count();
+//
+//                    if (cnt > 0)
+//                        top.put(nodeId, cnt);
+//
+//                    if (!res.errors().isEmpty())
+//                        errors.addAll(res.errors());
+//                });
+//
+//                if (!errors.isEmpty())
+//                    fullErrors.computeIfAbsent(srvcId, e -> new ArrayList<>()).addAll(errors);
+//
+//                ServiceInfo srvcDesc = startedSrvcs.get(srvcId);
+//
+//                assert srvcDesc != null : "Service descriptor has not been found to undeploy exceed instances, " +
+//                    "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
+//
+//                // TODO
+//                if (top.isEmpty() && !errors.isEmpty() && srvcDesc.configuration().getPolicy() == CANCEL)
+//                    undeploy(srvcId);
+//
+//                fullTops.put(srvcId, top);
+//
+//                Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
+//
+//                Collection ctxs = locSvcs.get(srvcId);
+//
+//                if (ctxs != null && expCnt < ctxs.size()) { // Undeploy exceed instances
+//                    ServiceConfiguration cfg = srvcDesc.configuration();
+//
+//                    redeploy(srvcId, cfg, top);
+//                }
+//            }
+//
+//            final Set<IgniteUuid> srvcsIds = fullTops.keySet();
+//
+//            synchronized (srvcsTopsUpdateMux) {
+//                fullTops.forEach((srvcId, top) -> {
+//                    ServiceInfo desc = startedSrvcs.get(srvcId);
+//
+//                    assert desc != null : "Service descriptor has not been found to update deployment topology, " +
+//                        "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
+//
+//                    desc.topologySnapshot(top);
+//                });
+//
+//                srvcsTopsUpdateMux.notifyAll();
+//            }
+//
+//            depFuts.entrySet().removeIf(entry -> {
+//                IgniteUuid srvcId = entry.getKey();
+//                GridServiceDeploymentFuture fut = entry.getValue();
+//
+//                Collection<byte[]> errors = fullErrors.get(srvcId);
+//
+//                ServiceConfiguration cfg = fut.configuration();
+//
+//                if (errors != null) {
+//                    ServiceDeploymentException ex = null;
+//
+//                    for (byte[] error : errors) {
+//                        try {
+//                            Throwable t = U.unmarshal(ctx, error, null);
+//
+//                            if (ex == null)
+//                                ex = new ServiceDeploymentException(t, Collections.singleton(cfg));
+//                            else
+//                                ex.addSuppressed(t);
+//                        }
+//                        catch (IgniteCheckedException e) {
+//                            log.error("Failed to unmarshal deployment exception.", e);
+//                        }
+//                    }
+//
+//                    log.error("Failed to deploy service, name=" + cfg.getName(), ex);
+//
+//                    fut.onDone(ex);
+//
+//                    return true;
+//                }
+//                else {
+//                    for (ServiceInfo dep : startedSrvcs.values()) {
+//                        if (dep.configuration().equalsIgnoreNodeFilter(cfg)) {
+//                            fut.onDone();
+//
+//                            return true;
+//                        }
+//                    }
+//                }
+//
+//                return false;
+//            });
+//
+//            undepFuts.entrySet().removeIf(entry -> {
+//                IgniteUuid srvcId = entry.getKey();
+//                GridFutureAdapter<?> fut = entry.getValue();
+//
+//                if (!srvcsIds.contains(srvcId)) {
+//                    fut.onDone();
+//
+//                    return true;
+//                }
+//
+//                return false;
+//            });
+//
+//            if (log.isDebugEnabled() && (!depFuts.isEmpty() || !undepFuts.isEmpty())) {
+//                log.debug("Detected incomplete futures, after full map processing" +
+//                    ", services topologies=" + fullTops +
+//                    (!depFuts.isEmpty() ? ", depFuts=" + depFuts : "") +
+//                    (!undepFuts.isEmpty() ? ", undepFuts=" + undepFuts.keySet() : "")
+//                );
+//            }
+//        }
+//        catch (Exception e) {
+//            log.error("Error occurred while processing services' full map message." +
+//                " [locNode=" + ctx.localNodeId() + ", msg=" + msg, e);
+//        }
+//        finally {
+//            connStatusLock.readLock().unlock();
+//        }
+//    }
+
     /**
      * Handles services full map message.
      *
@@ -1447,8 +1606,11 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                     "client=" + ctx.clientNode() + ", disconnected=" + disconnected;
 
                 // TODO
-                if (top.isEmpty() && !errors.isEmpty() && srvcDesc.configuration().getPolicy() == CANCEL)
+                if (top.isEmpty() && !errors.isEmpty() && srvcDesc.configuration().getPolicy() == CANCEL) {
                     undeploy(srvcId);
+
+                    return;
+                }
 
                 fullTops.put(srvcId, top);
 
@@ -1588,14 +1750,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return locTop;
     }
 
-    /**
-     * @param srvcId Service id.
-     * @return Service configuration of service deployed with given id. Possibly {@code null} if not found.
-     */
-    @Nullable protected ServiceConfiguration serviceConfiguration(IgniteUuid srvcId) {
-        ServiceInfo desc = registeredSrvcs.get(srvcId);
+    @NotNull protected Map<IgniteUuid, ServiceInfo> localJoinDeployServices() {
+        Map<IgniteUuid, ServiceInfo> res = new HashMap<>();
 
-        return desc != null ? desc.configuration() : null;
+        if (locJoinDeployServices != null) {
+            res.putAll(locJoinDeployServices);
+
+            locJoinDeployServices = null;
+        }
+
+        return res;
     }
 
     /**
@@ -1658,8 +1822,12 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 first = F.eq(ctx.localNodeId(), U.oldest(ctx.discovery().aliveServerNodes(), null));
 
             // First node start, {@link #onGridDataReceived(DiscoveryDataBag.GridDiscoveryData)} has not been called
-            if (first)
+            if (first) {
                 staticSrvcsInfo.forEach(desc -> registeredSrvcs.put(desc.serviceId(), desc));
+
+                if (!registeredSrvcs.isEmpty())
+                    locJoinDeployServices = new HashMap<>(registeredSrvcs);
+            }
         }
 
         exchMgr.onLocalEvent(evt, discoCache);
