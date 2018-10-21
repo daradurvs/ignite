@@ -444,7 +444,12 @@ public class ServicesDeploymentExchangeTask {
                 Throwable th = null;
 
                 try {
-                    ctx.service().processFullMap(msg);
+                    final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = msg.servicesDeploymentsActions().deploymentTopologies();
+                    final Map<IgniteUuid, Collection<byte[]>> fullErrors = msg.servicesDeploymentsActions().deploymentErrors();
+
+                    assert fullTops != null && fullErrors != null;
+
+                    ctx.service().onDeploymentResult(fullTops, fullErrors);
                 }
                 catch (Throwable t) {
                     log.error("Failed to process services deployment full map, msg=" + msg, t);

@@ -1408,19 +1408,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
     }
 
     /**
-     * Handles services full map message.
+     * Handles deployment result.
      *
-     * @param msg Services full map message.
+     * @param fullTops Deployment topologies.
+     * @param fullErrors Deployment errors.
      */
-    protected void processFullMap(ServicesFullMapMessage msg) {
+    protected void onDeploymentResult(@NotNull final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops,
+        @NotNull final Map<IgniteUuid, Collection<byte[]>> fullErrors) {
         connStatusLock.readLock().lock();
 
         try {
             if (disconnected)
                 return;
-
-            final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = msg.servicesDeploymentsActions().deploymentTopologies();
-            final Map<IgniteUuid, Collection<byte[]>> fullErrors = msg.servicesDeploymentsActions().deploymentErrors();
 
             final Set<IgniteUuid> toUndeploy = collectIdsToUndeploy(deployedServices, fullErrors);
 
@@ -1511,7 +1510,7 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
         catch (Exception e) {
             log.error("Error occurred while processing services' full map message." +
-                " [locNode=" + ctx.localNodeId() + ", msg=" + msg, e);
+                " [locNode=" + ctx.localNodeId() + ", fullTops=" + fullTops + ']', e);
         }
         finally {
             connStatusLock.readLock().unlock();
