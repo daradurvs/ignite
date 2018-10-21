@@ -177,7 +177,7 @@ public class ServicesDeploymentExchangeTask {
                     if (msg instanceof CacheAffinityChangeMessage) {
                         CacheAffinityChangeMessage msg0 = (CacheAffinityChangeMessage)msg;
 
-                        Map<IgniteUuid, ServiceInfo> descs = ctx.service().startedServices();
+                        Map<IgniteUuid, ServiceInfo> descs = ctx.service().deployedServices();
 
                         if (!descs.isEmpty()) {
                             Map<Integer, Map<Integer, List<UUID>>> change = msg0.assignmentChange();
@@ -209,7 +209,7 @@ public class ServicesDeploymentExchangeTask {
                 else {
                     assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED;
 
-                    Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().startedServices();
+                    Map<IgniteUuid, ServiceInfo> toRedeploy = ctx.service().deployedServices();
 
                     if (evt.type() == EVT_NODE_JOINED) {
                         if (evt.eventNode().isLocal())
@@ -291,7 +291,7 @@ public class ServicesDeploymentExchangeTask {
         final GridServiceProcessor proc = ctx.service();
 
         try {
-            proc.updateStartedDescriptors(depActions);
+            proc.updateDeployedInfo(depActions);
 
             proc.exchange().exchangerBlockingSectionBegin();
 
@@ -309,9 +309,7 @@ public class ServicesDeploymentExchangeTask {
 
                     Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
 
-                    boolean needDeploy = expCnt > 0 && proc.localInstancesCount(srvcId) != expCnt;
-
-                    if (needDeploy)
+                    if (expCnt > proc.localInstancesCount(srvcId))
                         proc.redeploy(srvcId, cfg, top);
                 }
                 catch (Error | RuntimeException | IgniteCheckedException err) {
@@ -574,7 +572,7 @@ public class ServicesDeploymentExchangeTask {
 
         final Collection<ServiceFullDeploymentsResults> fullResults = new ArrayList<>();
 
-        final Map<IgniteUuid, ServiceInfo> descs = ctx.service().startedServices();
+        final Map<IgniteUuid, ServiceInfo> descs = ctx.service().deployedServices();
 
         results.forEach((srvcId, dep) -> {
             ServiceInfo desc = descs.get(srvcId);
