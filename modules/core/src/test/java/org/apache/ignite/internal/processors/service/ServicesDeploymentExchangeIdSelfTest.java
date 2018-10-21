@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
@@ -32,7 +33,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import static org.apache.ignite.internal.processors.service.ServicesDeploymentExchangeManager.exchangeId;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -55,13 +55,17 @@ public class ServicesDeploymentExchangeIdSelfTest {
     public ServicesDeploymentExchangeIdSelfTest(IgniteBiTuple<DiscoveryEvent, AffinityTopologyVersion> data) {
         this.evt = data.get1();
         this.topVer = data.get2();
-        this.sut = exchangeId(evt, topVer);
+
+        if (evt instanceof DiscoveryCustomEvent)
+            this.sut = new ServicesDeploymentExchangeId(((DiscoveryCustomEvent)evt).customMessage().id());
+        else
+            this.sut = new ServicesDeploymentExchangeId(topVer);
     }
 
     /**
      * @return Tests data.
      */
-    @Parameterized.Parameters
+    @Parameterized.Parameters(name = "Test event={0}")
     public static Collection<Object[]> instancesToTest() {
         DiscoveryEvent evt = new DiscoveryEvent(
             new GridTestNode(UUID.randomUUID()), "", 10, new GridTestNode(UUID.randomUUID()));
@@ -73,7 +77,10 @@ public class ServicesDeploymentExchangeIdSelfTest {
                 DynamicServiceChangeRequest.undeploymentRequest(IgniteUuid.randomUuid())))
         );
 
-        customEvt.eventNode(new GridTestNode(UUID.randomUUID()));
+        ClusterNode node = new GridTestNode(UUID.randomUUID());
+
+        customEvt.node(node);
+        customEvt.eventNode(node);
 
         return Arrays.asList(new Object[][] {
             {new IgniteBiTuple<>(customEvt, new AffinityTopologyVersion(ThreadLocalRandom.current().nextLong()))},

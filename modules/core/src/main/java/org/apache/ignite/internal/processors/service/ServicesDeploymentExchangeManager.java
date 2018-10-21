@@ -218,7 +218,7 @@ public class ServicesDeploymentExchangeManager {
      * @param topVer Topology version.
      * @return Services deployment exchange id.
      */
-    public static ServicesDeploymentExchangeId exchangeId(@NotNull DiscoveryEvent evt,
+    private ServicesDeploymentExchangeId exchangeId(@NotNull DiscoveryEvent evt,
         @NotNull AffinityTopologyVersion topVer) {
         if (evt instanceof DiscoveryCustomEvent)
             return new ServicesDeploymentExchangeId(((DiscoveryCustomEvent)evt).customMessage().id());
