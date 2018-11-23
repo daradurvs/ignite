@@ -133,6 +133,7 @@ import static org.apache.ignite.internal.commandline.Command.BASELINE;
 import static org.apache.ignite.internal.commandline.Command.CACHE;
 import static org.apache.ignite.internal.commandline.Command.DEACTIVATE;
 import static org.apache.ignite.internal.commandline.Command.STATE;
+import static org.apache.ignite.internal.commandline.Command.TOPOLOGY;
 import static org.apache.ignite.internal.commandline.Command.TX;
 import static org.apache.ignite.internal.commandline.Command.WAL;
 import static org.apache.ignite.internal.commandline.OutputFormat.MULTI_LINE;
@@ -1394,6 +1395,19 @@ public class CommandHandler {
     }
 
     /**
+     * Executes TOPOLOGY command.
+     *
+     * @param client Client.
+     * * @throws Throwable If failed to execute topology action.
+     */
+    private void topology(GridClient client) throws Throwable {
+        // TODO
+        VisorBaselineTaskResult res = executeTask(client, VisorBaselineTask.class, arg(COLLECT, ""));
+
+        baselinePrint0(res);
+    }
+
+    /**
      * Execute delete unused WAL segments task.
      *
      * @param client Client.
@@ -1840,6 +1854,13 @@ public class CommandHandler {
                             throw new IllegalArgumentException("Unexpected action " + walAct + " for " + WAL.text());
 
                         break;
+
+                    case TOPOLOGY:
+
+                        commands.add(TOPOLOGY);
+
+                        break;
+
                     default:
                         throw new IllegalArgumentException("Unexpected command: " + str);
                 }
@@ -2408,6 +2429,7 @@ public class CommandHandler {
                 usage(i("Activate cluster:"), ACTIVATE);
                 usage(i("Deactivate cluster:"), DEACTIVATE, op(CMD_AUTO_CONFIRMATION));
                 usage(i("Print current cluster state:"), STATE);
+                usage(i("Print cluster topology:"), TOPOLOGY);
                 usage(i("Print cluster baseline topology:"), BASELINE);
                 usage(i("Add nodes into baseline topology:"), BASELINE, BASELINE_ADD, "consistentId1[,consistentId2,....,consistentIdN]", op(CMD_AUTO_CONFIRMATION));
                 usage(i("Remove nodes from baseline topology:"), BASELINE, BASELINE_REMOVE, "consistentId1[,consistentId2,....,consistentIdN]", op(CMD_AUTO_CONFIRMATION));
@@ -2523,6 +2545,11 @@ public class CommandHandler {
 
                         case WAL:
                             wal(client, args.walAction(), args.walArguments());
+
+                            break;
+
+                        case TOPOLOGY:
+                            topology(client);
 
                             break;
                     }
