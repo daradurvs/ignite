@@ -51,7 +51,6 @@ import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.SkipDaemon;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
-import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeRequest;
@@ -93,7 +92,7 @@ import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.CANCEL;
  * Grid service processor.
  */
 @SkipDaemon
-public class IgniteServiceProcessor extends GridProcessorAdapter implements IgniteChangeGlobalStateSupport {
+public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implements IgniteChangeGlobalStateSupport {
     /** Local service instances. */
     private final ConcurrentMap<IgniteUuid, Collection<ServiceContextImpl>> locServices = new ConcurrentHashMap<>();
 
@@ -397,32 +396,18 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
                 throw new IgniteException("Service configuration check failed (" + desc + ")");
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc) {
         return deployMultiple(prj, name, svc, 0, 1);
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc) {
         return deployMultiple(prj, name, svc, 1, 1);
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @param totalCnt Total count.
-     * @param maxPerNodeCnt Max per-node count.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
         int maxPerNodeCnt) {
         ServiceConfiguration cfg = new ServiceConfiguration();
 
@@ -434,14 +419,8 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         return deployAll(prj, Collections.singleton(cfg));
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @param cacheName Cache name.
-     * @param affKey Affinity key.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
         Object affKey) {
         A.notNull(affKey, "affKey");
 
@@ -547,12 +526,8 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         }
     }
 
-    /**
-     * @param prj Grid projection.
-     * @param cfgs Service configurations.
-     * @return Future for deployment.
-     */
-    public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
             return deployAll(cfgs, ctx.cluster().get().forServers().predicate());
@@ -593,7 +568,7 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
 
             List<GridServiceDeploymentFuture> failedFuts = srvCfg.failedFuts;
 
-            GridServiceDeploymentCompoundFuture res = new GridServiceDeploymentCompoundFuture();
+            GridServiceDeploymentCompoundFuture<IgniteUuid> res = new GridServiceDeploymentCompoundFuture();
 
             if (!cfgsCp.isEmpty()) {
                 try {
@@ -645,27 +620,18 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         }
     }
 
-    /**
-     * @param name Service name.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> cancel(String name) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> cancel(String name) {
         return cancelAll(Collections.singleton(name));
     }
 
-    /**
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> cancelAll() {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> cancelAll() {
         return cancelAll(deployedServices.values().stream().map(ServiceInfo::name).collect(Collectors.toSet()));
     }
 
-    /**
-     * @param names Name of service to undeploy.
-     * @return Future.
-     */
-    @SuppressWarnings("unchecked")
-    public IgniteInternalFuture<?> cancelAll(@NotNull Collection<String> names) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> cancelAll(@NotNull Collection<String> names) {
         opsLock.readLock().lock();
 
         try {
@@ -752,13 +718,8 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         }
     }
 
-    /**
-     * @param name Service name.
-     * @param timeout If greater than 0 limits task execution time. Cannot be negative.
-     * @return Service topology.
-     * @throws IgniteCheckedException On error.
-     */
-    public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
+    /** {@inheritDoc} */
+    @Override public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
         assert timeout >= 0;
 
         long startTime = U.currentTimeMillis();
@@ -800,20 +761,13 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         return null;
     }
 
-    /**
-     * @return Collection of deployed service descriptors.
-     */
-    public Collection<ServiceDescriptor> serviceDescriptors() {
+    /** {@inheritDoc} */
+    @Override public Collection<ServiceDescriptor> serviceDescriptors() {
         return new ArrayList<>(registeredServices.values());
     }
 
-    /**
-     * @param name Service name.
-     * @param <T> Service type.
-     * @return Service by specified service name.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T service(String name) {
+    /** {@inheritDoc} */
+    @Override public <T> T service(String name) {
         if (!enterBusy())
             return null;
 
@@ -839,11 +793,8 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         }
     }
 
-    /**
-     * @param name Service name.
-     * @return Service by specified service name.
-     */
-    public ServiceContextImpl serviceContext(String name) {
+    /** {@inheritDoc} */
+    @Override public ServiceContextImpl serviceContext(String name) {
         if (!enterBusy())
             return null;
 
@@ -878,18 +829,9 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         return locServices.get(srvcId);
     }
 
-    /**
-     * @param prj Grid projection.
-     * @param name Service name.
-     * @param svcItf Service class.
-     * @param sticky Whether multi-node request should be done.
-     * @param timeout If greater than 0 limits service acquire time. Cannot be negative.
-     * @param <T> Service interface type.
-     * @return The proxy of a service by its name and class.
-     * @throws IgniteException If failed to create proxy.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky, long timeout)
+    /** {@inheritDoc} */
+    @Override public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky,
+        long timeout)
         throws IgniteException {
         ctx.security().authorize(name, SecurityPermission.SERVICE_INVOKE, null);
 
@@ -925,13 +867,8 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         return false;
     }
 
-    /**
-     * @param name Service name.
-     * @param <T> Service type.
-     * @return Services by specified service name.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> Collection<T> services(String name) {
+    /** {@inheritDoc} */
+    @Override public <T> Collection<T> services(String name) {
         if (!enterBusy())
             return null;
 
@@ -1759,6 +1696,11 @@ public class IgniteServiceProcessor extends GridProcessorAdapter implements Igni
         });
 
         return toUndeploy;
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean eventDrivenServiceProcessorEnabled() {
+        return true;
     }
 
     /**
