@@ -59,9 +59,9 @@ import static org.apache.ignite.internal.events.DiscoveryCustomEvent.EVT_DISCOVE
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SERVICE_POOL;
 
 /**
- * Services deployment exchange task.
+ * Services deployment task.
  */
-class ServicesDeploymentExchangeTask {
+class ServicesDeploymentTask {
     /** Task's completion future. */
     private final GridFutureAdapter<?> completeStateFut = new GridFutureAdapter<>();
 
@@ -78,7 +78,7 @@ class ServicesDeploymentExchangeTask {
     @GridToStringInclude
     private final Set<UUID> remaining = new HashSet<>();
 
-    /** Added in exchange queue flag. */
+    /** Added in deployment queue flag. */
     private final AtomicBoolean addedInQueue = new AtomicBoolean(false);
 
     /** Single service messages to process. */
@@ -102,9 +102,9 @@ class ServicesDeploymentExchangeTask {
     /** Service processor. */
     private final IgniteServiceProcessor srvcProc;
 
-    /** Exchange id. */
+    /** Deployment process id. */
     @GridToStringInclude
-    private final ServicesDeploymentExchangeId exchId;
+    private final ServicesDeploymentProcessId depId;
 
     /** Coordinator node id. */
     @GridToStringExclude
@@ -123,10 +123,10 @@ class ServicesDeploymentExchangeTask {
 
     /**
      * @param ctx Kernal context.
-     * @param exchId Service deployment exchange id.
+     * @param depId Service deployment process id.
      */
-    protected ServicesDeploymentExchangeTask(GridKernalContext ctx, ServicesDeploymentExchangeId exchId) {
-        this.exchId = exchId;
+    protected ServicesDeploymentTask(GridKernalContext ctx, ServicesDeploymentProcessId depId) {
+        this.depId = depId;
         this.ctx = ctx;
 
         assert ctx.service() instanceof IgniteServiceProcessor;
@@ -141,20 +141,20 @@ class ServicesDeploymentExchangeTask {
      *
      * @param evt Discovery event.
      * @param evtTopVer Topology version.
-     * @param exchangeActions Services deployment exchange actions.
+     * @param depActions Services deployment actions.
      */
     protected void onEvent(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion evtTopVer,
-        @Nullable ServicesDeploymentActions exchangeActions) {
+        @Nullable ServicesDeploymentActions depActions) {
         assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED
             || evt.type() == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event type, evt=" + evt;
 
         this.evt = evt;
         this.evtTopVer = evtTopVer;
-        this.depActions = exchangeActions;
+        this.depActions = depActions;
     }
 
     /**
-     * Initializes exchange task.
+     * Initializes deployment task.
      *
      * @throws IgniteCheckedException In case of an error.
      */
@@ -165,7 +165,7 @@ class ServicesDeploymentExchangeTask {
         assert evt != null && evtTopVer != null : "Illegal state to perform task's initialization :" + this;
 
         if (log.isDebugEnabled()) {
-            log.debug("Started services exchange task init: [exchId=" + exchId +
+            log.debug("Started services deployment task init: [depId=" + depId +
                 ", locId=" + ctx.localNodeId() + ", evt=" + evt + ']');
         }
 
@@ -221,7 +221,7 @@ class ServicesDeploymentExchangeTask {
                     completeSuccess();
 
                     if (log.isDebugEnabled())
-                        log.debug("No services deployment exchange action required.");
+                        log.debug("No services deployment deployment action required.");
 
                     return;
                 }
@@ -247,7 +247,7 @@ class ServicesDeploymentExchangeTask {
             processDeploymentActions(depActions);
         }
         catch (Exception e) {
-            log.error("Error occurred while initializing exchange task, err=" + e.getMessage(), e);
+            log.error("Error occurred while initializing deployment task, err=" + e.getMessage(), e);
 
             completeError(e);
 
@@ -258,31 +258,31 @@ class ServicesDeploymentExchangeTask {
                 initTaskFut.onDone();
 
             if (log.isDebugEnabled()) {
-                log.debug("Finished services exchange future init: [exchId=" + exchangeId() +
+                log.debug("Finished services deployment future init: [depId=" + deploymentId() +
                     ", locId=" + ctx.localNodeId() + ']');
             }
         }
     }
 
     /**
-     * @param exchangeActions Services deployment exchange actions.
+     * @param depActions Services deployment actions.
      */
     @SuppressWarnings("ErrorNotRethrown")
-    private void processDeploymentActions(@NotNull ServicesDeploymentActions exchangeActions) {
-        srvcProc.updateDeployedServices(exchangeActions);
+    private void processDeploymentActions(@NotNull ServicesDeploymentActions depActions) {
+        srvcProc.updateDeployedServices(depActions);
 
-        exchangeActions.servicesToUndeploy().forEach((srvcId, desc) -> {
-            srvcProc.exchange().exchangerBlockingSectionBegin();
+        depActions.servicesToUndeploy().forEach((srvcId, desc) -> {
+            srvcProc.deployment().exchangerBlockingSectionBegin();
 
             try {
                 srvcProc.undeploy(srvcId);
             }
             finally {
-                srvcProc.exchange().exchangerBlockingSectionEnd();
+                srvcProc.deployment().exchangerBlockingSectionEnd();
             }
         });
 
-        exchangeActions.servicesToDeploy().forEach((srvcId, desc) -> {
+        depActions.servicesToDeploy().forEach((srvcId, desc) -> {
             try {
                 ServiceConfiguration cfg = desc.configuration();
 
@@ -293,13 +293,13 @@ class ServicesDeploymentExchangeTask {
                 Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
 
                 if (expCnt > srvcProc.localInstancesCount(srvcId)) {
-                    srvcProc.exchange().exchangerBlockingSectionBegin();
+                    srvcProc.deployment().exchangerBlockingSectionBegin();
 
                     try {
                         srvcProc.redeploy(srvcId, cfg, top);
                     }
                     finally {
-                        srvcProc.exchange().exchangerBlockingSectionEnd();
+                        srvcProc.deployment().exchangerBlockingSectionEnd();
                     }
                 }
             }
@@ -308,11 +308,11 @@ class ServicesDeploymentExchangeTask {
             }
         });
 
-        createAndSendSingleMapMessage(exchId, depErrors);
+        createAndSendSingleMapMessage(depId, depErrors);
     }
 
     /**
-     * Prepares the coordinator to manage exchange.
+     * Prepares the coordinator to manage deployment process.
      *
      * @param topVer Topology version to initialize {@link #remaining} collection.
      */
@@ -340,10 +340,10 @@ class ServicesDeploymentExchangeTask {
     }
 
     /**
-     * @param exchId Exchange id.
+     * @param depId Deployment process id.
      * @param errors Deployment errors.
      */
-    private void createAndSendSingleMapMessage(ServicesDeploymentExchangeId exchId,
+    private void createAndSendSingleMapMessage(ServicesDeploymentProcessId depId,
         final Map<IgniteUuid, Collection<Throwable>> errors) {
         assert crdId != null : "Coordinator should be defined at this point, locId=" + ctx.localNodeId();
 
@@ -369,7 +369,7 @@ class ServicesDeploymentExchangeTask {
                 results.put(srvcId, depRes);
             });
 
-            ServicesSingleMapMessage msg = new ServicesSingleMapMessage(exchId, results);
+            ServicesSingleMapMessage msg = new ServicesSingleMapMessage(depId, results);
 
             if (ctx.localNodeId().equals(crdId))
                 onReceiveSingleMapMessage(ctx.localNodeId(), msg);
@@ -391,7 +391,7 @@ class ServicesDeploymentExchangeTask {
      * @param msg Single services map message.
      */
     protected void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-        assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
+        assert depId.equals(msg.deploymentId()) : "Wrong message's exchange id, msg=" + msg;
 
         initCrdFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
             if (isCompleted())
@@ -416,7 +416,7 @@ class ServicesDeploymentExchangeTask {
      * @param msg Full services map message.
      */
     protected void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
-        assert exchId.equals(msg.exchangeId()) : "Wrong message's exchange id, msg=" + msg;
+        assert depId.equals(msg.deploymentId()) : "Wrong message's exchange id, msg=" + msg;
 
         initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
             if (isCompleted())
@@ -522,7 +522,7 @@ class ServicesDeploymentExchangeTask {
         Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleMapMsgs);
 
         try {
-            ServicesFullMapMessage msg = new ServicesFullMapMessage(exchId, fullResults);
+            ServicesFullMapMessage msg = new ServicesFullMapMessage(depId, fullResults);
 
             ctx.discovery().sendCustomEvent(msg);
         }
@@ -668,7 +668,7 @@ class ServicesDeploymentExchangeTask {
                     if (crd.isLocal())
                         initCoordinator(evtTopVer);
 
-                    createAndSendSingleMapMessage(exchId, depErrors);
+                    createAndSendSingleMapMessage(depId, depErrors);
                 }
                 else
                     onAllServersLeft();
@@ -714,12 +714,12 @@ class ServicesDeploymentExchangeTask {
     }
 
     /**
-     * Returns services deployment exchange id of the task.
+     * Returns services deployment process id of the task.
      *
-     * @return Services deployment exchange id.
+     * @return Services deployment process id.
      */
-    public ServicesDeploymentExchangeId exchangeId() {
-        return exchId;
+    public ServicesDeploymentProcessId deploymentId() {
+        return depId;
     }
 
     /**
@@ -789,7 +789,7 @@ class ServicesDeploymentExchangeTask {
     }
 
     /**
-     * Handles when this task is being added in exchange queue.
+     * Handles when this task is being added in deployment queue.
      * <p/>
      * Introduced to avoid overhead on calling of {@link Collection#contains(Object)}}.
      *
@@ -807,19 +807,19 @@ class ServicesDeploymentExchangeTask {
         if (o == null || getClass() != o.getClass())
             return false;
 
-        ServicesDeploymentExchangeTask task = (ServicesDeploymentExchangeTask)o;
+        ServicesDeploymentTask task = (ServicesDeploymentTask)o;
 
-        return exchId.equals(task.exchId);
+        return depId.equals(task.depId);
     }
 
     /** {@inheritDoc} */
     @Override public int hashCode() {
-        return exchId.hashCode();
+        return depId.hashCode();
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesDeploymentExchangeTask.class, this,
+        return S.toString(ServicesDeploymentTask.class, this,
             "locNodeId", (ctx != null ? ctx.localNodeId() : "unknown"),
             "crdId", crdId);
     }

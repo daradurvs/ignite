@@ -1451,9 +1451,9 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /**
-     * @return Services deployment exchange manager.
+     * @return Services deployment manager.
      */
-    public ServicesDeploymentExchangeManager exchange() {
+    public ServicesDeploymentExchangeManager deployment() {
         return exchMgr;
     }
 

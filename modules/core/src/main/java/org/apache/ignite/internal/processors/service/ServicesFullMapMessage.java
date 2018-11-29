@@ -39,8 +39,8 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     /** Unique custom message ID. */
     private final IgniteUuid id = IgniteUuid.randomUuid();
 
-    /** Exchange id. */
-    private final ServicesDeploymentExchangeId exchId;
+    /** Deployment process id. */
+    private final ServicesDeploymentProcessId depId;
 
     /** Services deployments results. */
     @GridToStringInclude
@@ -51,20 +51,20 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     @Nullable private transient ServicesDeploymentActions servicesDeploymentActions;
 
     /**
-     * @param exchId Exchange id.
+     * @param depId Deployment process id.
      * @param results Services deployments results.
      */
-    public ServicesFullMapMessage(@NotNull ServicesDeploymentExchangeId exchId,
+    public ServicesFullMapMessage(@NotNull ServicesDeploymentProcessId depId,
         @NotNull Collection<ServiceFullDeploymentsResults> results) {
-        this.exchId = exchId;
+        this.depId = depId;
         this.results = results;
     }
 
     /**
-     * @return Exchange id.
+     * @return Deployment process id.
      */
-    public ServicesDeploymentExchangeId exchangeId() {
-        return exchId;
+    public ServicesDeploymentProcessId deploymentId() {
+        return depId;
     }
 
     /**

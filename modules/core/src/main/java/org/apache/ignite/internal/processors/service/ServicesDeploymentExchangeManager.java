@@ -74,7 +74,7 @@ public class ServicesDeploymentExchangeManager {
     private final GridMessageListener commLsnr = new ServiceCommunicationListener();
 
     /** Services deployments tasks. */
-    private final Map<ServicesDeploymentExchangeId, ServicesDeploymentExchangeTask> tasks = new ConcurrentHashMap<>();
+    private final Map<ServicesDeploymentProcessId, ServicesDeploymentTask> tasks = new ConcurrentHashMap<>();
 
     /** Discovery events received while cluster state transition was in progress. */
     private final List<PendingEventHolder> pendingEvts = new ArrayList<>();
@@ -228,10 +228,10 @@ public class ServicesDeploymentExchangeManager {
      */
     private void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
         @Nullable ServicesDeploymentActions exchangeActions) {
-        final ServicesDeploymentExchangeId exchId = exchangeId(evt, topVer);
+        final ServicesDeploymentProcessId exchId = exchangeId(evt, topVer);
 
-        ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId,
-            t -> new ServicesDeploymentExchangeTask(ctx, exchId));
+        ServicesDeploymentTask task = tasks.computeIfAbsent(exchId,
+            t -> new ServicesDeploymentTask(ctx, exchId));
 
         if (!task.onAdditionInQueue()) {
             log.warning("Do not start service deployment exchange for event: " + evt);
@@ -253,11 +253,11 @@ public class ServicesDeploymentExchangeManager {
      * @param topVer Topology version.
      * @return Services deployment exchange id.
      */
-    private ServicesDeploymentExchangeId exchangeId(@NotNull DiscoveryEvent evt,
+    private ServicesDeploymentProcessId exchangeId(@NotNull DiscoveryEvent evt,
         @NotNull AffinityTopologyVersion topVer) {
         return evt instanceof DiscoveryCustomEvent ?
-            new ServicesDeploymentExchangeId(((DiscoveryCustomEvent)evt).customMessage().id()) :
-            new ServicesDeploymentExchangeId(topVer);
+            new ServicesDeploymentProcessId(((DiscoveryCustomEvent)evt).customMessage().id()) :
+            new ServicesDeploymentProcessId(topVer);
     }
 
     /**
@@ -324,11 +324,11 @@ public class ServicesDeploymentExchangeManager {
                                     "[locId=" + ctx.localNodeId() + ", snd=" + snd + ", msg=" + msg0 + ']');
                             }
 
-                            ServicesDeploymentExchangeId exchId = msg0.exchangeId();
+                            ServicesDeploymentProcessId exchId = msg0.deploymentId();
 
                             assert exchId != null;
 
-                            ServicesDeploymentExchangeTask task = tasks.get(exchId);
+                            ServicesDeploymentTask task = tasks.get(exchId);
 
                             if (task != null) // May be null in case of double delivering
                                 task.onReceiveFullMapMessage(msg0);
@@ -409,8 +409,8 @@ public class ServicesDeploymentExchangeManager {
                             "[locId=" + ctx.localNodeId() + ", snd=" + nodeId + ", msg=" + msg0 + ']');
                     }
 
-                    tasks.computeIfAbsent(msg0.exchangeId(),
-                        t -> new ServicesDeploymentExchangeTask(ctx, msg0.exchangeId()))
+                    tasks.computeIfAbsent(msg0.deploymentId(),
+                        t -> new ServicesDeploymentTask(ctx, msg0.deploymentId()))
                         .onReceiveSingleMapMessage(nodeId, msg0);
                 }
             }
@@ -425,7 +425,7 @@ public class ServicesDeploymentExchangeManager {
      */
     private class ServicesDeploymentExchangeWorker extends GridWorker {
         /** Queue to process. */
-        private final LinkedBlockingQueue<ServicesDeploymentExchangeTask> tasksQueue = new LinkedBlockingQueue<>();
+        private final LinkedBlockingQueue<ServicesDeploymentTask> tasksQueue = new LinkedBlockingQueue<>();
 
         /** {@inheritDoc} */
         private ServicesDeploymentExchangeWorker() {
@@ -438,7 +438,7 @@ public class ServicesDeploymentExchangeManager {
             Throwable err = null;
 
             try {
-                ServicesDeploymentExchangeTask task;
+                ServicesDeploymentTask task;
 
                 while (!isCancelled()) {
                     onIdle();
@@ -523,12 +523,12 @@ public class ServicesDeploymentExchangeManager {
         /**
          * Does additional actions after task's completion.
          */
-        private void taskPostProcessing(ServicesDeploymentExchangeTask task) {
+        private void taskPostProcessing(ServicesDeploymentTask task) {
             AffinityTopologyVersion readyVer = readyTopVer.get();
 
             readyTopVer.compareAndSet(readyVer, task.topologyVersion());
 
-            tasks.remove(task.exchangeId());
+            tasks.remove(task.deploymentId());
 
             task.clear();
         }
