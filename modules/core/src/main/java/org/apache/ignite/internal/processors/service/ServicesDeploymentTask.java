@@ -83,7 +83,7 @@ class ServicesDeploymentTask {
 
     /** Single service messages to process. */
     @GridToStringInclude
-    private final Map<UUID, ServicesSingleMapMessage> singleMapMsgs = new HashMap<>();
+    private final Map<UUID, ServicesSingleDeploymentsMessage> singleMapMsgs = new HashMap<>();
 
     /** Expected services assignments. */
     @GridToStringExclude
@@ -272,13 +272,13 @@ class ServicesDeploymentTask {
         srvcProc.updateDeployedServices(depActions);
 
         depActions.servicesToUndeploy().forEach((srvcId, desc) -> {
-            srvcProc.deployment().exchangerBlockingSectionBegin();
+            srvcProc.deployment().deployerBlockingSectionBegin();
 
             try {
                 srvcProc.undeploy(srvcId);
             }
             finally {
-                srvcProc.deployment().exchangerBlockingSectionEnd();
+                srvcProc.deployment().deployerBlockingSectionEnd();
             }
         });
 
@@ -293,13 +293,13 @@ class ServicesDeploymentTask {
                 Integer expCnt = top.getOrDefault(ctx.localNodeId(), 0);
 
                 if (expCnt > srvcProc.localInstancesCount(srvcId)) {
-                    srvcProc.deployment().exchangerBlockingSectionBegin();
+                    srvcProc.deployment().deployerBlockingSectionBegin();
 
                     try {
                         srvcProc.redeploy(srvcId, cfg, top);
                     }
                     finally {
-                        srvcProc.deployment().exchangerBlockingSectionEnd();
+                        srvcProc.deployment().deployerBlockingSectionEnd();
                     }
                 }
             }
@@ -369,7 +369,7 @@ class ServicesDeploymentTask {
                 results.put(srvcId, depRes);
             });
 
-            ServicesSingleMapMessage msg = new ServicesSingleMapMessage(depId, results);
+            ServicesSingleDeploymentsMessage msg = new ServicesSingleDeploymentsMessage(depId, results);
 
             if (ctx.localNodeId().equals(crdId))
                 onReceiveSingleMapMessage(ctx.localNodeId(), msg);
@@ -390,8 +390,8 @@ class ServicesDeploymentTask {
      * @param snd Sender node id.
      * @param msg Single services map message.
      */
-    protected void onReceiveSingleMapMessage(UUID snd, ServicesSingleMapMessage msg) {
-        assert depId.equals(msg.deploymentId()) : "Wrong message's exchange id, msg=" + msg;
+    protected void onReceiveSingleMapMessage(UUID snd, ServicesSingleDeploymentsMessage msg) {
+        assert depId.equals(msg.deploymentId()) : "Wrong message's deployment process id, msg=" + msg;
 
         initCrdFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
             if (isCompleted())
@@ -415,8 +415,8 @@ class ServicesDeploymentTask {
      *
      * @param msg Full services map message.
      */
-    protected void onReceiveFullMapMessage(ServicesFullMapMessage msg) {
-        assert depId.equals(msg.deploymentId()) : "Wrong message's exchange id, msg=" + msg;
+    protected void onReceiveFullMapMessage(ServicesFullDeploymentsMessage msg) {
+        assert depId.equals(msg.deploymentId()) : "Wrong message's deployment process id, msg=" + msg;
 
         initTaskFut.listen((IgniteInClosure<IgniteInternalFuture<?>>)fut -> {
             if (isCompleted())
@@ -522,7 +522,7 @@ class ServicesDeploymentTask {
         Collection<ServiceFullDeploymentsResults> fullResults = buildFullDeploymentsResults(singleMapMsgs);
 
         try {
-            ServicesFullMapMessage msg = new ServicesFullMapMessage(depId, fullResults);
+            ServicesFullDeploymentsMessage msg = new ServicesFullDeploymentsMessage(depId, fullResults);
 
             ctx.discovery().sendCustomEvent(msg);
         }
@@ -584,7 +584,7 @@ class ServicesDeploymentTask {
      * @return Services full deployments results.
      */
     private Collection<ServiceFullDeploymentsResults> buildFullDeploymentsResults(
-        Map<UUID, ServicesSingleMapMessage> singleMaps) {
+        Map<UUID, ServicesSingleDeploymentsMessage> singleMaps) {
         final Map<IgniteUuid, Map<UUID, ServiceSingleDeploymentsResults>> singleResults = new HashMap<>();
 
         singleMaps.forEach((nodeId, msg) -> msg.results().forEach((srvcId, res) -> {
@@ -693,8 +693,8 @@ class ServicesDeploymentTask {
     private void onAllServersLeft() {
         assert ctx.clientNode();
 
-        completeError(new ClusterTopologyServerNotFoundException("Failed to resolve coordinator to process services " +
-            "map exchange: [locId=" + ctx.localNodeId() + "client=" + ctx.clientNode() + "evt=" + evt + ']'));
+        completeError(new ClusterTopologyServerNotFoundException("Failed to resolve coordinator to continue services " +
+            "deployment process: [locId=" + ctx.localNodeId() + "client=" + ctx.clientNode() + "evt=" + evt + ']'));
     }
 
     /**
@@ -705,9 +705,9 @@ class ServicesDeploymentTask {
     }
 
     /**
-     * Returns cause of exchange topology version.
+     * Returns cause of deployment process topology version.
      *
-     * @return Cause of exchange topology version.
+     * @return Cause of deployment process topology version.
      */
     public AffinityTopologyVersion topologyVersion() {
         return evtTopVer;

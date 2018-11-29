@@ -99,7 +99,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     /** Cluster services info <b>updated from discovery thread</b>. */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> registeredServices = new ConcurrentHashMap<>();
 
-    /** Cluster services info <b>updated from exchange thread</b>. */
+    /** Cluster services info <b>updated from deployer thread</b>. */
     private final ConcurrentMap<IgniteUuid, ServiceInfo> deployedServices = new ConcurrentHashMap<>();
 
     /** Deployment futures. */
@@ -112,8 +112,8 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     private final ThreadFactory threadFactory = new IgniteThreadFactory(ctx.igniteInstanceName(), "service",
         new OomExceptionHandler(ctx));
 
-    /** Services deployment exchange manager. */
-    private volatile ServicesDeploymentExchangeManager exchMgr = new ServicesDeploymentExchangeManager(ctx);
+    /** Services deployment manager. */
+    private volatile ServicesDeploymentManager depMgr = new ServicesDeploymentManager(ctx);
 
     /** Services topologies update mutex. */
     private final Object servicesTopsUpdateMux = new Object();
@@ -145,7 +145,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
 
     /** {@inheritDoc} */
     @Override public void onKernalStart(boolean active) throws IgniteCheckedException {
-        exchMgr.startProcessing();
+        depMgr.startProcessing();
 
         if (log.isDebugEnabled())
             log.debug("Started service processor.");
@@ -172,13 +172,13 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     private void stopProcessor(IgniteCheckedException stopError) {
         assert opsLock.isWriteLockedByCurrentThread();
 
-        exchMgr.stopProcessing(stopError);
+        depMgr.stopProcessing(stopError);
 
         cancelDeployedServices();
 
         registeredServices.clear();
 
-        // If user requests sent to network but not received back to handle in exchange manager.
+        // If user requests sent to network but not received back to handle in deployment manager.
         depFuts.values().forEach(fut -> fut.onDone(stopError));
         depFuts.clear();
 
@@ -303,7 +303,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /**
-     * Invokes from exchange worker.
+     * Invokes from deployer worker.
      * <p/>
      * {@inheritDoc}
      */
@@ -350,7 +350,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
         try {
             disconnected = false;
 
-            exchMgr = new ServicesDeploymentExchangeManager(ctx);
+            depMgr = new ServicesDeploymentManager(ctx);
 
             onKernalStart(active);
 
@@ -1022,7 +1022,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     /**
      * Redeploys local services based on assignments.
      * <p/>
-     * Invokes from exchange worker.
+     * Invokes from deployer worker.
      *
      * @param srvcId Service id.
      * @param cfg Service configuration.
@@ -1229,7 +1229,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     /**
      * Undeployes service with given id.
      * <p/>
-     * Invokes from exchange worker.
+     * Invokes from deployer worker.
      *
      * @param srvcId Service id.
      */
@@ -1321,24 +1321,24 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /**
-     * Updates deployed services map according to exchange task.
+     * Updates deployed services map according to deployment task.
      * <p/>
-     * Invokes from exchange worker.
+     * Invokes from deployer worker.
      *
-     * @param exchangeActions Service deployment actions.
+     * @param depActions Service deployment actions.
      */
-    protected void updateDeployedServices(final ServicesDeploymentActions exchangeActions) {
+    protected void updateDeployedServices(final ServicesDeploymentActions depActions) {
         if (!enterBusy())
             return;
 
         try {
-            exchangeActions.servicesToDeploy().forEach((srvcId, desc) -> {
+            depActions.servicesToDeploy().forEach((srvcId, desc) -> {
                 ServiceInfo old = deployedServices.putIfAbsent(srvcId, desc);
 
                 assert old == desc || old == null : "Concurrent map modification.";
             });
 
-            exchangeActions.servicesToUndeploy().forEach((srvcId, desc) -> {
+            depActions.servicesToUndeploy().forEach((srvcId, desc) -> {
                 ServiceInfo rmv = deployedServices.remove(srvcId);
 
                 assert rmv == desc || rmv == null : "Concurrent map modification.";
@@ -1410,15 +1410,15 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             staticServicesInfo.forEach(desc -> registeredServices.put(desc.serviceId(), desc));
         }
 
-        ServicesDeploymentActions exchangeActions = null;
+        ServicesDeploymentActions depActions = null;
 
         if (!registeredServices.isEmpty()) {
-            exchangeActions = new ServicesDeploymentActions();
+            depActions = new ServicesDeploymentActions();
 
-            exchangeActions.servicesToDeploy(new HashMap<>(registeredServices));
+            depActions.servicesToDeploy(new HashMap<>(registeredServices));
         }
 
-        exchMgr.onLocalJoin(evt, discoCache, exchangeActions);
+        depMgr.onLocalJoin(evt, discoCache, depActions);
     }
 
     /**
@@ -1453,8 +1453,8 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     /**
      * @return Services deployment manager.
      */
-    public ServicesDeploymentExchangeManager deployment() {
-        return exchMgr;
+    public ServicesDeploymentManager deployment() {
+        return depMgr;
     }
 
     /**
@@ -1555,15 +1555,15 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             }
 
             if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
-                ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
+                ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
                 if (!toDeploy.isEmpty())
-                    exchangeActions.servicesToDeploy(toDeploy);
+                    depActions.servicesToDeploy(toDeploy);
 
                 if (!toUndeploy.isEmpty())
-                    exchangeActions.servicesToUndeploy(toUndeploy);
+                    depActions.servicesToUndeploy(toUndeploy);
 
-                msg0.servicesDeploymentActions(exchangeActions);
+                msg0.servicesDeploymentActions(depActions);
             }
         }
         else if (msg instanceof ChangeGlobalStateMessage) {
@@ -1572,14 +1572,14 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             if (msg0.activate() && registeredServices.isEmpty())
                 return;
 
-            ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
+            ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
             if (msg0.activate())
-                exchangeActions.servicesToDeploy(new HashMap<>(registeredServices));
+                depActions.servicesToDeploy(new HashMap<>(registeredServices));
             else
-                exchangeActions.deactivate(true);
+                depActions.deactivate(true);
 
-            msg0.servicesDeploymentActions(exchangeActions);
+            msg0.servicesDeploymentActions(depActions);
         }
         else if (msg instanceof DynamicCacheChangeBatch) {
             DynamicCacheChangeBatch msg0 = (DynamicCacheChangeBatch)msg;
@@ -1602,15 +1602,15 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             }
 
             if (!toUndeploy.isEmpty()) {
-                ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
+                ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
-                exchangeActions.servicesToUndeploy(toUndeploy);
+                depActions.servicesToUndeploy(toUndeploy);
 
-                msg0.servicesDeploymentActions(exchangeActions);
+                msg0.servicesDeploymentActions(depActions);
             }
         }
-        else if (msg instanceof ServicesFullMapMessage) {
-            ServicesFullMapMessage msg0 = (ServicesFullMapMessage)msg;
+        else if (msg instanceof ServicesFullDeploymentsMessage) {
+            ServicesFullDeploymentsMessage msg0 = (ServicesFullDeploymentsMessage)msg;
 
             final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = new HashMap<>();
             final Map<IgniteUuid, Collection<byte[]>> fullErrors = new HashMap<>();
@@ -1644,12 +1644,12 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
                 servicesTopsUpdateMux.notifyAll();
             }
 
-            ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
+            ServicesDeploymentActions depActions = new ServicesDeploymentActions();
 
-            exchangeActions.deploymentTopologies(fullTops);
-            exchangeActions.deploymentErrors(fullErrors);
+            depActions.deploymentTopologies(fullTops);
+            depActions.deploymentErrors(fullErrors);
 
-            msg0.servicesDeploymentActions(exchangeActions);
+            msg0.servicesDeploymentActions(depActions);
         }
     }
 

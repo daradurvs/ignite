@@ -186,7 +186,7 @@ import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultRe
 import org.apache.ignite.internal.processors.rest.handlers.task.GridTaskResultResponse;
 import org.apache.ignite.internal.processors.service.ServiceSingleDeploymentsResults;
 import org.apache.ignite.internal.processors.service.ServicesDeploymentProcessId;
-import org.apache.ignite.internal.processors.service.ServicesSingleMapMessage;
+import org.apache.ignite.internal.processors.service.ServicesSingleDeploymentsMessage;
 import org.apache.ignite.internal.util.GridByteArrayList;
 import org.apache.ignite.internal.util.GridIntList;
 import org.apache.ignite.internal.util.GridLongList;
@@ -1123,7 +1123,7 @@ public class GridIoMessageFactory implements MessageFactory {
                 break;
 
             case 168:
-                msg = new ServicesSingleMapMessage();
+                msg = new ServicesSingleDeploymentsMessage();
 
                 break;
 
