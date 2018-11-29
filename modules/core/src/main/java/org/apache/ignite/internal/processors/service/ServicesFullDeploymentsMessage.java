@@ -30,9 +30,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Services full cluster map message.
+ * Services full cluster deployments message.
  */
-public class ServicesFullMapMessage implements DiscoveryCustomMessage {
+public class ServicesFullDeploymentsMessage implements DiscoveryCustomMessage {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -54,7 +54,7 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
      * @param depId Deployment process id.
      * @param results Services deployments results.
      */
-    public ServicesFullMapMessage(@NotNull ServicesDeploymentProcessId depId,
+    public ServicesFullDeploymentsMessage(@NotNull ServicesDeploymentProcessId depId,
         @NotNull Collection<ServiceFullDeploymentsResults> results) {
         this.depId = depId;
         this.results = results;
@@ -118,6 +118,6 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesFullMapMessage.class, this);
+        return S.toString(ServicesFullDeploymentsMessage.class, this);
     }
 }

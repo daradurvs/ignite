@@ -31,9 +31,9 @@ import static org.apache.ignite.plugin.extensions.communication.MessageCollectio
 import static org.apache.ignite.plugin.extensions.communication.MessageCollectionItemType.MSG;
 
 /**
- * Services single node map message.
+ * Services single node deployments message.
  */
-public class ServicesSingleMapMessage implements Message {
+public class ServicesSingleDeploymentsMessage implements Message {
     /** */
     private static final long serialVersionUID = 0L;
 
@@ -48,14 +48,14 @@ public class ServicesSingleMapMessage implements Message {
     /**
      * Empty constructor for marshalling purposes.
      */
-    public ServicesSingleMapMessage() {
+    public ServicesSingleDeploymentsMessage() {
     }
 
     /**
      * @param depId Deployment process id.
      * @param results Services deployments results.
      */
-    public ServicesSingleMapMessage(@NotNull ServicesDeploymentProcessId depId,
+    public ServicesSingleDeploymentsMessage(@NotNull ServicesDeploymentProcessId depId,
         @NotNull Map<IgniteUuid, ServiceSingleDeploymentsResults> results) {
         this.depId = depId;
         this.results = results;
@@ -128,7 +128,7 @@ public class ServicesSingleMapMessage implements Message {
                 reader.incrementState();
         }
 
-        return reader.afterMessageRead(ServicesSingleMapMessage.class);
+        return reader.afterMessageRead(ServicesSingleDeploymentsMessage.class);
     }
 
     /** {@inheritDoc} */
@@ -148,6 +148,6 @@ public class ServicesSingleMapMessage implements Message {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(ServicesSingleMapMessage.class, this);
+        return S.toString(ServicesSingleDeploymentsMessage.class, this);
     }
 }
