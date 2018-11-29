@@ -82,7 +82,7 @@ import org.apache.ignite.internal.processors.service.ServiceDeploymentProcessing
 import org.apache.ignite.internal.processors.service.ServiceInfoSelfTest;
 import org.apache.ignite.internal.processors.service.ServicePredicateAccessCacheTest;
 import org.apache.ignite.internal.processors.service.ServiceReassignmentFunctionSelfTest;
-import org.apache.ignite.internal.processors.service.ServicesDeploymentExchangeIdSelfTest;
+import org.apache.ignite.internal.processors.service.ServicesDeploymentProcessIdSelfTest;
 import org.apache.ignite.internal.processors.service.SystemCacheNotConfiguredTest;
 import org.apache.ignite.internal.util.GridStartupWithUndefinedIgniteHomeSelfTest;
 import org.apache.ignite.services.ServiceThreadPoolSelfTest;
@@ -183,7 +183,7 @@ public class IgniteKernalSelfTestSuite extends TestSuite {
         suite.addTestSuite(NonSerializableStaticServiceDeploymentTest.class);
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceReassignmentFunctionSelfTest.class));
         suite.addTest(new junit.framework.JUnit4TestAdapter(ServiceInfoSelfTest.class));
-        suite.addTest(new junit.framework.JUnit4TestAdapter(ServicesDeploymentExchangeIdSelfTest.class));
+        suite.addTest(new junit.framework.JUnit4TestAdapter(ServicesDeploymentProcessIdSelfTest.class));
         suite.addTest(new junit.framework.JUnit4TestAdapter(DynamicServiceChangeRequestTest.class));
 
         return suite;
