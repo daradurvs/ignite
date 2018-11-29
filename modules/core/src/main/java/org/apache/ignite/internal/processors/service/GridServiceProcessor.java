@@ -61,7 +61,6 @@ import org.apache.ignite.internal.events.DiscoveryCustomEvent;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
-import org.apache.ignite.internal.processors.GridProcessorAdapter;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.CacheIteratorConverter;
@@ -118,9 +117,12 @@ import static org.apache.ignite.transactions.TransactionIsolation.REPEATABLE_REA
 
 /**
  * Grid service processor.
+ *
+ * @deprecated Here is even driven implementation {@link IgniteServiceProcessor}, see IEP-17 for details.
  */
+@Deprecated
 @SuppressWarnings({"SynchronizationOnLocalVariableOrMethodParameter", "ConstantConditions"})
-public class GridServiceProcessor extends GridProcessorAdapter implements IgniteChangeGlobalStateSupport {
+public class GridServiceProcessor extends IgniteServiceProcessorAdapter implements IgniteChangeGlobalStateSupport {
     /** Time to wait before reassignment retries. */
     private static final long RETRY_TIMEOUT = 1000;
 
@@ -457,32 +459,18 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
                 throw new IgniteException("Service configuration check failed (" + desc + ")");
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc) {
         return deployMultiple(prj, name, svc, 0, 1);
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc) {
         return deployMultiple(prj, name, svc, 1, 1);
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @param totalCnt Total count.
-     * @param maxPerNodeCnt Max per-node count.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
         int maxPerNodeCnt) {
         ServiceConfiguration cfg = new ServiceConfiguration();
 
@@ -494,14 +482,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return deployAll(prj, Collections.singleton(cfg));
     }
 
-    /**
-     * @param name Service name.
-     * @param svc Service.
-     * @param cacheName Cache name.
-     * @param affKey Affinity key.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
         Object affKey) {
         A.notNull(affKey, "affKey");
 
@@ -590,12 +572,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return new PreparedConfigurations(cfgsCp, failedFuts);
     }
 
-    /**
-     * @param prj Grid projection.
-     * @param cfgs Service configurations.
-     * @return Future for deployment.
-     */
-    public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> deployAll(ClusterGroup prj, Collection<ServiceConfiguration> cfgs) {
         if (prj == null)
             // Deploy to servers by default if no projection specified.
             return deployAll(cfgs,  ctx.cluster().get().forServers().predicate());
@@ -773,11 +751,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /**
-     * @param name Service name.
-     * @return Future.
-     */
-    public IgniteInternalFuture<?> cancel(String name) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> cancel(String name) {
         while (true) {
             try {
                 return removeServiceFromCache(name).fut;
@@ -796,11 +771,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /**
-     * @return Future.
-     */
-    @SuppressWarnings("unchecked")
-    public IgniteInternalFuture<?> cancelAll() {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> cancelAll() {
         Iterator<Cache.Entry<Object, Object>> it = serviceEntries(ServiceDeploymentPredicate.INSTANCE);
 
         List<String> svcNames = new ArrayList<>();
@@ -814,12 +786,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return cancelAll(svcNames);
     }
 
-    /**
-     * @param svcNames Name of service to deploy.
-     * @return Future.
-     */
-    @SuppressWarnings("unchecked")
-    public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
+    /** {@inheritDoc} */
+    @Override public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
         List<String> svcNamesCp = new ArrayList<>(svcNames);
 
         Collections.sort(svcNamesCp);
@@ -925,18 +893,13 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /**
-     * @param name Service name.
-     * @param timeout If greater than 0 limits task execution time. Cannot be negative.
-     * @return Service topology.
-     * @throws IgniteCheckedException On error.
-     */
-    public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
+    /** {@inheritDoc} */
+    @Override public Map<UUID, Integer> serviceTopology(String name, long timeout) throws IgniteCheckedException {
         IgniteInternalCache<Object, Object> cache = serviceCache();
 
         ClusterNode node = cache.affinity().mapKeyToNode(name);
 
-        final ServiceTopologyCallable call = new ServiceTopologyCallable(name);
+        final ServiceTopologyCallable call = new ServiceTopologyCallable(name, pendingJobCtxs);
 
         return ctx.closure().callAsyncNoFailover(
             GridClosureCallMode.BROADCAST,
@@ -960,10 +923,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return val != null ? val.assigns() : null;
     }
 
-    /**
-     * @return Collection of service descriptors.
-     */
-    public Collection<ServiceDescriptor> serviceDescriptors() {
+    /** {@inheritDoc} */
+    @Override public Collection<ServiceDescriptor> serviceDescriptors() {
         Collection<ServiceDescriptor> descs = new ArrayList<>();
 
         Iterator<Cache.Entry<Object, Object>> it = serviceEntries(ServiceDeploymentPredicate.INSTANCE);
@@ -994,13 +955,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return descs;
     }
 
-    /**
-     * @param name Service name.
-     * @param <T> Service type.
-     * @return Service by specified service name.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T service(String name) {
+    /** {@inheritDoc} */
+    @Override public <T> T service(String name) {
         ctx.security().authorize(name, SecurityPermission.SERVICE_INVOKE, null);
 
         Collection<ServiceContextImpl> ctxs;
@@ -1027,11 +983,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /**
-     * @param name Service name.
-     * @return Service by specified service name.
-     */
-    public ServiceContextImpl serviceContext(String name) {
+    /** {@inheritDoc} */
+    @Override public ServiceContextImpl serviceContext(String name) {
         Collection<ServiceContextImpl> ctxs;
 
         synchronized (locSvcs) {
@@ -1054,18 +1007,9 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         }
     }
 
-    /**
-     * @param prj Grid projection.
-     * @param name Service name.
-     * @param svcItf Service class.
-     * @param sticky Whether multi-node request should be done.
-     * @param timeout If greater than 0 limits service acquire time. Cannot be negative.
-     * @param <T> Service interface type.
-     * @return The proxy of a service by its name and class.
-     * @throws IgniteException If failed to create proxy.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky, long timeout)
+    /** {@inheritDoc} */
+    @Override public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky,
+        long timeout)
         throws IgniteException {
         ctx.security().authorize(name, SecurityPermission.SERVICE_INVOKE, null);
 
@@ -1101,13 +1045,8 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         return false;
     }
 
-    /**
-     * @param name Service name.
-     * @param <T> Service type.
-     * @return Services by specified service name.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> Collection<T> services(String name) {
+    /** {@inheritDoc} */
+    @Override public <T> Collection<T> services(String name) {
         ctx.security().authorize(name, SecurityPermission.SERVICE_INVOKE, null);
 
         Collection<ServiceContextImpl> ctxs;
@@ -2135,11 +2074,16 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
         @LoggerResource
         private transient IgniteLogger log;
 
+        /** */
+        private final List<ComputeJobContext> pendingCtxs;
+
         /**
          * @param svcName Service name.
+         * @param pendingCtxs Pending compute job contexts that waiting for utility cache initialization.
          */
-        public ServiceTopologyCallable(String svcName) {
+        public ServiceTopologyCallable(String svcName, List<ComputeJobContext> pendingCtxs) {
             this.svcName = svcName;
+            this.pendingCtxs = pendingCtxs;
         }
 
         /** {@inheritDoc} */
@@ -2147,8 +2091,6 @@ public class GridServiceProcessor extends GridProcessorAdapter implements Ignite
             IgniteInternalCache<Object, Object> cache = ignite.context().cache().utilityCache();
 
             if (cache == null) {
-                List<ComputeJobContext> pendingCtxs = ignite.context().service().pendingJobCtxs;
-
                 synchronized (pendingCtxs) {
                     // Double check cache reference after lock acqusition.
                     cache = ignite.context().cache().utilityCache();
