@@ -119,7 +119,7 @@ class ServicesDeploymentExchangeTask {
     private volatile AffinityTopologyVersion evtTopVer;
 
     /** Services deployment actions. */
-    private volatile ServicesExchangeActions exchangeActions;
+    private volatile ServicesDeploymentActions depActions;
 
     /**
      * @param ctx Kernal context.
@@ -144,13 +144,13 @@ class ServicesDeploymentExchangeTask {
      * @param exchangeActions Services deployment exchange actions.
      */
     protected void onEvent(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion evtTopVer,
-        @Nullable ServicesExchangeActions exchangeActions) {
+        @Nullable ServicesDeploymentActions exchangeActions) {
         assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED
             || evt.type() == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event type, evt=" + evt;
 
         this.evt = evt;
         this.evtTopVer = evtTopVer;
-        this.exchangeActions = exchangeActions;
+        this.depActions = exchangeActions;
     }
 
     /**
@@ -170,7 +170,7 @@ class ServicesDeploymentExchangeTask {
         }
 
         try {
-            if (exchangeActions != null && exchangeActions.deactivate()) {
+            if (depActions != null && depActions.deactivate()) {
                 srvcProc.onDeActivate(ctx);
 
                 completeSuccess();
@@ -178,7 +178,7 @@ class ServicesDeploymentExchangeTask {
                 return;
             }
 
-            if (exchangeActions == null) {
+            if (depActions == null) {
                 Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
 
                 if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
@@ -226,9 +226,9 @@ class ServicesDeploymentExchangeTask {
                     return;
                 }
 
-                exchangeActions = new ServicesExchangeActions();
+                depActions = new ServicesDeploymentActions();
 
-                exchangeActions.servicesToDeploy(toDeploy);
+                depActions.servicesToDeploy(toDeploy);
             }
 
             ClusterNode crd = srvcProc.coordinator();
@@ -244,7 +244,7 @@ class ServicesDeploymentExchangeTask {
             if (crd.isLocal())
                 initCoordinator(evtTopVer);
 
-            processDeploymentActions(exchangeActions);
+            processDeploymentActions(depActions);
         }
         catch (Exception e) {
             log.error("Error occurred while initializing exchange task, err=" + e.getMessage(), e);
@@ -268,7 +268,7 @@ class ServicesDeploymentExchangeTask {
      * @param exchangeActions Services deployment exchange actions.
      */
     @SuppressWarnings("ErrorNotRethrown")
-    private void processDeploymentActions(@NotNull ServicesExchangeActions exchangeActions) {
+    private void processDeploymentActions(@NotNull ServicesDeploymentActions exchangeActions) {
         srvcProc.updateDeployedServices(exchangeActions);
 
         exchangeActions.servicesToUndeploy().forEach((srvcId, desc) -> {
@@ -424,15 +424,15 @@ class ServicesDeploymentExchangeTask {
 
             ctx.closure().runLocalSafe(() -> {
                 try {
-                    ServicesExchangeActions depResults = msg.servicesExchangeActions();
+                    ServicesDeploymentActions depResults = msg.servicesDeploymentActions();
 
                     assert depResults != null : "Services deployment actions should be attached.";
 
                     final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops = depResults.deploymentTopologies();
                     final Map<IgniteUuid, Collection<byte[]>> fullErrors = depResults.deploymentErrors();
 
-                    exchangeActions.deploymentTopologies(fullTops);
-                    exchangeActions.deploymentErrors(fullErrors);
+                    depActions.deploymentTopologies(fullTops);
+                    depActions.deploymentErrors(fullErrors);
 
                     Set<IgniteUuid> toUndeploy = srvcProc.updateServicesTopologies(fullTops, fullErrors);
 
@@ -472,17 +472,17 @@ class ServicesDeploymentExchangeTask {
      * @param err Error to complete initiating.
      */
     private void completeInitiatingFuture(final Throwable err) {
-        if (exchangeActions == null)
+        if (depActions == null)
             return;
 
-        exchangeActions.servicesToDeploy().forEach((srvcId, desc) -> {
+        depActions.servicesToDeploy().forEach((srvcId, desc) -> {
             if (err != null) {
                 srvcProc.completeInitiatingFuture(true, srvcId, err);
 
                 return;
             }
 
-            Collection<byte[]> errors = exchangeActions.deploymentErrors().get(srvcId);
+            Collection<byte[]> errors = depActions.deploymentErrors().get(srvcId);
 
             if (errors == null) {
                 srvcProc.completeInitiatingFuture(true, srvcId, null);
@@ -509,7 +509,7 @@ class ServicesDeploymentExchangeTask {
             srvcProc.completeInitiatingFuture(true, srvcId, ex);
         });
 
-        for (IgniteUuid reqSrvcId : exchangeActions.servicesToUndeploy().keySet())
+        for (IgniteUuid reqSrvcId : depActions.servicesToUndeploy().keySet())
             srvcProc.completeInitiatingFuture(false, reqSrvcId, err);
     }
 
