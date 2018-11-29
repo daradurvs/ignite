@@ -168,7 +168,7 @@ public class ServicesDeploymentExchangeManager {
      * @param evt Discovery event.
      * @param discoCache Discovery cache.
      */
-    protected void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache, ServicesExchangeActions exchangeActions) {
+    protected void onLocalJoin(DiscoveryEvent evt, DiscoCache discoCache, ServicesDeploymentActions exchangeActions) {
         checkClusterStateAndAddTask(evt, discoCache, exchangeActions);
     }
 
@@ -208,7 +208,7 @@ public class ServicesDeploymentExchangeManager {
      * @param exchangeActions Services deployment exchange actions.
      */
     private void checkClusterStateAndAddTask(@NotNull DiscoveryEvent evt, @NotNull DiscoCache discoCache,
-        @Nullable ServicesExchangeActions exchangeActions) {
+        @Nullable ServicesDeploymentActions exchangeActions) {
         if (discoCache.state().transition())
             pendingEvts.add(new PendingEventHolder(evt, discoCache.version(), exchangeActions));
         else if (discoCache.state().active())
@@ -227,7 +227,7 @@ public class ServicesDeploymentExchangeManager {
      * @param exchangeActions Services deployment exchange actions.
      */
     private void addTask(@NotNull DiscoveryEvent evt, @NotNull AffinityTopologyVersion topVer,
-        @Nullable ServicesExchangeActions exchangeActions) {
+        @Nullable ServicesDeploymentActions exchangeActions) {
         final ServicesDeploymentExchangeId exchId = exchangeId(evt, topVer);
 
         ServicesDeploymentExchangeTask task = tasks.computeIfAbsent(exchId,
@@ -309,7 +309,7 @@ public class ServicesDeploymentExchangeManager {
                         ChangeGlobalStateFinishMessage msg0 = (ChangeGlobalStateFinishMessage)msg;
 
                         if (msg0.clusterActive())
-                            pendingEvts.forEach(t -> addTask(t.evt, t.topVer, t.exchangeActions));
+                            pendingEvts.forEach(t -> addTask(t.evt, t.topVer, t.depActions));
                         else if (log.isDebugEnabled())
                             pendingEvts.forEach(t -> log.debug("Ignore event, cluster is inactive: " + t.evt));
 
@@ -336,16 +336,16 @@ public class ServicesDeploymentExchangeManager {
                         else if (msg instanceof CacheAffinityChangeMessage)
                             addTask(copyIfNeeded((DiscoveryCustomEvent)evt), discoCache.version(), null);
                         else {
-                            ServicesExchangeActions exchangeActions = null;
+                            ServicesDeploymentActions exchangeActions = null;
 
                             if (msg instanceof ChangeGlobalStateMessage)
-                                exchangeActions = ((ChangeGlobalStateMessage)msg).servicesExchangeActions();
+                                exchangeActions = ((ChangeGlobalStateMessage)msg).servicesDeploymentActions();
                             else if (msg instanceof DynamicServicesChangeRequestBatchMessage) {
                                 exchangeActions = ((DynamicServicesChangeRequestBatchMessage)msg)
-                                    .servicesExchangeActions();
+                                    .servicesDeploymentActions();
                             }
                             else if (msg instanceof DynamicCacheChangeBatch)
-                                exchangeActions = ((DynamicCacheChangeBatch)msg).servicesExchangeActions();
+                                exchangeActions = ((DynamicCacheChangeBatch)msg).servicesDeploymentActions();
 
                             if (exchangeActions != null)
                                 addTask(copyIfNeeded((DiscoveryCustomEvent)evt), discoCache.version(), exchangeActions);
@@ -376,18 +376,18 @@ public class ServicesDeploymentExchangeManager {
         private AffinityTopologyVersion topVer;
 
         /** Services deployemnt actions. */
-        private ServicesExchangeActions exchangeActions;
+        private ServicesDeploymentActions depActions;
 
         /**
          * @param evt Discovery event.
          * @param topVer Topology version.
-         * @param exchangeActions Services deployment exchange actions.
+         * @param depActions Services deployment exchange actions.
          */
         private PendingEventHolder(DiscoveryEvent evt,
-            AffinityTopologyVersion topVer, ServicesExchangeActions exchangeActions) {
+            AffinityTopologyVersion topVer, ServicesDeploymentActions depActions) {
             this.evt = evt;
             this.topVer = topVer;
-            this.exchangeActions = exchangeActions;
+            this.depActions = depActions;
         }
     }
 

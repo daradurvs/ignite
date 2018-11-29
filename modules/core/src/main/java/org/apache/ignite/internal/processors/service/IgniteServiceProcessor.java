@@ -1327,7 +1327,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
      *
      * @param exchangeActions Service deployment actions.
      */
-    protected void updateDeployedServices(final ServicesExchangeActions exchangeActions) {
+    protected void updateDeployedServices(final ServicesDeploymentActions exchangeActions) {
         if (!enterBusy())
             return;
 
@@ -1410,10 +1410,10 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             staticServicesInfo.forEach(desc -> registeredServices.put(desc.serviceId(), desc));
         }
 
-        ServicesExchangeActions exchangeActions = null;
+        ServicesDeploymentActions exchangeActions = null;
 
         if (!registeredServices.isEmpty()) {
-            exchangeActions = new ServicesExchangeActions();
+            exchangeActions = new ServicesDeploymentActions();
 
             exchangeActions.servicesToDeploy(new HashMap<>(registeredServices));
         }
@@ -1555,7 +1555,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             }
 
             if (!toDeploy.isEmpty() || !toUndeploy.isEmpty()) {
-                ServicesExchangeActions exchangeActions = new ServicesExchangeActions();
+                ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
 
                 if (!toDeploy.isEmpty())
                     exchangeActions.servicesToDeploy(toDeploy);
@@ -1563,7 +1563,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
                 if (!toUndeploy.isEmpty())
                     exchangeActions.servicesToUndeploy(toUndeploy);
 
-                msg0.servicesExchangeActions(exchangeActions);
+                msg0.servicesDeploymentActions(exchangeActions);
             }
         }
         else if (msg instanceof ChangeGlobalStateMessage) {
@@ -1572,14 +1572,14 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             if (msg0.activate() && registeredServices.isEmpty())
                 return;
 
-            ServicesExchangeActions exchangeActions = new ServicesExchangeActions();
+            ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
 
             if (msg0.activate())
                 exchangeActions.servicesToDeploy(new HashMap<>(registeredServices));
             else
                 exchangeActions.deactivate(true);
 
-            msg0.servicesExchangeActions(exchangeActions);
+            msg0.servicesDeploymentActions(exchangeActions);
         }
         else if (msg instanceof DynamicCacheChangeBatch) {
             DynamicCacheChangeBatch msg0 = (DynamicCacheChangeBatch)msg;
@@ -1602,11 +1602,11 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             }
 
             if (!toUndeploy.isEmpty()) {
-                ServicesExchangeActions exchangeActions = new ServicesExchangeActions();
+                ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
 
                 exchangeActions.servicesToUndeploy(toUndeploy);
 
-                msg0.servicesExchangeActions(exchangeActions);
+                msg0.servicesDeploymentActions(exchangeActions);
             }
         }
         else if (msg instanceof ServicesFullMapMessage) {
@@ -1644,12 +1644,12 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
                 servicesTopsUpdateMux.notifyAll();
             }
 
-            ServicesExchangeActions exchangeActions = new ServicesExchangeActions();
+            ServicesDeploymentActions exchangeActions = new ServicesDeploymentActions();
 
             exchangeActions.deploymentTopologies(fullTops);
             exchangeActions.deploymentErrors(fullErrors);
 
-            msg0.servicesExchangeActions(exchangeActions);
+            msg0.servicesDeploymentActions(exchangeActions);
         }
     }
 

@@ -46,9 +46,9 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     @GridToStringInclude
     private Collection<ServiceFullDeploymentsResults> results;
 
-    /** Services deployment actions to be processed on services deployment exchange. */
+    /** Services deployment actions to be processed on services deployment process. */
     @GridToStringExclude
-    @Nullable private transient ServicesExchangeActions servicesExchangeActions;
+    @Nullable private transient ServicesDeploymentActions servicesDeploymentActions;
 
     /**
      * @param exchId Exchange id.
@@ -75,17 +75,17 @@ public class ServicesFullMapMessage implements DiscoveryCustomMessage {
     }
 
     /**
-     * @return Services deployment actions to be processed on services deployment exchange.
+     * @return Services deployment actions to be processed on services deployment process.
      */
-    @Nullable public ServicesExchangeActions servicesExchangeActions() {
-        return servicesExchangeActions;
+    @Nullable public ServicesDeploymentActions servicesDeploymentActions() {
+        return servicesDeploymentActions;
     }
 
     /**
-     * @param servicesExchangeActions Services deployment actions to be processed on services deployment exchange.
+     * @param servicesDeploymentActions Services deployment actions to be processed on services deployment process.
      */
-    public void servicesExchangeActions(ServicesExchangeActions servicesExchangeActions) {
-        this.servicesExchangeActions = servicesExchangeActions;
+    public void servicesDeploymentActions(ServicesDeploymentActions servicesDeploymentActions) {
+        this.servicesDeploymentActions = servicesDeploymentActions;
     }
 
     /** {@inheritDoc} */
