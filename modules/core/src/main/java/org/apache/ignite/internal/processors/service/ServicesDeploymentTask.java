@@ -434,10 +434,7 @@ class ServicesDeploymentTask {
                     depActions.deploymentTopologies(fullTops);
                     depActions.deploymentErrors(fullErrors);
 
-                    Set<IgniteUuid> toUndeploy = srvcProc.updateServicesTopologies(fullTops, fullErrors);
-
-                    for (IgniteUuid srvcId : toUndeploy)
-                        srvcProc.undeploy(srvcId);
+                    srvcProc.updateServicesTopologies(fullTops, fullErrors);
 
                     final Map<IgniteUuid, ServiceInfo> services = srvcProc.deployedServices();
 

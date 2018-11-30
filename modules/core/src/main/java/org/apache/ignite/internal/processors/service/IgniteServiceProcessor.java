@@ -86,7 +86,6 @@ import static org.apache.ignite.configuration.DeploymentMode.ISOLATED;
 import static org.apache.ignite.configuration.DeploymentMode.PRIVATE;
 import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
-import static org.apache.ignite.services.ServiceDeploymentFailuresPolicy.CANCEL;
 
 /**
  * Grid service processor.
@@ -1271,15 +1270,14 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
      *
      * @param fullTops Deployment topologies.
      * @param fullErrors Deployment errors.
-     * @return Service ids to undeploy.
      */
-    protected Set<IgniteUuid> updateServicesTopologies(@NotNull final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops,
+    protected void updateServicesTopologies(@NotNull final Map<IgniteUuid, HashMap<UUID, Integer>> fullTops,
         @NotNull final Map<IgniteUuid, Collection<byte[]>> fullErrors) {
         if (!enterBusy())
-            return Collections.emptySet();
+            return;
 
         try {
-            return updateServicesMap(deployedServices, fullTops, fullErrors);
+            updateServicesMap(deployedServices, fullTops, fullErrors);
         }
         finally {
             leaveBusy();
@@ -1672,21 +1670,9 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
      * @param services Services info to update.
      * @param tops Deployment topologies.
      * @param errors Deployment errors.
-     * @return Services ids to undeploy.
      */
-    private Set<IgniteUuid> updateServicesMap(Map<IgniteUuid, ServiceInfo> services,
+    private void updateServicesMap(Map<IgniteUuid, ServiceInfo> services,
         Map<IgniteUuid, HashMap<UUID, Integer>> tops, Map<IgniteUuid, Collection<byte[]>> errors) {
-
-        Set<IgniteUuid> toUndeploy = new HashSet<>();
-
-        for (IgniteUuid srvcId : errors.keySet()) {
-            ServiceInfo desc = services.get(srvcId);
-
-            if (desc != null && desc.configuration().getPolicy() == CANCEL)
-                toUndeploy.add(srvcId);
-        }
-
-        services.entrySet().removeIf(e -> toUndeploy.contains(e.getKey()));
 
         tops.forEach((srvcId, top) -> {
             ServiceInfo desc = services.get(srvcId);
@@ -1694,8 +1680,6 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             if (desc != null)
                 desc.topologySnapshot(top);
         });
-
-        return toUndeploy;
     }
 
     /** {@inheritDoc} */

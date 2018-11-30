@@ -1358,7 +1358,7 @@ public class IgniteKernal implements IgniteEx, IgniteMXBean, Externalizable {
     }
 
     /**
-     * Creates service processor depend on {@link IGNITE_ED_SERVICE_PROCESSOR_ENABLED}.
+     * Creates service processor depend on {@link ATTR_EVENT_DRIVEN_SERVICE_PROCESSOR_ENABLED}.
      *
      * @return Service processor.
      */
