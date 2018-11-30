@@ -44,36 +44,36 @@ public abstract class IgniteServiceProcessorAdapter extends GridProcessorAdapter
     /**
      * @param prj Grid projection.
      * @param name Service name.
-     * @param svc Service.
+     * @param srvc Service.
      * @return Future.
      */
-    public abstract IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc);
+    public abstract IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service srvc);
 
     /**
      * @param name Service name.
-     * @param svc Service instance.
+     * @param srvc Service instance.
      * @return Future.
      */
-    public abstract IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc);
+    public abstract IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service srvc);
 
     /**
      * @param name Service name.
-     * @param svc Service.
+     * @param srvc Service.
      * @param totalCnt Total count.
      * @param maxPerNodeCnt Max per-node count.
      * @return Future.
      */
-    public abstract IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
+    public abstract IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service srvc, int totalCnt,
         int maxPerNodeCnt);
 
     /**
      * @param name Service name.
-     * @param svc Service.
+     * @param srvc Service.
      * @param cacheName Cache name.
      * @param affKey Affinity key.
      * @return Future.
      */
-    public abstract IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
+    public abstract IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service srvc, String cacheName,
         Object affKey);
 
     /**
@@ -95,10 +95,10 @@ public abstract class IgniteServiceProcessorAdapter extends GridProcessorAdapter
     public abstract IgniteInternalFuture<?> cancelAll();
 
     /**
-     * @param svcNames Name of services to deploy.
+     * @param servicesNames Name of services to deploy.
      * @return Future.
      */
-    public abstract IgniteInternalFuture<?> cancelAll(Collection<String> svcNames);
+    public abstract IgniteInternalFuture<?> cancelAll(Collection<String> servicesNames);
 
     /**
      * @return Collection of service descriptors.
@@ -115,14 +115,14 @@ public abstract class IgniteServiceProcessorAdapter extends GridProcessorAdapter
     /**
      * @param prj Grid projection.
      * @param name Service name.
-     * @param svcItf Service class.
+     * @param srvcCls Service class.
      * @param sticky Whether multi-node request should be done.
      * @param timeout If greater than 0 limits service acquire time. Cannot be negative.
      * @param <T> Service interface type.
      * @return The proxy of a service by its name and class.
      * @throws IgniteException If failed to create proxy.
      */
-    public abstract <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky,
+    public abstract <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> srvcCls, boolean sticky,
         long timeout) throws IgniteException;
 
     /**

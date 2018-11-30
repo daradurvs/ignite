@@ -460,22 +460,22 @@ public class GridServiceProcessor extends IgniteServiceProcessorAdapter implemen
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc) {
-        return deployMultiple(prj, name, svc, 0, 1);
+    @Override public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service srvc) {
+        return deployMultiple(prj, name, srvc, 0, 1);
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc) {
-        return deployMultiple(prj, name, svc, 1, 1);
+    @Override public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service srvc) {
+        return deployMultiple(prj, name, srvc, 1, 1);
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
+    @Override public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service srvc, int totalCnt,
         int maxPerNodeCnt) {
         ServiceConfiguration cfg = new ServiceConfiguration();
 
         cfg.setName(name);
-        cfg.setService(svc);
+        cfg.setService(srvc);
         cfg.setTotalCount(totalCnt);
         cfg.setMaxPerNodeCount(maxPerNodeCnt);
 
@@ -483,14 +483,14 @@ public class GridServiceProcessor extends IgniteServiceProcessorAdapter implemen
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
+    @Override public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service srvc, String cacheName,
         Object affKey) {
         A.notNull(affKey, "affKey");
 
         ServiceConfiguration cfg = new ServiceConfiguration();
 
         cfg.setName(name);
-        cfg.setService(svc);
+        cfg.setService(srvc);
         cfg.setCacheName(cacheName);
         cfg.setAffinityKey(affKey);
         cfg.setTotalCount(1);
@@ -787,8 +787,8 @@ public class GridServiceProcessor extends IgniteServiceProcessorAdapter implemen
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> cancelAll(Collection<String> svcNames) {
-        List<String> svcNamesCp = new ArrayList<>(svcNames);
+    @Override public IgniteInternalFuture<?> cancelAll(Collection<String> servicesNames) {
+        List<String> svcNamesCp = new ArrayList<>(servicesNames);
 
         Collections.sort(svcNamesCp);
 
@@ -800,7 +800,7 @@ public class GridServiceProcessor extends IgniteServiceProcessorAdapter implemen
             List<String> toRollback = new ArrayList<>();
 
             try (Transaction tx = serviceCache().txStart(PESSIMISTIC, READ_COMMITTED)) {
-                for (String name : svcNames) {
+                for (String name : servicesNames) {
                     if (res == null)
                         res = new GridCompoundFuture<>();
 
@@ -1008,7 +1008,7 @@ public class GridServiceProcessor extends IgniteServiceProcessorAdapter implemen
     }
 
     /** {@inheritDoc} */
-    @Override public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky,
+    @Override public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> srvcCls, boolean sticky,
         long timeout)
         throws IgniteException {
         ctx.security().authorize(name, SecurityPermission.SERVICE_INVOKE, null);
@@ -1020,16 +1020,16 @@ public class GridServiceProcessor extends IgniteServiceProcessorAdapter implemen
                 Service svc = ctx.service();
 
                 if (svc != null) {
-                    if (!svcItf.isAssignableFrom(svc.getClass()))
+                    if (!srvcCls.isAssignableFrom(svc.getClass()))
                         throw new IgniteException("Service does not implement specified interface [svcItf=" +
-                            svcItf.getName() + ", svcCls=" + svc.getClass().getName() + ']');
+                            srvcCls.getName() + ", svcCls=" + svc.getClass().getName() + ']');
 
                     return (T)svc;
                 }
             }
         }
 
-        return new GridServiceProxy<T>(prj, name, svcItf, sticky, timeout, ctx).proxy();
+        return new GridServiceProxy<T>(prj, name, srvcCls, sticky, timeout, ctx).proxy();
     }
 
     /**

@@ -396,22 +396,22 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service svc) {
-        return deployMultiple(prj, name, svc, 0, 1);
+    @Override public IgniteInternalFuture<?> deployNodeSingleton(ClusterGroup prj, String name, Service srvc) {
+        return deployMultiple(prj, name, srvc, 0, 1);
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service svc) {
-        return deployMultiple(prj, name, svc, 1, 1);
+    @Override public IgniteInternalFuture<?> deployClusterSingleton(ClusterGroup prj, String name, Service srvc) {
+        return deployMultiple(prj, name, srvc, 1, 1);
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service svc, int totalCnt,
+    @Override public IgniteInternalFuture<?> deployMultiple(ClusterGroup prj, String name, Service srvc, int totalCnt,
         int maxPerNodeCnt) {
         ServiceConfiguration cfg = new ServiceConfiguration();
 
         cfg.setName(name);
-        cfg.setService(svc);
+        cfg.setService(srvc);
         cfg.setTotalCount(totalCnt);
         cfg.setMaxPerNodeCount(maxPerNodeCnt);
 
@@ -419,14 +419,14 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service svc, String cacheName,
+    @Override public IgniteInternalFuture<?> deployKeyAffinitySingleton(String name, Service srvc, String cacheName,
         Object affKey) {
         A.notNull(affKey, "affKey");
 
         ServiceConfiguration cfg = new ServiceConfiguration();
 
         cfg.setName(name);
-        cfg.setService(svc);
+        cfg.setService(srvc);
         cfg.setCacheName(cacheName);
         cfg.setAffinityKey(affKey);
         cfg.setTotalCount(1);
@@ -630,22 +630,22 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /** {@inheritDoc} */
-    @Override public IgniteInternalFuture<?> cancelAll(@NotNull Collection<String> names) {
+    @Override public IgniteInternalFuture<?> cancelAll(@NotNull Collection<String> servicesNames) {
         opsLock.readLock().lock();
 
         try {
             if (disconnected) {
                 return new GridFinishedFuture<>(new IgniteClientDisconnectedCheckedException(
                     ctx.cluster().clientReconnectFuture(), "Failed to undeploy services, " +
-                    "client node disconnected: " + names));
+                    "client node disconnected: " + servicesNames));
             }
 
             if (ctx.isStopping()) {
                 return new GridFinishedFuture<>(new IgniteCheckedException("Failed to undeploy services, " +
-                    "node is stopping: " + names));
+                    "node is stopping: " + servicesNames));
             }
 
-            if (names.isEmpty())
+            if (servicesNames.isEmpty())
                 return new GridFinishedFuture<>();
 
             GridCompoundFuture res = new GridCompoundFuture<>();
@@ -655,7 +655,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             List<DynamicServiceChangeRequest> reqs = new ArrayList<>();
 
             try {
-                for (String name : names) {
+                for (String name : servicesNames) {
                     IgniteUuid srvcId = lookupDeployedServiceId(name);
 
                     if (srvcId == null)
@@ -701,7 +701,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
                 for (IgniteUuid id : toRollback)
                     undepFuts.remove(id).onDone(e);
 
-                U.error(log, "Failed to undeploy services: " + names, e);
+                U.error(log, "Failed to undeploy services: " + servicesNames, e);
 
                 res.onDone(e);
 
@@ -779,10 +779,10 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
                 return null;
 
             for (ServiceContextImpl ctx : ctxs) {
-                Service svc = ctx.service();
+                Service srvc = ctx.service();
 
-                if (svc != null)
-                    return (T)svc;
+                if (srvc != null)
+                    return (T)srvc;
             }
 
             return null;
@@ -829,7 +829,7 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /** {@inheritDoc} */
-    @Override public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> svcItf, boolean sticky,
+    @Override public <T> T serviceProxy(ClusterGroup prj, String name, Class<? super T> srvcCls, boolean sticky,
         long timeout)
         throws IgniteException {
         ctx.security().authorize(name, SecurityPermission.SERVICE_INVOKE, null);
@@ -838,19 +838,19 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             ServiceContextImpl ctx = serviceContext(name);
 
             if (ctx != null) {
-                Service svc = ctx.service();
+                Service srvc = ctx.service();
 
-                if (svc != null) {
-                    if (!svcItf.isAssignableFrom(svc.getClass()))
-                        throw new IgniteException("Service does not implement specified interface [svcItf=" +
-                            svcItf.getName() + ", svcCls=" + svc.getClass().getName() + ']');
+                if (srvc != null) {
+                    if (!srvcCls.isAssignableFrom(srvc.getClass()))
+                        throw new IgniteException("Service does not implement specified interface [srvcCls=" +
+                            srvcCls.getName() + ", srvcCls=" + srvc.getClass().getName() + ']');
 
-                    return (T)svc;
+                    return (T)srvc;
                 }
             }
         }
 
-        return new GridServiceProxy<T>(prj, name, svcItf, sticky, timeout, ctx).proxy();
+        return new GridServiceProxy<T>(prj, name, srvcCls, sticky, timeout, ctx).proxy();
     }
 
     /**
@@ -882,10 +882,10 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             Collection<T> res = new ArrayList<>(ctxs.size());
 
             for (ServiceContextImpl ctx : ctxs) {
-                Service svc = ctx.service();
+                Service srvc = ctx.service();
 
-                if (svc != null)
-                    res.add((T)svc);
+                if (srvc != null)
+                    res.add((T)srvc);
             }
 
             return res;
@@ -1047,28 +1047,28 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             int createCnt = assignCnt - ctxs.size();
 
             for (int i = 0; i < createCnt; i++) {
-                ServiceContextImpl svcCtx = new ServiceContextImpl(name,
+                ServiceContextImpl srvcCtx = new ServiceContextImpl(name,
                     UUID.randomUUID(),
                     cacheName,
                     affKey,
                     Executors.newSingleThreadExecutor(threadFactory));
 
-                ctxs.add(svcCtx);
+                ctxs.add(srvcCtx);
 
-                toInit.add(svcCtx);
+                toInit.add(srvcCtx);
             }
         }
 
-        for (final ServiceContextImpl svcCtx : toInit) {
-            final Service svc;
+        for (final ServiceContextImpl srvcCtx : toInit) {
+            final Service srvc;
 
             try {
-                svc = copyAndInject(cfg);
+                srvc = copyAndInject(cfg);
 
                 // Initialize service.
-                svc.init(svcCtx);
+                srvc.init(srvcCtx);
 
-                svcCtx.service(svc);
+                srvcCtx.service(srvc);
             }
             catch (Throwable e) {
                 U.error(log, "Failed to initialize service (service will not be deployed): " + name, e);
@@ -1085,37 +1085,37 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             }
 
             if (log.isInfoEnabled())
-                log.info("Starting service instance [name=" + svcCtx.name() + ", execId=" +
-                    svcCtx.executionId() + ']');
+                log.info("Starting service instance [name=" + srvcCtx.name() + ", execId=" +
+                    srvcCtx.executionId() + ']');
 
             // Start service in its own thread.
-            final ExecutorService exe = svcCtx.executor();
+            final ExecutorService exe = srvcCtx.executor();
 
             exe.execute(new Runnable() {
                 @Override public void run() {
                     try {
-                        svc.execute(svcCtx);
+                        srvc.execute(srvcCtx);
                     }
                     catch (InterruptedException | IgniteInterruptedCheckedException ignore) {
                         if (log.isDebugEnabled())
-                            log.debug("Service thread was interrupted [name=" + svcCtx.name() + ", execId=" +
-                                svcCtx.executionId() + ']');
+                            log.debug("Service thread was interrupted [name=" + srvcCtx.name() + ", execId=" +
+                                srvcCtx.executionId() + ']');
                     }
                     catch (IgniteException e) {
                         if (e.hasCause(InterruptedException.class) ||
                             e.hasCause(IgniteInterruptedCheckedException.class)) {
                             if (log.isDebugEnabled())
-                                log.debug("Service thread was interrupted [name=" + svcCtx.name() +
-                                    ", execId=" + svcCtx.executionId() + ']');
+                                log.debug("Service thread was interrupted [name=" + srvcCtx.name() +
+                                    ", execId=" + srvcCtx.executionId() + ']');
                         }
                         else {
-                            U.error(log, "Service execution stopped with error [name=" + svcCtx.name() +
-                                ", execId=" + svcCtx.executionId() + ']', e);
+                            U.error(log, "Service execution stopped with error [name=" + srvcCtx.name() +
+                                ", execId=" + srvcCtx.executionId() + ']', e);
                         }
                     }
                     catch (Throwable e) {
-                        U.error(log, "Service execution stopped with error [name=" + svcCtx.name() +
-                            ", execId=" + svcCtx.executionId() + ']', e);
+                        U.error(log, "Service execution stopped with error [name=" + srvcCtx.name() +
+                            ", execId=" + srvcCtx.executionId() + ']', e);
 
                         if (e instanceof Error)
                             throw (Error)e;
@@ -1148,21 +1148,21 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
             return srvc;
         }
         else {
-            Service svc = cfg.getService();
+            Service srvc = cfg.getService();
 
             try {
-                byte[] bytes = U.marshal(m, svc);
+                byte[] bytes = U.marshal(m, srvc);
 
-                Service cp = U.unmarshal(m, bytes, U.resolveClassLoader(svc.getClass().getClassLoader(), ctx.config()));
+                Service cp = U.unmarshal(m, bytes, U.resolveClassLoader(srvc.getClass().getClassLoader(), ctx.config()));
 
                 ctx.resource().inject(cp);
 
                 return cp;
             }
             catch (IgniteCheckedException e) {
-                U.error(log, "Failed to copy service (will reuse same instance): " + svc.getClass(), e);
+                U.error(log, "Failed to copy service (will reuse same instance): " + srvc.getClass(), e);
 
-                return svc;
+                return srvc;
             }
         }
     }
