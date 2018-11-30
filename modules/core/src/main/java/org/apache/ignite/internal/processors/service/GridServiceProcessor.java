@@ -117,6 +117,8 @@ import static org.apache.ignite.transactions.TransactionIsolation.REPEATABLE_REA
 
 /**
  * Grid service processor.
+ * <p/>
+ * Obsolete implementation of service processor, based on replecated system cache.
  *
  * @deprecated Here is even driven implementation {@link IgniteServiceProcessor}, see IEP-17 for details.
  */

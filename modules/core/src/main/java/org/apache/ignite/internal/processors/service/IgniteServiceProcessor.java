@@ -88,7 +88,10 @@ import static org.apache.ignite.events.EventType.EVT_NODE_JOINED;
 import static org.apache.ignite.internal.GridComponent.DiscoveryDataExchangeType.SERVICE_PROC;
 
 /**
- * Grid service processor.
+ * Ignite service processor.
+ * <p/>
+ * Event driven implementation of service processor. Services deployment are managed by messages across discovery spi
+ * and communication spi.
  */
 @SkipDaemon
 public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implements IgniteChangeGlobalStateSupport {
