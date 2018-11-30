@@ -181,7 +181,9 @@ class ServicesDeploymentTask {
             if (depActions == null) {
                 Map<IgniteUuid, ServiceInfo> toDeploy = new HashMap<>();
 
-                if (evt.type() == EVT_DISCOVERY_CUSTOM_EVT) {
+                final int evtType = evt.type();
+
+                if (evtType == EVT_DISCOVERY_CUSTOM_EVT) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
                     if (msg instanceof CacheAffinityChangeMessage) {
@@ -209,12 +211,23 @@ class ServicesDeploymentTask {
                     }
                 }
                 else {
-                    assert evt.type() == EVT_NODE_JOINED || evt.type() == EVT_NODE_LEFT || evt.type() == EVT_NODE_FAILED;
+                    assert evtType == EVT_NODE_JOINED || evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED;
 
-                    toDeploy.putAll(srvcProc.deployedServices());
+                    final UUID eventNodeId = evt.eventNode().id();
 
-                    if (evt.type() == EVT_NODE_JOINED)
-                        toDeploy.putAll(srvcProc.servicesReceivedFromJoin(evt.eventNode().id()));
+                    final Map<IgniteUuid, ServiceInfo> deployedServices = srvcProc.deployedServices();
+
+                    if (evtType == EVT_NODE_LEFT || evtType == EVT_NODE_FAILED) {
+                        deployedServices.forEach((srvcId, desc) -> {
+                            if (desc.topologySnapshot().containsKey(eventNodeId))
+                                toDeploy.put(srvcId, desc);
+                        });
+                    }
+                    else {
+                        toDeploy.putAll(deployedServices);
+
+                        toDeploy.putAll(srvcProc.servicesReceivedFromJoin(eventNodeId));
+                    }
                 }
 
                 if (toDeploy.isEmpty()) {
