@@ -361,21 +361,36 @@ class ServicesDeploymentTask {
         assert crdId != null : "Coordinator should be defined at this point, locId=" + ctx.localNodeId();
 
         try {
+            Set<IgniteUuid> depServicesIds = new HashSet<>();
+
+            if (evt.type() == EVT_NODE_JOINED) {
+                UUID evtNodeId = evt.eventNode().id();
+
+                expDeps.forEach((srvcId, top) -> {
+                    if (top.containsKey(evtNodeId))
+                        depServicesIds.add(srvcId);
+                });
+            }
+            else
+                depServicesIds.addAll(expDeps.keySet());
+
             Map<IgniteUuid, ServiceSingleDeploymentsResults> results = new HashMap<>();
 
-            srvcProc.localInstancesCount().forEach((id, cnt) -> {
-                ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(cnt);
+            for (IgniteUuid srvcId : depServicesIds) {
+                ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(
+                    srvcProc.localInstancesCount(srvcId));
 
-                attachDeploymentErrors(depRes, errors.get(id));
+                attachDeploymentErrors(depRes, errors.get(srvcId));
 
-                results.put(id, depRes);
-            });
+                results.put(srvcId, depRes);
+            }
 
             errors.forEach((srvcId, err) -> {
                 if (results.containsKey(srvcId))
                     return;
 
-                ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(0);
+                ServiceSingleDeploymentsResults depRes = new ServiceSingleDeploymentsResults(
+                    srvcProc.localInstancesCount(srvcId));
 
                 attachDeploymentErrors(depRes, err);
 

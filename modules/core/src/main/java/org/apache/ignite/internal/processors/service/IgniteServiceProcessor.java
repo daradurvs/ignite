@@ -1311,17 +1311,6 @@ public class IgniteServiceProcessor extends IgniteServiceProcessorAdapter implem
     }
 
     /**
-     * @return Map with counts of all locally deployed services.
-     */
-    @NotNull protected Map<IgniteUuid, Integer> localInstancesCount() {
-        Map<IgniteUuid, Integer> locTops = new HashMap<>();
-
-        locServices.forEach((srvcId, ctxs) -> locTops.put(srvcId, ctxs.size()));
-
-        return locTops;
-    }
-
-    /**
      * Updates deployed services map according to deployment task.
      * <p/>
      * Invokes from deployer worker.
