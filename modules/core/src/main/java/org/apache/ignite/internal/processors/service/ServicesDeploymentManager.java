@@ -37,6 +37,7 @@ import org.apache.ignite.internal.managers.communication.GridMessageListener;
 import org.apache.ignite.internal.managers.discovery.DiscoCache;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
+import org.apache.ignite.internal.managers.eventstorage.HighPriorityListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
@@ -294,9 +295,12 @@ public class ServicesDeploymentManager {
     }
 
     /**
-     * Services discovery messages listener.
+     * Services discovery messages high priority listener.
+     * <p/>
+     * The listener should be notified earlier then PME's listener because of a custom message of {@link
+     * DiscoveryCustomEvent} may be nullified in PME before the listener will be able to capture it.
      */
-    private class ServiceDiscoveryListener implements DiscoveryEventListener {
+    private class ServiceDiscoveryListener implements DiscoveryEventListener, HighPriorityListener {
         /** {@inheritDoc} */
         @Override public void onEvent(final DiscoveryEvent evt, final DiscoCache discoCache) {
             if (!enterBusy())
@@ -370,6 +374,11 @@ public class ServicesDeploymentManager {
             finally {
                 leaveBusy();
             }
+        }
+
+        /** {@inheritDoc} */
+        @Override public int order() {
+            return 2;
         }
     }
 

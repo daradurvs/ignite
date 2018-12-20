@@ -131,7 +131,7 @@ public class GridDhtPartitionExchangeId implements Message, Comparable<GridDhtPa
     /**
      * @return Discovery event.
      */
-    DiscoveryEvent discoveryEvent() {
+    public DiscoveryEvent discoveryEvent() {
         assert discoEvt != null;
 
         return discoEvt;

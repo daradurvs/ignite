@@ -17,21 +17,30 @@
 
  package org.apache.ignite.internal.processors.service;
 
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.concurrent.Callable;
  import java.util.concurrent.TimeUnit;
  import org.apache.ignite.Ignite;
  import org.apache.ignite.events.DiscoveryEvent;
  import org.apache.ignite.internal.IgniteEx;
+ import org.apache.ignite.internal.IgniteInternalFuture;
  import org.apache.ignite.internal.events.DiscoveryCustomEvent;
  import org.apache.ignite.internal.managers.discovery.DiscoCache;
  import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
  import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
  import org.apache.ignite.internal.managers.eventstorage.GridEventStorageManager;
+ import org.apache.ignite.internal.managers.eventstorage.HighPriorityListener;
  import org.apache.ignite.internal.processors.cache.CacheAffinityChangeMessage;
  import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
+ import org.apache.ignite.internal.processors.cache.GridCachePartitionExchangeManager;
+ import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionExchangeId;
  import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionsExchangeFuture;
  import org.apache.ignite.internal.processors.cluster.ChangeGlobalStateMessage;
  import org.apache.ignite.internal.util.future.GridFutureAdapter;
  import org.apache.ignite.lang.IgniteInClosure;
+ import org.apache.ignite.testframework.GridTestUtils;
  import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
  import org.junit.Test;
  import org.junit.runner.RunWith;
@@ -57,7 +66,7 @@
      private static final long TEST_FUTURE_WAIT_TIMEOUT = 30_000L;
 
      /** */
-     private static final long SLEEP_TIMEOUT = 2_000L;
+     private static final long SLEEP_TIMEOUT = 5_000L;
 
      /** {@inheritDoc} */
      @Override protected void beforeTest() throws Exception {
@@ -109,16 +118,14 @@
      public void preventNullifyingCacheAffinityChangeMessageTest() throws Exception {
          runTest(CacheAffinityChangeMessage.class, new IgniteInClosure<Ignite>() {
              @Override public void apply(Ignite ignite) {
+                 ignite.createCache("testCache");
+
                  try {
                      startGrid(1);
                  }
                  catch (Exception e) {
                      fail("Failed to start instance, msg=" + e.getMessage());
                  }
-
-                 ignite.createCache("testCache");
-
-                 ignite.destroyCache("testCache");
              }
          });
      }
@@ -136,45 +143,101 @@
      protected void runTest(Class cls, IgniteInClosure<Ignite> clo) throws Exception {
          final IgniteEx ignite = grid(0);
 
+         final GridCachePartitionExchangeManager<Object, Object> exchangeMgr = ignite.context().
+             cache().context().exchange();
+
+         final IgniteInternalFuture<Boolean> pmeTestFut = GridTestUtils.runAsync(new Callable<Boolean>() {
+             /** */
+             private final Set<GridDhtPartitionExchangeId> checked = new HashSet<>();
+
+             @Override public Boolean call() throws Exception {
+                 return GridTestUtils.waitForCondition(() -> {
+                     List<GridDhtPartitionsExchangeFuture> exchangeFutures = exchangeMgr.exchangeFutures();
+
+                     if (checked.size() < exchangeFutures.size()) {
+                         GridDhtPartitionExchangeId exchangeId = exchangeFutures.get(checked.size() + 1).exchangeId();
+
+                         checked.add(exchangeId);
+
+                         DiscoveryEvent evt = exchangeId.discoveryEvent();
+
+                         if (evt.type() != EVT_DISCOVERY_CUSTOM_EVT)
+                             return false;
+
+                         DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
+
+                         return cls.equals(msg.getClass());
+                     }
+
+                     return false;
+
+                 }, TEST_FUTURE_WAIT_TIMEOUT);
+             }
+         });
+
          final GridFutureAdapter<Void> testResultFut = new GridFutureAdapter<>();
 
          // The registered listener will be the last added listener and will be notified last because all listeners are
          // stored using GridConcurrentLinkedHashSet in GridEventStorageManager. This guarantees that PME and Services
          // listeners have received the notification before the receiving event by the registered tests listener.
-         ignite.context().event().addDiscoveryEventListener(new DiscoveryEventListener() {
-             @SuppressWarnings("ErrorNotRethrown")
-             @Override public void onEvent(DiscoveryEvent evt, DiscoCache discoCache) {
-                 assertEquals(EVT_DISCOVERY_CUSTOM_EVT, evt.type());
+         ignite.context().event().addDiscoveryEventListener(
+             new TestDiscoveryEventListener(cls, testResultFut, pmeTestFut), EVT_DISCOVERY_CUSTOM_EVT);
 
-                 try {
-                     if (((DiscoveryCustomEvent)evt).customMessage().getClass().equals(cls)) {
-                         try {
-                             // Does not produce deadlock because PME's listener has been notified earlier.
-                             awaitPartitionMapExchange();
-
-                             doSleep(SLEEP_TIMEOUT);
-                         }
-                         catch (InterruptedException e) {
-                             error("Failed to wait PME completion.", e);
-
-                             testResultFut.onDone(e);
-                         }
-
-                         assertNotNull("Custom message has been nullified.", ((DiscoveryCustomEvent)evt).customMessage());
-
-                         testResultFut.onDone();
-                     }
-                 }
-                 catch (Error e) {
-                     testResultFut.onDone(e);
-                 }
-             }
-         }, EVT_DISCOVERY_CUSTOM_EVT);
+         System.out.println("***" + exchangeMgr.exchangeFutures().size());
 
          // Applies test logic to generate a message of the expected type.
          clo.apply(ignite);
 
+         System.out.println("***" + exchangeMgr.exchangeFutures().size());
+
          // Checks that custom message has not been nullified.
          testResultFut.get(TEST_FUTURE_WAIT_TIMEOUT, TimeUnit.MILLISECONDS);
+     }
+
+     /**
+      * Hight priority discovery listener with the same priority as discovery listener in {@link
+      * ServicesDeploymentManager}.
+      */
+     private static class TestDiscoveryEventListener implements DiscoveryEventListener, HighPriorityListener {
+         private final Class cls;
+         private final GridFutureAdapter<Void> testResultFut;
+         private final IgniteInternalFuture<Boolean> testFut;
+
+         public TestDiscoveryEventListener(Class cls, GridFutureAdapter<Void> testResultFut,
+             IgniteInternalFuture<Boolean> testFut) {
+             this.cls = cls;
+             this.testResultFut = testResultFut;
+             this.testFut = testFut;
+         }
+
+         @SuppressWarnings("ErrorNotRethrown")
+         @Override public void onEvent(DiscoveryEvent evt, DiscoCache discoCache) {
+             assertEquals(EVT_DISCOVERY_CUSTOM_EVT, evt.type());
+
+             try {
+                 if (((DiscoveryCustomEvent)evt).customMessage().getClass().equals(cls)) {
+                     //
+                     doSleep(SLEEP_TIMEOUT);
+
+                     assertNotNull("Custom message has been nullified.", ((DiscoveryCustomEvent)evt).customMessage());
+
+                     assertFalse(testFut.isDone());
+
+                     testResultFut.onDone();
+                 }
+             }
+             catch (Error e) {
+                 testResultFut.onDone(e);
+             }
+         }
+
+         /**
+          * Should be the same with discovery listener in {@link ServicesDeploymentManager}.
+          * <p/>
+          * {@inheritDoc}
+          */
+         @Override public int order() {
+             return 2;
+         }
      }
  }
