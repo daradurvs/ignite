@@ -284,6 +284,8 @@ public class ServiceDeploymentManager {
                 || evtType == EVT_DISCOVERY_CUSTOM_EVT : "Unexpected event was received, evt=" + evt;
 
             try {
+                evt.incrementAndGetUsages();
+
                 if (evtType == EVT_DISCOVERY_CUSTOM_EVT) {
                     DiscoveryCustomMessage msg = ((DiscoveryCustomEvent)evt).customMessage();
 
@@ -292,10 +294,17 @@ public class ServiceDeploymentManager {
 
                         if (msg0.clusterActive())
                             pendingEvts.forEach(t -> addTask(t.evt, t.topVer, t.depActions));
-                        else if (log.isDebugEnabled())
-                            pendingEvts.forEach(t -> log.debug("Ignore event, cluster is inactive: " + t.evt));
+                        else if (log.isDebugEnabled()) {
+                            pendingEvts.forEach(t -> {
+                                t.evt.decrementAndGetUsages();
+
+                                log.debug("Ignore event, cluster is inactive: " + t.evt);
+                            });
+                        }
 
                         pendingEvts.clear();
+
+                        evt.decrementAndGetUsages();
                     }
                     else {
                         if (msg instanceof ServiceClusterDeploymentResultBatch) {
@@ -314,6 +323,8 @@ public class ServiceDeploymentManager {
 
                             if (task != null) // May be null in case of double delivering
                                 task.onReceiveFullDeploymentsMessage(msg0);
+
+                            evt.decrementAndGetUsages();
                         }
                         else if (msg instanceof CacheAffinityChangeMessage)
                             addTask(evt, discoCache.version(), null);
@@ -331,6 +342,8 @@ public class ServiceDeploymentManager {
 
                             if (depActions != null)
                                 addTask(evt, discoCache.version(), depActions);
+                            else
+                                evt.decrementAndGetUsages();
                         }
                     }
                 }

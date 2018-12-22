@@ -60,8 +60,8 @@ public class CacheAffinityChangeMessage implements DiscoveryCustomMessage {
     /** */
     private transient boolean exchangeNeeded;
 
-    /** Using counter. The message is expected to be handled in PME and service deployment process. */
-    private final AtomicInteger usingCounter = new AtomicInteger(2);
+    /** */
+    private final AtomicInteger usagesCounter = new AtomicInteger(0);
 
     /**
      * Constructor used when message is created after cache rebalance finished.
@@ -171,8 +171,13 @@ public class CacheAffinityChangeMessage implements DiscoveryCustomMessage {
     }
 
     /** {@inheritDoc} */
-    @Override public int decrementUsingCounter() {
-        return usingCounter.decrementAndGet();
+    @Override public int incrementAndGetUsages() {
+        return usagesCounter.incrementAndGet();
+    }
+
+    /** {@inheritDoc} */
+    @Override public int decrementAndGetUsages() {
+        return usagesCounter.updateAndGet(i -> i > 0 ? i - 1 : i);
     }
 
     /** {@inheritDoc} */

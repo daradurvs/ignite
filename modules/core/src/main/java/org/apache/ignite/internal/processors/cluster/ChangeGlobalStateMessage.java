@@ -63,8 +63,8 @@ public class ChangeGlobalStateMessage implements DiscoveryCustomMessage {
     /** */
     private long timestamp;
 
-    /** Using counter. The message is expected to be handled in PME and service deployment process. */
-    private final AtomicInteger usingCounter = new AtomicInteger(2);
+    /** */
+    private final AtomicInteger usagesCounter = new AtomicInteger(0);
 
     /** */
     @GridToStringExclude
@@ -167,8 +167,13 @@ public class ChangeGlobalStateMessage implements DiscoveryCustomMessage {
     }
 
     /** {@inheritDoc} */
-    @Override public int decrementUsingCounter() {
-        return usingCounter.decrementAndGet();
+    @Override public int incrementAndGetUsages() {
+        return usagesCounter.incrementAndGet();
+    }
+
+    /** {@inheritDoc} */
+    @Override public int decrementAndGetUsages() {
+        return usagesCounter.updateAndGet(i -> i > 0 ? i - 1 : i);
     }
 
     /**

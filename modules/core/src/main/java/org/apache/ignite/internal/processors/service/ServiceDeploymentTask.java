@@ -811,6 +811,8 @@ class ServiceDeploymentTask {
         depErrors.clear();
         remaining.clear();
 
+        evt.decrementAndGetUsages();
+
         if (evt instanceof DiscoveryCustomEvent)
             ((DiscoveryCustomEvent)evt).nullifyCustomMessage();
     }

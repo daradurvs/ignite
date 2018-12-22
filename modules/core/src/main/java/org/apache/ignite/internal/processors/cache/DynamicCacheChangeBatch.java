@@ -55,8 +55,8 @@ public class DynamicCacheChangeBatch implements DiscoveryCustomMessage {
     /** Restarting caches. */
     private Set<String> restartingCaches;
 
-    /** Using counter. The message is expected to be handled in PME and service deployment process. */
-    private final AtomicInteger usingCounter = new AtomicInteger(2);
+    /** */
+    private final AtomicInteger usagesCounter = new AtomicInteger(0);
 
     /** Affinity (cache related) services updates to be processed on services deployment process. */
     @GridToStringExclude
@@ -98,8 +98,13 @@ public class DynamicCacheChangeBatch implements DiscoveryCustomMessage {
     }
 
     /** {@inheritDoc} */
-    @Override public int decrementUsingCounter() {
-        return usingCounter.decrementAndGet();
+    @Override public int incrementAndGetUsages() {
+        return usagesCounter.incrementAndGet();
+    }
+
+    /** {@inheritDoc} */
+    @Override public int decrementAndGetUsages() {
+        return usagesCounter.updateAndGet(i -> i > 0 ? i - 1 : i);
     }
 
     /**
